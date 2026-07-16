@@ -146,19 +146,12 @@ export function ComposeLetter({
               role="radio"
               aria-checked={selected}
               onClick={() => setKind(card.value)}
-              className={`pressable flex min-h-11 flex-col items-start gap-1.5 rounded-card border p-3.5 text-left shadow-soft ${
+              className={`pressable flex min-h-11 items-center gap-2.5 rounded-card border px-3 py-2.5 text-left shadow-soft ${
                 selected ? "border-rose-deep bg-blush" : "border-line bg-white"
               }`}
             >
-              <span
-                className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                  selected ? "bg-white text-rose-dark" : "bg-blush text-rose-dark"
-                }`}
-              >
-                <card.icon className="h-4.5 w-4.5" />
-              </span>
+              <card.icon className="h-4.5 w-4.5 shrink-0 text-rose-dark" />
               <span className="text-sm font-semibold text-berry">{card.label}</span>
-              <span className="text-xs text-berry-soft">{card.hint}</span>
             </button>
           );
         })}

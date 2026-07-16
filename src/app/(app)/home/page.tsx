@@ -19,6 +19,7 @@ import type {
 import { Button, Card, useToast } from "@/components/ui";
 import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { InstallGuide } from "@/components/install-guide";
+import { LoveJar } from "@/components/love-jar";
 import { isIos, isStandalone, pushAvailableNow, pushStatus } from "@/lib/push";
 
 const MOOD_LABELS: Record<string, string> = {
@@ -46,7 +47,6 @@ interface HomeData {
   mySharing: boolean;
   partnerSharing: boolean;
   recentSignals: Signal[];
-  weekCounts: { messages: number; memories: number; moods: number };
 }
 
 function greeting(): string {
@@ -73,7 +73,7 @@ export default function HomePage() {
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-    const [moods, msgs, unreadRes, drawings, dq, events, memories, locations, signals, weekMsgs, weekMems, weekMoods] =
+    const [moods, msgs, unreadRes, drawings, dq, events, memories, locations, signals] =
       await Promise.all([
         sb.from("moods").select("*").is("cleared_at", null).order("created_at", { ascending: false }).limit(10),
         sb.from("messages").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(1),
@@ -84,9 +84,6 @@ export default function HomePage() {
         sb.from("memories").select("*").order("created_at", { ascending: false }).limit(1),
         sb.from("locations").select("person, expires_at").gt("expires_at", now).order("shared_at", { ascending: false }).limit(10),
         sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(3),
-        sb.from("messages").select("id", { count: "exact", head: true }).gte("created_at", weekAgo),
-        sb.from("memories").select("id", { count: "exact", head: true }).gte("created_at", weekAgo),
-        sb.from("moods").select("id", { count: "exact", head: true }).gte("created_at", weekAgo),
       ]);
 
     const moodRows = (moods.data ?? []) as MoodEntry[];
@@ -128,11 +125,6 @@ export default function HomePage() {
       mySharing: (locations.data ?? []).some((l) => l.person === me.person),
       partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
       recentSignals: (signals.data ?? []) as Signal[],
-      weekCounts: {
-        messages: weekMsgs.count ?? 0,
-        memories: weekMems.count ?? 0,
-        moods: weekMoods.count ?? 0,
-      },
     });
   }, [me.person, partnerPerson]);
 
@@ -248,25 +240,19 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Quick actions */}
-        <div className="grid grid-cols-3 gap-3.5">
-          <Button variant="secondary" className="flex-col gap-1 py-3" loading={sendingThought} onClick={sendThinkingOfYou}>
-            <Sparkle className="h-5 w-5" />
-            <span className="text-xs">Thinking of you</span>
-          </Button>
-          <Link href="/chat" className="pressable">
-            <span className="flex min-h-full flex-col items-center justify-center gap-1 rounded-full bg-blush px-2 py-3 font-semibold text-berry hover:bg-blush-deep">
-              <MessageCircle className="h-5 w-5" />
-              <span className="text-xs">Say hi</span>
-            </span>
-          </Link>
-          <Link href="/draw" className="pressable">
-            <span className="flex min-h-full flex-col items-center justify-center gap-1 rounded-full bg-blush px-2 py-3 font-semibold text-berry hover:bg-blush-deep">
-              <Pencil className="h-5 w-5" />
-              <span className="text-xs">Draw</span>
-            </span>
-          </Link>
-        </div>
+        {/* Love jar */}
+        <LoveJar />
+
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mx-auto"
+          loading={sendingThought}
+          onClick={sendThinkingOfYou}
+        >
+          <Sparkle className="h-4 w-4" />
+          Thinking of you
+        </Button>
 
         {/* Latest message */}
         <Link href="/chat" className="pressable">
@@ -425,10 +411,6 @@ export default function HomePage() {
         )}
         {showSetup && <InstallGuide person={me.person} onDone={() => setShowSetup(false)} />}
 
-        {/* Weekly recap */}
-        <p className="mt-1 text-center text-xs text-berry-soft">
-          This week: {data.weekCounts.messages} messages, {data.weekCounts.memories} memories, {data.weekCounts.moods} check-ins
-        </p>
       </main>
     </>
   );

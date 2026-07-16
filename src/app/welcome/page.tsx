@@ -189,10 +189,6 @@ function WelcomeInner() {
             <ProfileChoice person="cami" onPick={setPicked} />
             <ProfileChoice person="joseph" onPick={setPicked} />
           </div>
-          <p className="mt-8 text-center text-sm text-berry-soft">
-            First time here? Open the private invite link that was made for
-            you, and this screen will take care of the rest.
-          </p>
         </>
       ) : pinReady[picked] ? (
         <PinPad person={picked} onBack={() => setPicked(null)} />
