@@ -50,29 +50,18 @@ export function MemoryComposer({
   onSaved: (memory: Memory) => void;
 }) {
   const toast = useToast();
-  const [kind, setKind] = useState<ComposerKind>("photo");
-  const [title, setTitle] = useState("");
-  const [caption, setCaption] = useState("");
-  const [happenedOn, setHappenedOn] = useState(today());
-  const [location, setLocation] = useState("");
+  // Restore any saved draft once on mount; drafts persist across sessions.
+  const [draft] = useState<DraftShape | null>(() =>
+    typeof window === "undefined" ? null : loadDraft<DraftShape>(DRAFT_KEY),
+  );
+  const [kind, setKind] = useState<ComposerKind>(draft?.kind ?? "photo");
+  const [title, setTitle] = useState(draft?.title ?? "");
+  const [caption, setCaption] = useState(draft?.caption ?? "");
+  const [happenedOn, setHappenedOn] = useState(draft?.happenedOn || today());
+  const [location, setLocation] = useState(draft?.location ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const restored = useRef(false);
-
-  // Restore any saved draft the first time the sheet opens.
-  useEffect(() => {
-    if (!open || restored.current) return;
-    restored.current = true;
-    const draft = loadDraft<DraftShape>(DRAFT_KEY);
-    if (draft) {
-      setKind(draft.kind);
-      setTitle(draft.title);
-      setCaption(draft.caption);
-      setHappenedOn(draft.happenedOn || today());
-      setLocation(draft.location);
-    }
-  }, [open]);
 
   // Persist the draft continuously while composing.
   useEffect(() => {
@@ -80,15 +69,20 @@ export function MemoryComposer({
     saveDraft(DRAFT_KEY, { kind, title, caption, happenedOn, location } satisfies DraftShape);
   }, [open, kind, title, caption, happenedOn, location]);
 
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+  // Object URLs are tracked in a ref so they can be revoked on unmount.
+  const previewRef = useRef<string | null>(null);
+  const pickFile = (f: File | null) => {
+    setFile(f);
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = f ? URL.createObjectURL(f) : null;
+    setPreviewUrl(previewRef.current);
+  };
+  useEffect(
+    () => () => {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    },
+    [],
+  );
 
   const needsFile = kind === "photo" || kind === "video";
 
@@ -98,7 +92,7 @@ export function MemoryComposer({
     setCaption("");
     setHappenedOn(today());
     setLocation("");
-    setFile(null);
+    pickFile(null);
   };
 
   const submit = async () => {
@@ -198,7 +192,7 @@ export function MemoryComposer({
               id="memory-file"
               type="file"
               accept={kind === "photo" ? "image/*" : "video/*"}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
               className="w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-berry file:mr-3 file:rounded-full file:border-0 file:bg-blush file:px-4 file:py-2 file:text-sm file:font-semibold file:text-berry"
             />
             {previewUrl && kind === "photo" && (
@@ -210,7 +204,6 @@ export function MemoryComposer({
               />
             )}
             {previewUrl && kind === "video" && (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
               <video src={previewUrl} controls className="mt-2 max-h-48 w-full rounded-xl border border-line" />
             )}
           </div>

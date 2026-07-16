@@ -86,6 +86,11 @@ export const fixtures: Record<string, unknown[]> = {
         prompt: "Which small moment together do you replay in your head the most?",
         kind: "open", option_a: null, option_b: null, created_by: null, created_at: iso(86400000 * 10),
       },
+      question: {
+        id: "ccccccc1-0000-4000-8000-000000000001", category: "memories",
+        prompt: "Which small moment together do you replay in your head the most?",
+        kind: "open", option_a: null, option_b: null, created_by: null, created_at: iso(86400000 * 10),
+      },
       answers: [{ person: "cami" }],
     },
   ],

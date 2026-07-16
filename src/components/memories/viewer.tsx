@@ -8,14 +8,13 @@ import {
   Download, MapPin, Pencil, Send, Trash2, X,
 } from "lucide-react";
 import {
-  Avatar, Button, ConfirmDialog, IconButton, Input, Label, Sheet, useToast,
+  Avatar, Button, ConfirmDialog, IconButton, Input, Label, Sheet, Textarea, useToast,
 } from "@/components/ui";
 import { HeartDivider, HeartIcon, HeartSpinner } from "@/components/hearts";
 import { supabase } from "@/lib/supabase";
 import { signedUrl } from "@/lib/media";
 import { formatRelative, formatShortDate } from "@/lib/format";
 import { displayName, type Memory, type MemoryComment, type Person } from "@/lib/types";
-import { Textarea } from "@/components/ui";
 import { FavoriteHearts, KIND_LABELS, memoryDate } from "./card";
 import { MemoryMedia } from "./media";
 

@@ -7,11 +7,17 @@ export default defineConfig({
   workers: 2,
   use: {
     baseURL: "http://localhost:3111",
+    launchOptions: {
+      // The CI sandbox provides its own Chromium build and runs as root.
+      executablePath: process.env.PW_CHROMIUM_PATH ?? undefined,
+      args: process.env.PW_CHROMIUM_PATH ? ["--no-sandbox"] : [],
+    },
   },
   projects: [
     {
       name: "iphone",
-      use: { ...devices["iPhone 13"] },
+      // Chromium with iPhone 13 emulation (WebKit is not available in CI).
+      use: { ...devices["iPhone 13"], browserName: "chromium" },
     },
     {
       name: "desktop",

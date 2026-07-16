@@ -9,21 +9,18 @@ import type { Memory } from "@/lib/types";
 
 /** Resolve a storage path to a short-lived signed URL. */
 export function useSignedUrl(path: string | null | undefined): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<{ path: string; url: string } | null>(null);
   useEffect(() => {
+    if (!path) return;
     let alive = true;
-    if (!path) {
-      setUrl(null);
-      return;
-    }
-    void signedUrl(path).then((u) => {
-      if (alive) setUrl(u);
+    void signedUrl(path).then((url) => {
+      if (alive && url) setResolved({ path, url });
     });
     return () => {
       alive = false;
     };
   }, [path]);
-  return url;
+  return path && resolved?.path === path ? resolved.url : null;
 }
 
 /** Renders a memory's photo, drawing image, or video player. */
@@ -47,7 +44,6 @@ export function MemoryMedia({
   }
   if (memory.kind === "video") {
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
       <video
         src={url}
         controls={controls}

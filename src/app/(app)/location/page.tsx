@@ -15,7 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { notifyPartner } from "@/lib/notify";
 import { distanceKm, formatDistance, formatRelative } from "@/lib/format";
 import {
-  displayName, type LocationMode, type LocationShare, type Person, type Signal,
+  displayName, type LocationMode, type LocationShare, type Signal,
 } from "@/lib/types";
 
 type UiMode = "off" | LocationMode;
@@ -83,7 +83,10 @@ export default function Page() {
   const watchRef = useRef<number | null>(null);
   const windowEndRef = useRef<Date | null>(null);
   const lastInsertRef = useRef<{ t: number; lat: number; lng: number } | null>(null);
-  modeRef.current = mode;
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   // Keep "now" fresh so expiries flip without a reload.
   useEffect(() => {
@@ -253,7 +256,8 @@ export default function Page() {
 
   const selectMode = useCallback(
     async (m: UiMode) => {
-      if (busy || m === mode) return;
+      // "Share once" may be tapped again to send a fresh snapshot.
+      if (busy || (m === mode && m !== "once")) return;
       if (m === "off") {
         await stopSharing(true);
         toast("Location sharing is off");
@@ -495,7 +499,10 @@ export default function Page() {
                 variant="danger"
                 size="lg"
                 className="w-full"
-                onClick={() => void stopSharing(true)}
+                onClick={() => {
+                  void stopSharing(true);
+                  toast("Sharing stopped and cleared");
+                }}
               >
                 <OctagonX className="h-5 w-5" />
                 Stop sharing now

@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import {
   addDays, addMonths, differenceInCalendarDays, endOfMonth, format,
-  getDate, getDay, isSameDay, isSameMonth, startOfMonth,
+  getDate, getDay, isSameDay, startOfMonth,
 } from "date-fns";
 import { ChevronLeft, ChevronRight, MapPin, Repeat } from "lucide-react";
 import { EmptyState, IconButton } from "@/components/ui";
@@ -168,11 +168,7 @@ export function CalendarTab({
                 <>
                   <span
                     className={`flex h-7 w-7 items-center justify-center rounded-full text-sm ${
-                      isSameDay(day, today)
-                        ? "bg-plum font-bold text-white"
-                        : isSameMonth(day, today)
-                          ? "text-berry"
-                          : "text-berry"
+                      isSameDay(day, today) ? "bg-plum font-bold text-white" : "text-berry"
                     }`}
                   >
                     {getDate(day)}
