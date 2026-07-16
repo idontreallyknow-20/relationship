@@ -108,6 +108,19 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
 
+      case "set-phrase": {
+        const phrase = String(body.phrase ?? "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (phrase.length < 8 || phrase.length > 200) {
+          return json({ error: "The secret password needs at least 8 characters" }, 400);
+        }
+        const { error } = await admin.rpc("admin_phrase_set", { phrase });
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
       case "sign-out-everywhere": {
         const { error } = await admin.rpc("admin_sign_out_person", { target: me });
         if (error) throw error;

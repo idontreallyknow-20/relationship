@@ -66,6 +66,9 @@ export default function SettingsPage() {
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
+  const [phraseSheet, setPhraseSheet] = useState(false);
+  const [phrase, setPhrase] = useState("");
+  const [phraseBusy, setPhraseBusy] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<Device | null>(null);
   const [signOutAllConfirm, setSignOutAllConfirm] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -193,6 +196,27 @@ export default function SettingsPage() {
       toast("Could not save the PIN. Try again.");
     }
     setPinBusy(false);
+  };
+
+  const savePhrase = async () => {
+    const normalized = phrase.toLowerCase().replace(/\s+/g, " ").trim();
+    if (normalized.length < 8) {
+      toast("Use at least 8 characters");
+      return;
+    }
+    setPhraseBusy(true);
+    try {
+      const { data, error } = await supabase().functions.invoke<{ ok?: boolean }>("couple-admin", {
+        body: { action: "set-phrase", phrase: normalized },
+      });
+      if (error || !data?.ok) throw new Error();
+      toast("Secret password saved");
+      setPhraseSheet(false);
+      setPhrase("");
+    } catch {
+      toast("Could not save it. Try again.");
+    }
+    setPhraseBusy(false);
   };
 
   const revokeDevice = async (device: Device) => {
@@ -380,9 +404,14 @@ export default function SettingsPage() {
         {/* Security */}
         <SectionTitle>Security and devices</SectionTitle>
         <Card className="space-y-3">
-          <Button variant="secondary" size="sm" onClick={() => setPinSheet(true)}>
-            <ShieldCheck className="h-4 w-4" /> Set or change my PIN
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setPinSheet(true)}>
+              <ShieldCheck className="h-4 w-4" /> Set or change my PIN
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPhraseSheet(true)}>
+              Change our secret password
+            </Button>
+          </div>
           <div className="space-y-2 border-t border-line-soft pt-3">
             <p className="text-sm font-semibold text-berry">Paired devices</p>
             {devices.length === 0 && <p className="text-sm text-berry-soft">No active devices.</p>}
@@ -586,6 +615,27 @@ export default function SettingsPage() {
           </div>
           <Button className="w-full" loading={pinBusy} onClick={savePin}>
             Save PIN
+          </Button>
+        </div>
+      </Sheet>
+
+      <Sheet open={phraseSheet} onClose={() => setPhraseSheet(false)} title="Our secret password">
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-berry-soft">
+            One shared password that unlocks the app for either of you from
+            the welcome screen. It is saved in lowercase.
+          </p>
+          <Input
+            type="text"
+            autoComplete="off"
+            autoCapitalize="none"
+            aria-label="New secret password"
+            placeholder="at least 8 characters"
+            value={phrase}
+            onChange={(e) => setPhrase(e.target.value)}
+          />
+          <Button className="w-full" loading={phraseBusy} onClick={savePhrase}>
+            Save secret password
           </Button>
         </div>
       </Sheet>
