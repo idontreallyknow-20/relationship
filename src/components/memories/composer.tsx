@@ -215,7 +215,7 @@ export function MemoryComposer({
             id="memory-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={kind === "milestone" ? "Our first trip together" : "Give it a name"}
+            placeholder="Title"
             maxLength={120}
           />
         </div>

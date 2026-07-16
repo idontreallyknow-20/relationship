@@ -107,6 +107,18 @@ body {
   }
 }
 
+/* Love jar: a tapped heart drifts from the button into the jar. */
+@keyframes love-drop {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-72px, 26px) scale(0.55); opacity: 0; }
+}
+.love-drop {
+  animation: love-drop 650ms ease-in forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .love-drop { animation: none; opacity: 0; }
+}
+
 /* Drawing canvas: stop the page from scrolling under a finger. */
 .touch-draw {
   touch-action: none;

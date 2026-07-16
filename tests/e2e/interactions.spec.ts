@@ -55,6 +55,19 @@ test("memories: composer sheet opens", async ({ page }, testInfo) => {
   await page.screenshot({ path: `${SHOTS}/memories-composer-${testInfo.project.name}.png`, fullPage: true });
 });
 
+test("love jar: tapping the heart drops a heart in", async ({ page }) => {
+  await mockSupabase(page);
+  await page.goto("/home");
+  const button = page.getByRole("button", { name: "Drop a heart in the jar" });
+  await expect(button).toBeVisible({ timeout: 20_000 });
+  const jar = page.getByRole("button", { name: /open the love jar/i });
+  const before = await jar.locator("svg path").count();
+  await button.click();
+  await expect(async () => {
+    expect(await jar.locator("svg path").count()).toBeGreaterThan(before);
+  }).toPass({ timeout: 5000 });
+});
+
 test("chat: message can be typed and sent optimistically", async ({ page }) => {
   await mockSupabase(page);
   await page.goto("/chat");

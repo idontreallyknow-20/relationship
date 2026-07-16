@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { storedDeviceId } from "./pairing";
+import { VAPID_PUBLIC_KEY } from "./public-config";
 import type { Person } from "./types";
 
 function base64ToUint8(base64: string): Uint8Array {
@@ -59,7 +60,7 @@ export async function enablePush(person: Person): Promise<boolean> {
     existing ??
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64ToUint8(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!) as BufferSource,
+      applicationServerKey: base64ToUint8(VAPID_PUBLIC_KEY) as BufferSource,
     }));
 
   const json = subscription.toJSON();

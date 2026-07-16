@@ -82,12 +82,12 @@ function NavLink({
 }
 
 const CREATE_ACTIONS = [
-  { href: "/draw", label: "Drawing", hint: "Sketch something together", icon: Pencil },
-  { href: "/moods?new=1", label: "Mood update", hint: "Share how you feel", icon: Smile },
-  { href: "/memories?new=1", label: "Memory", hint: "Save a photo or moment", icon: Camera },
-  { href: "/letters?new=1", label: "Letter", hint: "Write now or schedule it", icon: Mail },
-  { href: "/plans?new=event", label: "Calendar plan", hint: "Put something on the calendar", icon: CalendarHeart },
-  { href: "/plans?new=bucket", label: "Bucket list item", hint: "Something to do someday", icon: ListChecks },
+  { href: "/draw", label: "Drawing", icon: Pencil },
+  { href: "/moods?new=1", label: "Mood", icon: Smile },
+  { href: "/memories?new=1", label: "Memory", icon: Camera },
+  { href: "/letters?new=1", label: "Letter", icon: Mail },
+  { href: "/plans?new=event", label: "Plan", icon: CalendarHeart },
+  { href: "/plans?new=bucket", label: "Bucket list", icon: ListChecks },
 ];
 
 export function BottomNav() {
@@ -137,7 +137,7 @@ export function BottomNav() {
       </nav>
 
       <Sheet open={createOpen} onClose={() => setCreateOpen(false)} title="Create">
-        <div className="grid grid-cols-2 gap-3 pt-2">
+        <div className="grid grid-cols-3 gap-3 pt-2">
           {CREATE_ACTIONS.map((action) => (
             <button
               key={action.href}
@@ -145,13 +145,12 @@ export function BottomNav() {
                 setCreateOpen(false);
                 router.push(action.href);
               }}
-              className="pressable flex flex-col items-start gap-2 rounded-card border border-line bg-white p-4 text-left shadow-soft"
+              className="pressable flex flex-col items-center gap-2 rounded-card border border-line bg-white px-2 py-4 shadow-soft"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blush text-rose-dark">
                 <action.icon className="h-5 w-5" />
               </span>
-              <span className="font-semibold text-berry">{action.label}</span>
-              <span className="text-xs text-berry-soft">{action.hint}</span>
+              <span className="text-sm font-semibold text-berry">{action.label}</span>
             </button>
           ))}
         </div>

@@ -182,6 +182,11 @@ export const fixtures: Record<string, unknown[]> = {
     { person: "joseph", settings: {}, updated_at: iso(0) },
   ],
   deletion_requests: [],
+  love_taps: Array.from({ length: 14 }, (_, i) => ({
+    id: `7777aaa1-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    person: i % 3 === 0 ? "joseph" : "cami",
+    created_at: iso(i * 3_600_000),
+  })),
   drawings: [
     {
       id: "6666aaa1-0000-4000-8000-000000000001", caption: "Us as penguins",

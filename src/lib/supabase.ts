@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./public-config";
 
 // One browser-wide client. Sessions persist in localStorage and refresh
 // automatically, so a paired device stays signed in.
@@ -7,8 +8,8 @@ let client: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {
   if (!client) {
     client = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY,
       {
         auth: {
           persistSession: true,

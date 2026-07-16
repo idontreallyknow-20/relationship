@@ -327,9 +327,6 @@ export default function SettingsPage() {
           <div>
             <Label htmlFor="start-date">The day we became us</Label>
             <Input id="start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            <p className="mt-1 text-xs text-berry-soft">
-              Powers the day counter and automatic milestones.
-            </p>
           </div>
           <div>
             <Label htmlFor="timezone">Our timezone</Label>
@@ -338,9 +335,6 @@ export default function SettingsPage() {
                 <option key={tz} value={tz}>{tz.replace("_", " ")}</option>
               ))}
             </Select>
-            <p className="mt-1 text-xs text-berry-soft">
-              Used for the daily question and quiet hours.
-            </p>
           </div>
           <Button onClick={saveRelationship}>Save</Button>
         </Card>
@@ -349,7 +343,7 @@ export default function SettingsPage() {
         <SectionTitle>Invite a device</SectionTitle>
         <Card className="space-y-3">
           <p className="text-sm text-berry-soft">
-            Each link works once and expires in 7 days. Send it privately.
+            One-time links. Send them privately.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" loading={inviteBusy} onClick={() => createInvite(partnerPerson)}>
@@ -389,10 +383,6 @@ export default function SettingsPage() {
           <Button variant="secondary" size="sm" onClick={() => setPinSheet(true)}>
             <ShieldCheck className="h-4 w-4" /> Set or change my PIN
           </Button>
-          <p className="text-xs text-berry-soft">
-            Your PIN lets you unlock a new device from the welcome screen
-            without an invite link.
-          </p>
           <div className="space-y-2 border-t border-line-soft pt-3">
             <p className="text-sm font-semibold text-berry">Paired devices</p>
             {devices.length === 0 && <p className="text-sm text-berry-soft">No active devices.</p>}

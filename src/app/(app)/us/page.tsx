@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  CalendarHeart, ChevronRight, HandHeart, House, Mail, MapPin, Settings, Smile, Sparkles, MessageCircleHeart,
+  CalendarHeart, HandHeart, House, Mail, MapPin, Settings, Smile, Sparkles, MessageCircleHeart,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCouple } from "@/lib/couple-context";
@@ -29,12 +29,12 @@ function nextMilestone(days: number): { label: string; inDays: number } | null {
 }
 
 const ROOMS = [
-  { href: "/moods", icon: Smile, label: "Moods", hint: "How you both feel" },
-  { href: "/questions", icon: MessageCircleHeart, label: "Questions", hint: "Daily questions and games" },
-  { href: "/letters", icon: Mail, label: "Letters", hint: "Notes, letters, gratitude" },
-  { href: "/plans", icon: CalendarHeart, label: "Plans", hint: "Calendar and bucket list" },
-  { href: "/location", icon: MapPin, label: "Location", hint: "Share where you are" },
-  { href: "/settings", icon: Settings, label: "Settings", hint: "Profiles, devices, privacy" },
+  { href: "/moods", icon: Smile, label: "Moods" },
+  { href: "/questions", icon: MessageCircleHeart, label: "Questions" },
+  { href: "/letters", icon: Mail, label: "Letters" },
+  { href: "/plans", icon: CalendarHeart, label: "Plans" },
+  { href: "/location", icon: MapPin, label: "Location" },
+  { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function UsPage() {
@@ -180,18 +180,14 @@ export default function UsPage() {
         <HeartDivider />
 
         {/* Rooms */}
-        <div className="flex flex-col gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5">
           {ROOMS.map((room) => (
             <Link key={room.href} href={room.href} className="pressable">
-              <Card className="flex items-center gap-3.5 py-3.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-lavender text-plum">
-                  <room.icon className="h-5 w-5" />
+              <Card className="flex items-center gap-3 py-3.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-lavender text-plum">
+                  <room.icon className="h-4.5 w-4.5" />
                 </span>
-                <span className="flex-1">
-                  <span className="block font-semibold text-berry">{room.label}</span>
-                  <span className="text-xs text-berry-soft">{room.hint}</span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-berry-soft" />
+                <span className="font-semibold text-berry">{room.label}</span>
               </Card>
             </Link>
           ))}
