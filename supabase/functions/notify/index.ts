@@ -35,6 +35,23 @@ const CATEGORIES = new Set([
   "answers", "letters", "events", "milestones", "arrivals", "plans",
 ]);
 
+// Per-category rate limit (seconds): at most one push per category per
+// recipient inside the window, so a burst of activity means one gentle
+// nudge instead of twenty-one.
+const THROTTLE: Record<string, number> = {
+  messages: 180,
+  thinking_of_you: 900,
+  moods: 900,
+  drawings: 600,
+  arrivals: 300,
+  plans: 900,
+  questions: 0,
+  answers: 0,
+  letters: 0,
+  events: 0,
+  milestones: 0,
+};
+
 // Generic wording used when the recipient keeps previews private.
 const GENERIC: Record<string, { title: string; body: string }> = {
   messages: { title: "Cami & Joseph", body: "A new message is waiting for you" },
@@ -103,12 +120,15 @@ Deno.serve(async (req: Request) => {
   if (!dedupeKey) return json({ error: "missing dedupe_key" }, 400);
 
   try {
-    // Never send the same notification twice.
-    const { data: fresh, error: dedupeErr } = await admin.rpc("admin_notif_dedupe", {
+    // Never send the same notification twice, and rate limit per category.
+    const { data: fresh, error: dedupeErr } = await admin.rpc("admin_notif_allow", {
       k: `${category}:${dedupeKey}`,
+      cat: category,
+      rcpt: recipient,
+      throttle_seconds: THROTTLE[category] ?? 0,
     });
     if (dedupeErr) throw dedupeErr;
-    if (!fresh) return json({ sent: false, reason: "duplicate" });
+    if (!fresh) return json({ sent: false, reason: "duplicate_or_throttled" });
 
     // Category preferences and quiet hours.
     const { data: prefs } = await admin

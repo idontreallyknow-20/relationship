@@ -219,7 +219,7 @@ export function EventComposer({
             id="event-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Dinner at our place"
+            placeholder="Title"
             maxLength={120}
           />
         </div>
@@ -278,7 +278,7 @@ export function EventComposer({
             id="event-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Anything to remember"
+            placeholder="Notes"
             maxLength={2000}
           />
         </div>

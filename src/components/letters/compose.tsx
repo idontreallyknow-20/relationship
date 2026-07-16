@@ -191,7 +191,7 @@ export function ComposeLetter({
           id="letter-title"
           value={draft.title}
           onChange={(e) => set("title", e.target.value)}
-          placeholder="A few words"
+          placeholder="Title"
           maxLength={120}
         />
       </div>

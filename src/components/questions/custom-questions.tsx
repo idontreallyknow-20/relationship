@@ -161,7 +161,7 @@ export function CustomQuestions({
               id="custom-q-prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Something you want to ask each other"
+              placeholder="Your question"
               maxLength={300}
             />
           </div>

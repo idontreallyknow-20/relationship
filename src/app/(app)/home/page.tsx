@@ -6,16 +6,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarHeart, MessageCircle, Pencil, Sparkle } from "lucide-react";
+import { MessageCircle, Sparkle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
-import { signedUrl } from "@/lib/media";
-import { formatRelative, formatShortDate, formatTime, relationshipDays } from "@/lib/format";
+import { formatRelative, formatTime, relationshipDays } from "@/lib/format";
 import { displayName, partnerOf } from "@/lib/types";
-import type {
-  CoupleEvent, DailyQuestion, Drawing, Memory, Message, MoodEntry, Question, Signal,
-} from "@/lib/types";
+import type { DailyQuestion, Message, MoodEntry, Question, Signal } from "@/lib/types";
 import { Button, Card, useToast } from "@/components/ui";
 import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { InstallGuide } from "@/components/install-guide";
@@ -40,10 +37,7 @@ interface HomeData {
   partnerMood: MoodEntry | null;
   lastMessage: Message | null;
   unread: number;
-  latestDrawing: (Drawing & { url: string | null }) | null;
   todayQuestion: (DailyQuestion & { question: Question | null; myAnswered: boolean; bothAnswered: boolean }) | null;
-  nextEvent: CoupleEvent | null;
-  recentMemory: (Memory & { url: string | null }) | null;
   mySharing: boolean;
   partnerSharing: boolean;
   recentSignals: Signal[];
@@ -73,17 +67,14 @@ export default function HomePage() {
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-    const [moods, msgs, unreadRes, drawings, dq, events, memories, locations, signals] =
+    const [moods, msgs, unreadRes, dq, locations, signals] =
       await Promise.all([
         sb.from("moods").select("*").is("cleared_at", null).order("created_at", { ascending: false }).limit(10),
         sb.from("messages").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(1),
         sb.from("messages").select("id", { count: "exact", head: true }).eq("sender", partnerPerson).is("read_at", null).is("deleted_at", null),
-        sb.from("drawings").select("*").eq("is_shared", true).order("updated_at", { ascending: false }).limit(1),
         sb.from("daily_questions").select("*, questions(*), answers(person)").eq("for_date", localDate).maybeSingle(),
-        sb.from("events").select("*").gte("starts_at", now).order("starts_at").limit(1),
-        sb.from("memories").select("*").order("created_at", { ascending: false }).limit(1),
         sb.from("locations").select("person, expires_at").gt("expires_at", now).order("shared_at", { ascending: false }).limit(10),
-        sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(3),
+        sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(5),
       ]);
 
     const moodRows = (moods.data ?? []) as MoodEntry[];
@@ -95,9 +86,6 @@ export default function HomePage() {
           (!m.expires_at || new Date(m.expires_at) > new Date()),
       ) ?? null;
 
-    const drawing = (drawings.data?.[0] as Drawing | undefined) ?? null;
-    const memory = (memories.data?.[0] as Memory | undefined) ?? null;
-
     const dqRow = dq.data as
       | (DailyQuestion & { questions: Question | null; answers: { person: string }[] })
       | null;
@@ -107,9 +95,6 @@ export default function HomePage() {
       partnerMood: activeMood(moodRows, partnerPerson, true),
       lastMessage: (msgs.data?.[0] as Message | undefined) ?? null,
       unread: unreadRes.count ?? 0,
-      latestDrawing: drawing
-        ? { ...drawing, url: drawing.preview_path ? await signedUrl(drawing.preview_path) : null }
-        : null,
       todayQuestion: dqRow
         ? {
             ...dqRow,
@@ -117,10 +102,6 @@ export default function HomePage() {
             myAnswered: dqRow.answers.some((a) => a.person === me.person),
             bothAnswered: dqRow.answers.length >= 2,
           }
-        : null,
-      nextEvent: (events.data?.[0] as CoupleEvent | undefined) ?? null,
-      recentMemory: memory
-        ? { ...memory, url: memory.media_path ? await signedUrl(memory.media_path) : null }
         : null,
       mySharing: (locations.data ?? []).some((l) => l.person === me.person),
       partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
@@ -136,7 +117,6 @@ export default function HomePage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "moods" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "drawings" }, () => void load())
       .subscribe();
     return () => {
       void sb.removeChannel(channel);
@@ -160,8 +140,11 @@ export default function HomePage() {
     setSendingThought(false);
   };
 
-  const acknowledgeSignal = async (id: string) => {
-    await supabase().from("signals").update({ acknowledged_at: new Date().toISOString() }).eq("id", id);
+  const acknowledgeAll = async () => {
+    await supabase()
+      .from("signals")
+      .update({ acknowledged_at: new Date().toISOString() })
+      .is("acknowledged_at", null);
     void load();
   };
 
@@ -193,22 +176,26 @@ export default function HomePage() {
     <>
       <HomeHeader name={me.display_name} days={couple.start_date ? relationshipDays(couple.start_date) : null} />
 
-      <main className="flex flex-col gap-3.5 px-4 pb-6">
-        {data.recentSignals.map((s) => (
-          <Card key={s.id} className="flex items-center gap-3 border-blush-deep bg-blush/60">
-            <HeartIcon className="h-5 w-5 shrink-0 text-rose-dark heart-pulse" />
-            <p className="flex-1 text-sm text-berry">
-              <span className="font-semibold">{partnerName}</span> {signalText[s.kind] ?? "sent a signal"}
-              <span className="ml-1 text-xs text-berry-soft">{formatRelative(s.created_at)}</span>
-            </p>
+      <main className="flex flex-col gap-5 px-5 pb-8 pt-1">
+        {data.recentSignals.length > 0 && (
+          <Card className="border-blush-deep bg-blush/60">
+            {data.recentSignals.map((s, i) => (
+              <p key={s.id} className={`flex items-center gap-2.5 text-sm text-berry ${i > 0 ? "mt-2" : ""}`}>
+                <HeartIcon className="h-4 w-4 shrink-0 text-rose-dark" />
+                <span className="flex-1">
+                  <span className="font-semibold">{partnerName}</span> {signalText[s.kind] ?? "sent a signal"}
+                  <span className="ml-1 text-xs text-berry-soft">{formatRelative(s.created_at)}</span>
+                </span>
+              </p>
+            ))}
             <button
-              className="text-xs font-semibold text-rose-dark underline"
-              onClick={() => acknowledgeSignal(s.id)}
+              className="mt-3 text-xs font-semibold text-rose-dark underline"
+              onClick={() => void acknowledgeAll()}
             >
-              Felt it
+              {data.recentSignals.length > 1 ? "Felt them all" : "Felt it"}
             </button>
           </Card>
-        ))}
+        )}
 
         {/* Moods side by side */}
         <div className="grid grid-cols-2 gap-3.5">
@@ -314,72 +301,6 @@ export default function HomePage() {
             )}
           </Card>
         </Link>
-
-        {/* Current drawing */}
-        {data.latestDrawing && (
-          <Link href={`/draw?id=${data.latestDrawing.id}`} className="pressable">
-            <Card className="flex items-center gap-3">
-              {data.latestDrawing.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={data.latestDrawing.url}
-                  alt="Latest shared drawing"
-                  className="h-16 w-16 rounded-xl border border-line object-cover"
-                />
-              ) : (
-                <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-lavender">
-                  <Pencil className="h-6 w-6 text-plum" />
-                </span>
-              )}
-              <span className="flex-1">
-                <span className="block text-xs font-semibold uppercase tracking-wide text-berry-soft">Shared drawing</span>
-                <span className="block text-sm text-berry">
-                  {data.latestDrawing.caption || "Keep drawing together"}
-                </span>
-                <span className="text-xs text-berry-soft">{formatRelative(data.latestDrawing.updated_at)}</span>
-              </span>
-            </Card>
-          </Link>
-        )}
-
-        {/* Next date + recent memory row */}
-        <div className="grid grid-cols-2 gap-3.5">
-          <Link href="/plans" className="pressable">
-            <Card className="h-full">
-              <CalendarHeart className="h-5 w-5 text-rose-dark" />
-              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-berry-soft">Coming up</p>
-              {data.nextEvent ? (
-                <>
-                  <p className="mt-0.5 text-sm font-semibold text-berry">{data.nextEvent.title}</p>
-                  <p className="text-xs text-berry-soft">{formatShortDate(data.nextEvent.starts_at)}</p>
-                </>
-              ) : (
-                <p className="mt-0.5 text-sm text-berry-soft">Nothing planned. Dream something up.</p>
-              )}
-            </Card>
-          </Link>
-          <Link href="/memories" className="pressable">
-            <Card className="h-full overflow-hidden">
-              <p className="text-xs font-semibold uppercase tracking-wide text-berry-soft">A memory</p>
-              {data.recentMemory ? (
-                data.recentMemory.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={data.recentMemory.url}
-                    alt={data.recentMemory.title ?? "Recent memory"}
-                    className="mt-1.5 h-16 w-full rounded-lg border border-line object-cover"
-                  />
-                ) : (
-                  <p className="clamp-2 mt-0.5 text-sm text-berry">
-                    {data.recentMemory.title || data.recentMemory.caption || "A saved moment"}
-                  </p>
-                )
-              ) : (
-                <p className="mt-0.5 text-sm text-berry-soft">Save your first memory</p>
-              )}
-            </Card>
-          </Link>
-        </div>
 
         {/* Location status, only when someone is sharing */}
         {(data.mySharing || data.partnerSharing) && (

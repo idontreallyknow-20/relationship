@@ -406,7 +406,7 @@ function PlansInner() {
               id="bucket-title"
               value={bucketTitle}
               onChange={(e) => setBucketTitle(e.target.value)}
-              placeholder="See the northern lights"
+              placeholder="Add an idea"
               maxLength={160}
             />
           </div>

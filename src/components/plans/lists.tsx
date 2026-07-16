@@ -246,7 +246,7 @@ export function ListTab({
               id="item-notes"
               value={notesText}
               onChange={(e) => setNotesText(e.target.value)}
-              placeholder="Details, links, wishes"
+              placeholder="Notes"
               maxLength={2000}
             />
           </div>
@@ -324,7 +324,7 @@ export function TodoTab({
           onKeyDown={(e) => {
             if (e.key === "Enter") void submitAdd();
           }}
-          placeholder="Something to take care of"
+          placeholder="Add a to-do"
           aria-label="New to-do"
         />
         <IconButton

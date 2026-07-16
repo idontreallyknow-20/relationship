@@ -145,7 +145,7 @@ export function MoodComposer({
               id="mood-custom-label"
               value={draft.customLabel}
               onChange={(e) => set("customLabel", e.target.value)}
-              placeholder="A short word for it"
+              placeholder="Label"
               maxLength={40}
             />
           </div>
@@ -190,7 +190,7 @@ export function MoodComposer({
             id="mood-help"
             value={draft.wouldHelp}
             onChange={(e) => set("wouldHelp", e.target.value)}
-            placeholder="A call, a hug, some quiet"
+            placeholder="Optional"
             maxLength={200}
           />
         </div>
