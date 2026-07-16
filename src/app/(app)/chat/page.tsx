@@ -741,6 +741,11 @@ export default function Page() {
     ? (reactions[menuFor.id] ?? []).find((r) => r.person === meP)?.reaction ?? null
     : null;
 
+  const openMenu = useCallback((m: ChatMessage) => {
+    setMenuOpenedAt(Date.now());
+    setMenuFor(m);
+  }, []);
+
   const canEditMenu =
     !!menuFor &&
     menuFor.sender === meP &&
@@ -900,7 +905,7 @@ export default function Page() {
                   reactions={reactions[m.id] ?? []}
                   query={activeQuery}
                   flash={flashId === m.id}
-                  onOpenMenu={setMenuFor}
+                  onOpenMenu={openMenu}
                   onOpenImage={setViewerUrl}
                   onQuoteTap={(id) => void scrollToMessage(id)}
                   onToggleReaction={(msg, r) => void toggleReaction(msg, r)}
