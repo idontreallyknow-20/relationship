@@ -79,6 +79,19 @@ export async function pinLogin(person: Person, pin: string): Promise<Person> {
   return completePairing(data ?? {});
 }
 
+/** Unlock with the shared secret phrase and sign this device in. */
+export async function phraseLogin(person: Person, phrase: string): Promise<Person> {
+  const normalized = phrase.toLowerCase().replace(/\s+/g, " ").trim();
+  const { data, error } = await supabase().functions.invoke<PairResponse>("pair", {
+    body: { action: "phrase", person, phrase: normalized, device: describeDevice() },
+  });
+  if (error) {
+    const detail = await extractFunctionError(error);
+    throw new Error(detail);
+  }
+  return completePairing(data ?? {});
+}
+
 async function extractFunctionError(error: unknown): Promise<string> {
   const ctx = (error as { context?: Response }).context;
   if (ctx && typeof ctx.json === "function") {
@@ -104,6 +117,10 @@ export function pairingErrorMessage(code: string): string {
       return "No PIN is set up yet. Use an invite link instead.";
     case "wrong_pin":
       return "That PIN is not right. Try again.";
+    case "wrong_phrase":
+      return "That is not the secret password. Try again.";
+    case "phrase_not_set":
+      return "No secret password is set up yet.";
     case "network_error":
       return "Could not reach the server. Check your connection and try again.";
     default:

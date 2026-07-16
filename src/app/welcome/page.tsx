@@ -7,9 +7,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { pinLogin, pairingErrorMessage } from "@/lib/pairing";
+import { phraseLogin, pinLogin, pairingErrorMessage } from "@/lib/pairing";
 import { displayName, type Person } from "@/lib/types";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, Input } from "@/components/ui";
 import { HeartIcon, HeartDivider, HeartSpinner } from "@/components/hearts";
 
 function ProfileChoice({
@@ -40,9 +40,11 @@ function ProfileChoice({
 function PinPad({
   person,
   onBack,
+  onUsePhrase,
 }: {
   person: Person;
   onBack: () => void;
+  onUsePhrase: (() => void) | null;
 }) {
   const router = useRouter();
   const [pin, setPin] = useState("");
@@ -117,8 +119,73 @@ function PinPad({
       <Button className="w-full" size="lg" loading={busy} disabled={pin.length < 4} onClick={submit}>
         Unlock
       </Button>
+      {onUsePhrase && (
+        <button className="w-full text-center text-sm font-semibold text-rose-dark underline" onClick={onUsePhrase}>
+          Use our secret password instead
+        </button>
+      )}
       <button className="w-full text-center text-sm text-berry-soft underline" onClick={onBack}>
         Not {displayName(person)}? Go back
+      </button>
+    </Card>
+  );
+}
+
+
+function PhraseUnlock({
+  person,
+  onBack,
+}: {
+  person: Person;
+  onBack: () => void;
+}) {
+  const router = useRouter();
+  const [phrase, setPhrase] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (phrase.trim().length < 4 || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await phraseLogin(person, phrase);
+      router.replace("/home");
+    } catch (err) {
+      setError(pairingErrorMessage((err as Error).message));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="mx-auto w-full max-w-sm space-y-5 p-6">
+      <div className="text-center">
+        <p className="font-display text-2xl font-semibold text-plum">
+          Hi {displayName(person)}
+        </p>
+        <p className="mt-1 text-sm text-berry-soft">Type your secret password</p>
+      </div>
+
+      <Input
+        type="password"
+        autoComplete="off"
+        autoCapitalize="none"
+        aria-label="Secret password"
+        placeholder="all lowercase"
+        value={phrase}
+        onChange={(e) => setPhrase(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void submit();
+        }}
+      />
+
+      {error && <p className="text-center text-sm text-danger">{error}</p>}
+
+      <Button className="w-full" size="lg" loading={busy} disabled={phrase.trim().length < 4} onClick={submit}>
+        Unlock
+      </Button>
+      <button className="w-full text-center text-sm text-berry-soft underline" onClick={onBack}>
+        Go back
       </button>
     </Card>
   );
@@ -130,6 +197,8 @@ function WelcomeInner() {
   const revoked = params.get("revoked") === "1";
   const [picked, setPicked] = useState<Person | null>(null);
   const [pinReady, setPinReady] = useState<Record<Person, boolean>>({ cami: false, joseph: false });
+  const [phraseReady, setPhraseReady] = useState(false);
+  const [usePhrase, setUsePhrase] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -139,11 +208,13 @@ function WelcomeInner() {
         router.replace("/home");
         return;
       }
-      const [cami, joseph] = await Promise.all([
+      const [cami, joseph, phrase] = await Promise.all([
         sb.rpc("pin_available", { p: "cami" }),
         sb.rpc("pin_available", { p: "joseph" }),
+        sb.rpc("phrase_available"),
       ]);
       setPinReady({ cami: cami.data === true, joseph: joseph.data === true });
+      setPhraseReady(phrase.data === true);
       setChecking(false);
     });
   }, [router]);
@@ -190,8 +261,22 @@ function WelcomeInner() {
             <ProfileChoice person="joseph" onPick={setPicked} />
           </div>
         </>
+      ) : usePhrase && phraseReady ? (
+        <PhraseUnlock
+          person={picked}
+          onBack={() => {
+            setUsePhrase(false);
+            if (!pinReady[picked]) setPicked(null);
+          }}
+        />
       ) : pinReady[picked] ? (
-        <PinPad person={picked} onBack={() => setPicked(null)} />
+        <PinPad
+          person={picked}
+          onBack={() => setPicked(null)}
+          onUsePhrase={phraseReady ? () => setUsePhrase(true) : null}
+        />
+      ) : phraseReady ? (
+        <PhraseUnlock person={picked} onBack={() => setPicked(null)} />
       ) : (
         <Card className="mx-auto w-full max-w-sm space-y-4 p-6 text-center">
           <p className="font-display text-2xl font-semibold text-plum">

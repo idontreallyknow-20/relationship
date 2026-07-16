@@ -176,6 +176,31 @@ Deno.serve(async (req: Request) => {
       return json({ person, device_id: deviceId, otp_hash: otpHash });
     }
 
+    if (action === "phrase") {
+      const person = String(body.person) as Person;
+      const phrase = String(body.phrase ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!PEOPLE.includes(person)) return json({ error: "invalid_person" }, 400);
+      if (phrase.length < 4 || phrase.length > 200) {
+        return json({ error: "wrong_phrase" }, 401);
+      }
+
+      const { data: result, error } = await admin.rpc("admin_phrase_check", {
+        p: person,
+        phrase,
+      });
+      if (error) throw error;
+      if (result === "locked") return json({ error: "locked" }, 429);
+      if (result === "unset") return json({ error: "phrase_not_set" }, 400);
+      if (result !== "ok") return json({ error: "wrong_phrase" }, 401);
+
+      const deviceId = await registerDevice(admin, person, body.device as never ?? {});
+      const otpHash = await mintSession(admin, person);
+      return json({ person, device_id: deviceId, otp_hash: otpHash });
+    }
+
     return json({ error: "unknown action" }, 400);
   } catch (err) {
     console.error("pair error", err);

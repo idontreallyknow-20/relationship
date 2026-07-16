@@ -52,7 +52,7 @@ const EXPORT_TABLES = [
   "drawings", "memories", "memory_comments", "memory_favorites", "letters",
   "signals", "gratitude", "events", "event_rsvps", "list_items",
   "list_votes", "questions", "daily_questions", "answers",
-  "question_favorites", "locations", "devices",
+  "question_favorites", "locations", "devices", "love_taps",
 ];
 
 Deno.serve(async (req: Request) => {
@@ -104,6 +104,19 @@ Deno.serve(async (req: Request) => {
           return json({ error: "PIN must be 4 to 8 digits" }, 400);
         }
         const { error } = await admin.rpc("admin_pin_set", { p: me, pin });
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
+      case "set-phrase": {
+        const phrase = String(body.phrase ?? "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (phrase.length < 8 || phrase.length > 200) {
+          return json({ error: "The secret password needs at least 8 characters" }, 400);
+        }
+        const { error } = await admin.rpc("admin_phrase_set", { phrase });
         if (error) throw error;
         return json({ ok: true });
       }
