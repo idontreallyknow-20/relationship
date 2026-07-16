@@ -52,7 +52,7 @@ const EXPORT_TABLES = [
   "drawings", "memories", "memory_comments", "memory_favorites", "letters",
   "signals", "gratitude", "events", "event_rsvps", "list_items",
   "list_votes", "questions", "daily_questions", "answers",
-  "question_favorites", "locations", "devices",
+  "question_favorites", "locations", "devices", "love_taps",
 ];
 
 Deno.serve(async (req: Request) => {
