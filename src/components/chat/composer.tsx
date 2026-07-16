@@ -52,7 +52,7 @@ export function Composer({
   const stashRef = useRef<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const touch = useMemo(isTouchDevice, []);
+  const touch = useMemo(() => isTouchDevice(), []);
 
   // Voice recording state.
   const [recording, setRecording] = useState(false);

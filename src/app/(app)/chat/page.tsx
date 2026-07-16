@@ -80,6 +80,7 @@ export default function Page() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [menuFor, setMenuFor] = useState<ChatMessage | null>(null);
+  const [menuOpenedAt, setMenuOpenedAt] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -745,7 +746,7 @@ export default function Page() {
     menuFor.sender === meP &&
     menuFor.kind === "text" &&
     !menuFor.deleted_at &&
-    Date.now() - new Date(menuFor.created_at).getTime() < EDIT_WINDOW_MS;
+    menuOpenedAt - new Date(menuFor.created_at).getTime() < EDIT_WINDOW_MS;
 
   const presenceLine = !partner
     ? "waiting for them to pair"
