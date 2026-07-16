@@ -222,7 +222,7 @@ export interface ListItem {
   created_at: string;
 }
 
-export type LocationMode = "once" | "hour" | "tonight" | "while_using";
+export type LocationMode = "once" | "hour" | "tonight" | "while_using" | "always";
 
 export interface LocationShare {
   id: string;

@@ -226,7 +226,7 @@ export function MemoryComposer({
             id="memory-caption"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
-            placeholder="What made this moment special?"
+            placeholder="Caption"
             maxLength={4000}
           />
         </div>

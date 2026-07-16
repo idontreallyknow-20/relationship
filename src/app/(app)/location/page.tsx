@@ -22,6 +22,7 @@ type UiMode = "off" | LocationMode;
 
 const MODE_CARDS: { value: UiMode; title: string; hint: string }[] = [
   { value: "off", title: "Off", hint: "Nothing is shared." },
+  { value: "always", title: "Always on", hint: "Stays on until you turn it off. Updates only while the app is open; the last spot stays visible for 12 hours." },
   { value: "once", title: "Share once", hint: "One snapshot, visible for 15 minutes." },
   { value: "hour", title: "Share for 1 hour", hint: "Updates every few minutes while the app is open." },
   { value: "tonight", title: "Share until tonight", hint: "Stops at 11:59 pm, updates while the app is open." },
@@ -33,6 +34,7 @@ const REFRESH_MS = 5 * 60 * 1000;
 const WHILE_USING_TTL_MS = 10 * 60 * 1000;
 const THROTTLE_MS = 2 * 60 * 1000;
 const THROTTLE_METERS = 200;
+const ALWAYS_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -217,13 +219,15 @@ export default function Page() {
 
   const onWatchPosition = useCallback(
     (pos: GeolocationPosition) => {
-      if (modeRef.current !== "while_using") return;
+      const wm = modeRef.current;
+      if (wm !== "while_using" && wm !== "always") return;
       const last = lastInsertRef.current;
       const movedMeters = last
         ? distanceKm(last.lat, last.lng, pos.coords.latitude, pos.coords.longitude) * 1000
         : Infinity;
       if (last && Date.now() - last.t < THROTTLE_MS && movedMeters <= THROTTLE_METERS) return;
-      void insertShare(pos, "while_using", new Date(Date.now() + WHILE_USING_TTL_MS));
+      const ttl = wm === "always" ? ALWAYS_TTL_MS : WHILE_USING_TTL_MS;
+      void insertShare(pos, wm, new Date(Date.now() + ttl));
     },
     [insertShare],
   );
@@ -244,8 +248,8 @@ export default function Page() {
       const m = modeRef.current;
       if (document.visibilityState === "visible") {
         if (m === "hour" || m === "tonight") void refreshTick();
-        if (m === "while_using" && watchRef.current === null) startWatch();
-      } else if (m === "while_using" && watchRef.current !== null) {
+        if ((m === "while_using" || m === "always") && watchRef.current === null) startWatch();
+      } else if ((m === "while_using" || m === "always") && watchRef.current !== null) {
         navigator.geolocation.clearWatch(watchRef.current);
         watchRef.current = null;
       }
@@ -283,6 +287,10 @@ export default function Page() {
           await insertShare(pos, "tonight", end);
           startInterval();
           toast("Sharing until tonight");
+        } else if (m === "always") {
+          await insertShare(pos, "always", new Date(Date.now() + ALWAYS_TTL_MS));
+          startWatch();
+          toast("Always-on sharing is on");
         } else {
           await insertShare(pos, "while_using", new Date(Date.now() + WHILE_USING_TTL_MS));
           startWatch();
@@ -319,7 +327,18 @@ export default function Page() {
         const latest = allRows.find(
           (r) => r.person === me && r.mode === saved && new Date(r.expires_at).getTime() > Date.now(),
         );
-        if (saved === "while_using") {
+        if (saved === "always") {
+          setMode("always");
+          startWatch();
+          void (async () => {
+            try {
+              const pos = await getPosition();
+              await insertShare(pos, "always", new Date(Date.now() + ALWAYS_TTL_MS));
+            } catch {
+              // Position may be briefly unavailable; the watch keeps trying.
+            }
+          })();
+        } else if (saved === "while_using") {
           setMode("while_using");
           startWatch();
         } else if ((saved === "hour" || saved === "tonight") && latest) {

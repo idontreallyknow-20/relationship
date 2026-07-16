@@ -3,7 +3,7 @@
 // The "Us" hub: our story, quick affectionate actions, and doors into the
 // quieter corners of the app.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,7 +14,7 @@ import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { signedUrl } from "@/lib/media";
 import { formatShortDate, relationshipDays } from "@/lib/format";
-import { displayName, partnerOf, type Memory, type Signal } from "@/lib/types";
+import { displayName, partnerOf, type Memory } from "@/lib/types";
 import { Avatar, Button, Card, Sheet, useToast } from "@/components/ui";
 import { HeartDivider, HeartIcon } from "@/components/hearts";
 
@@ -47,7 +47,6 @@ export default function UsPage() {
   const [avatarUrls, setAvatarUrls] = useState<{ me: string | null; partner: string | null }>({ me: null, partner: null });
   const [randomMemory, setRandomMemory] = useState<(Memory & { url: string | null }) | null>(null);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [recentSignals, setRecentSignals] = useState<Signal[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -58,27 +57,6 @@ export default function UsPage() {
     })();
   }, [me.avatar_path, partner?.avatar_path]);
 
-  const loadSignals = useCallback(async () => {
-    const { data } = await supabase()
-      .from("signals")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(6);
-    setRecentSignals((data ?? []) as Signal[]);
-  }, []);
-
-  useEffect(() => {
-    void loadSignals();
-    const sb = supabase();
-    const channel = sb
-      .channel("us-signals")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "signals" }, () => void loadSignals())
-      .subscribe();
-    return () => {
-      void sb.removeChannel(channel);
-    };
-  }, [loadSignals]);
-
   const sendSignal = async (kind: "check_in" | "made_it_home", message: string) => {
     const { data: row, error } = await supabase()
       .from("signals")
@@ -88,7 +66,6 @@ export default function UsPage() {
     if (!error && row) {
       void notifyPartner(kind === "made_it_home" ? "arrivals" : "thinking_of_you", row.id, { url: "/us" });
       toast(message);
-      void loadSignals();
     } else {
       toast("Could not send right now. Try again.");
     }
@@ -113,15 +90,6 @@ export default function UsPage() {
 
   const days = couple.start_date ? relationshipDays(couple.start_date) : null;
   const milestone = days ? nextMilestone(days) : null;
-
-  const signalLabel: Record<string, string> = {
-    thinking_of_you: "thought of",
-    check_in: "checked in on",
-    made_it_home: "made it home",
-    arrived: "arrived safely",
-    send_support: "sent support to",
-    give_space: "gave space to",
-  };
 
   return (
     <>
@@ -152,7 +120,7 @@ export default function UsPage() {
         )}
       </header>
 
-      <main className="flex flex-col gap-3.5 px-4 pb-6">
+      <main className="flex flex-col gap-5 px-5 pb-8">
         {/* Quick affectionate actions */}
         <div className="grid grid-cols-3 gap-3">
           <Button variant="secondary" className="flex-col gap-1 py-3" onClick={showRandomMemory}>
@@ -193,29 +161,6 @@ export default function UsPage() {
           ))}
         </div>
 
-        {/* Little moments feed */}
-        {recentSignals.length > 0 && (
-          <>
-            <HeartDivider />
-            <p className="text-xs font-semibold uppercase tracking-wide text-berry-soft">Little moments</p>
-            <div className="flex flex-col gap-1.5">
-              {recentSignals.map((s) => (
-                <p key={s.id} className="flex items-center gap-2 text-sm text-berry-soft">
-                  <HeartIcon className="h-3 w-3 shrink-0 text-blush-deep" />
-                  <span>
-                    <span className="font-semibold text-berry">
-                      {s.from_person === me.person ? "You" : partnerName}
-                    </span>{" "}
-                    {s.kind === "made_it_home" || s.kind === "arrived"
-                      ? signalLabel[s.kind]
-                      : `${signalLabel[s.kind]} ${s.from_person === me.person ? partnerName : "you"}`}
-                    <span className="ml-1 text-xs">{formatShortDate(s.created_at)}</span>
-                  </span>
-                </p>
-              ))}
-            </div>
-          </>
-        )}
       </main>
 
       <Sheet open={memoryOpen} onClose={() => setMemoryOpen(false)} title="A saved memory">
