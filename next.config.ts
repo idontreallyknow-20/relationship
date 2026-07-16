@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const SUPABASE_ORIGIN = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://example.supabase.co").origin;
+const SUPABASE_ORIGIN = new URL(
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://vahhsjtxhjddohtgqtaj.supabase.co",
+).origin;
 const SUPABASE_WS = SUPABASE_ORIGIN.replace("https://", "wss://");
 
 // Strict-but-workable CSP: no third-party scripts at all. 'unsafe-inline'
