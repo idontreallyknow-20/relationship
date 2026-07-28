@@ -46,6 +46,18 @@ export default function InvitePage() {
           return;
         }
         setStage("ready");
+      })
+      // Without this, a rejection left the page on "checking" forever. The
+      // token is in the URL and redeeming it is what actually needs the
+      // network, so falling through to the button is both recoverable and
+      // honest: it fails with a message instead of never failing at all.
+      .catch(() => {
+        if (!token.current) {
+          setError("This invite link is missing its code. Ask for a fresh link.");
+          setStage("error");
+          return;
+        }
+        setStage(isEmbeddedBrowser() ? "embedded" : "ready");
       });
   }, []);
 
@@ -80,7 +92,10 @@ export default function InvitePage() {
 
       {stage === "embedded" && (
         <div className="space-y-4">
-          <InstallGuide person="cami" />
+          {/* No person is known yet; this branch runs before pairing. The
+              guide used to be handed "cami" outright, which is the value
+              `enablePush` writes to the row's person column. */}
+          <InstallGuide person={null} />
           <Button
             variant="secondary"
             className="w-full"
@@ -118,11 +133,10 @@ export default function InvitePage() {
               This device is paired and will stay signed in.
             </p>
           </Card>
-          {isIos() && !isStandalone() ? (
-            <InstallGuide person={person} onDone={() => router.replace("/home")} />
-          ) : (
-            <InstallGuide person={person} onDone={() => router.replace("/home")} />
-          )}
+          {/* `InstallGuide` decides for itself whether there is anything to
+              show, so the branch here was the same component with the same
+              props on both sides of the question. */}
+          <InstallGuide person={person} onDone={() => router.replace("/home")} />
         </div>
       )}
 

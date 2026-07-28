@@ -1,28 +1,30 @@
 "use client";
 
-// Rebirth, at all three of its depths, and the vessels you move through.
+// Rebirth, Ascension and Forever, plus the jars and the shelf.
 
 import { useMemo, useState } from "react";
 import { Droplets, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  DROP_UPGRADES, MOON_UPGRADES, RESET_LAYERS, STAR_UPGRADES, resetUpgradeCost,
+  SUN_UPGRADES, MOON_UPGRADES, RESET_LAYERS, STAR_UPGRADES, resetUpgradeCost,
   seaRequirement, tideRequirement, waterRequirement, type ResetUpgradeDef,
 } from "@/game/config/resets";
-import { VESSELS } from "@/game/config/vessels";
 import {
-  canChangeTide, canChangeWater, canLetGo, changeTide, changeWater, buyResetUpgrade,
-  letGo, moveTo, seaPreview, tidePreview, unlockVessel, waterPreview,
+  buyNextJar, canChangeTide, canChangeWater, canLetGo, changeTide, changeWater,
+  buyResetUpgrade, letGo, seaPreview, tidePreview, useJar, waterPreview,
 } from "@/game/actions";
+import { JARS } from "@/game/config/jars";
 import { hasFlag } from "@/game/formulas";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
-import { Button, ConfirmDialog, useToast } from "@/components/ui";
+import { Button, ConfirmDialog, SegmentedControl, useToast } from "@/components/ui";
 import { Bar, EmptyRow, Section, SpendButton } from "./bits";
+import { ResetTreeGraph, ShelfTreeGraph } from "./tree";
 
 export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
   const { state, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [treeView, setTreeView] = useState<"tree" | "list">("tree");
   // Bumped by a completed rebirth. It is only in the key of the card below, so
   // the card remounts and its drain animation plays. A rebirth takes away
   // nearly everything you were looking at and it should look like it did.
@@ -70,8 +72,8 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       ready: canLetGo,
       current: state.seaHearts,
       requirement: seaRequirement(state.seas),
-      upgrades: DROP_UPGRADES,
-      levels: state.dropUpgrades,
+      upgrades: SUN_UPGRADES,
+      levels: state.sunUpgrades,
       startedAt: state.seaStartedAt,
       count: state.seas,
       fastest: null,
@@ -164,32 +166,44 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       </div>
 
       <Section
-        title={`${def.currency === "moons" ? "Moon" : def.currency === "drops" ? "Drop" : "Star"} upgrades`}
+        title={`${def.currency === "moons" ? "Moon" : def.currency === "suns" ? "Drop" : "Star"} tree`}
         hint={`${formatNumber(state.wallet[def.currency], format)} to spend`}
+        action={
+          <SegmentedControl
+            label="View"
+            value={treeView}
+            onChange={(value) => setTreeView(value as "tree" | "list")}
+            options={[{ value: "tree", label: "Tree" }, { value: "list", label: "List" }]}
+          />
+        }
       >
-        <ul className="flex flex-col gap-2">
-          {upgrades.map((upgrade) => (
-            <ResetRow
-              key={upgrade.id}
-              def={upgrade}
-              owned={levels[upgrade.id] ?? 0}
-              balance={state.wallet[upgrade.currency]}
-              format={format}
-              confirmRare={state.settings.confirmRareSpends}
-              blockedBy={
-                upgrade.requires && (levels[upgrade.requires[0]] ?? 0) < upgrade.requires[1]
-                  ? upgrades.find((u) => u.id === upgrade.requires![0])?.name ?? null
-                  : null
-              }
-              onBuy={() =>
-                mutate((draft) => {
-                  const result = buyResetUpgrade(draft, upgrade.id);
-                  toast(result.message ?? "Cannot buy that");
-                })
-              }
-            />
-          ))}
-        </ul>
+        {treeView === "tree" ? (
+          <ResetTreeGraph currency={def.currency as "moons" | "stars" | "suns"} />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {upgrades.map((upgrade) => (
+              <ResetRow
+                key={upgrade.id}
+                def={upgrade}
+                owned={levels[upgrade.id] ?? 0}
+                balance={state.wallet[upgrade.currency]}
+                format={format}
+                confirmRare={state.settings.confirmRareSpends}
+                blockedBy={
+                  upgrade.requires && (levels[upgrade.requires[0]] ?? 0) < upgrade.requires[1]
+                    ? upgrades.find((u) => u.id === upgrade.requires![0])?.name ?? null
+                    : null
+                }
+                onBuy={() =>
+                  mutate((draft) => {
+                    const result = buyResetUpgrade(draft, upgrade.id);
+                    toast(result.message ?? "Cannot buy that");
+                  })
+                }
+              />
+            ))}
+          </ul>
+        )}
       </Section>
 
       <ConfirmDialog
@@ -275,104 +289,127 @@ function Box({ label, value, flash }: { label: string; value: string; flash?: bo
 /* Vessels                                                             */
 /* ------------------------------------------------------------------ */
 
-export function VesselsTab() {
-  const { state, mutate, version } = useGame();
+/**
+ * The jars, and the shelf they end up on.
+ *
+ * One screen rather than two, because they are one loop: you fill a jar, seal
+ * it onto the shelf, and buy a bigger one with what sealing paid.
+ */
+export function JarsTab() {
+  const { state, derived, mutate, version } = useGame();
   const toast = useToast();
   const format = state.settings.numberFormat;
 
   const rows = useMemo(
     () =>
-      VESSELS.map((vessel) => ({
-        vessel,
-        unlocked: state.vesselsUnlocked.includes(vessel.id),
-        affordable: state.wallet[vessel.cost.currency] >= vessel.cost.amount,
-        eligible: state.lifetime.hearts >= vessel.unlockLifetime,
+      JARS.map((jar, index) => ({
+        jar,
+        index,
+        unlocked: state.jarsUnlocked.includes(jar.id),
+        current: state.jar === jar.id,
+        affordable: state.wallet.ribbons >= jar.cost,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version],
   );
 
+  const next = rows.find((row) => !row.unlocked);
+
   return (
-    <div className="flex flex-col gap-3">
-      <Section title="Vessels" hint="Deeper water holds different creatures. Wider floors hold more crabs.">
-        <ul className="flex flex-col gap-2">
-          {rows.map(({ vessel, unlocked, affordable, eligible }) => {
-            const here = state.vessel === vessel.id;
-            return (
-              <li
-                key={vessel.id}
-                className={`overflow-hidden rounded-card border shadow-soft ${here ? "border-rose-dark" : "border-line"}`}
-              >
-                <div className="relative h-16" style={{ backgroundColor: vessel.backdrop }}>
-                  <div
-                    className="absolute inset-x-0 bottom-0"
-                    style={{ height: `${vessel.depth * 100}%`, backgroundColor: vessel.water, opacity: 0.85 }}
-                  />
-                </div>
-                <div className="bg-white p-3.5">
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-berry">
-                        <span className="truncate">{vessel.name}</span>
-                        {here && (
-                          <span className="shrink-0 rounded-full bg-blush px-2 py-0.5 text-[0.6rem] font-bold text-rose-dark">
-                            Here
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-xs text-berry-soft">{vessel.blurb}</p>
-                      <p className="mt-1 text-xs font-semibold" style={{ color: vessel.accent }}>
-                        {vessel.rule}
-                      </p>
-                      <p className="mt-0.5 text-[0.65rem] text-berry-soft">
-                        {vessel.slots} places ·{" "}
-                        {vessel.capacity === Infinity ? "no limit" : formatNumber(vessel.capacity, format)}
-                      </p>
-                    </div>
-                    {unlocked ? (
-                      <Button
-                        size="sm"
-                        variant={here ? "secondary" : "primary"}
-                        disabled={here}
-                        onClick={() =>
-                          mutate((draft) => {
-                            const result = moveTo(draft, vessel.id);
-                            if (result.message) toast(result.message);
-                          })
-                        }
-                      >
-                        {here ? "Current" : "Move"}
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={!eligible || !affordable}
-                        onClick={() =>
-                          mutate((draft) => {
-                            const result = unlockVessel(draft, vessel.id);
-                            toast(result.message ?? "Cannot yet");
-                          })
-                        }
-                      >
-                        {formatNumber(vessel.cost.amount, format)} {vessel.cost.currency}
-                      </Button>
-                    )}
-                  </div>
-                  {!unlocked && !eligible && (
-                    <p className="mt-1.5 text-[0.65rem] text-berry-soft">
-                      Needs {formatNumber(vessel.unlockLifetime, format)} lifetime hearts.
-                    </p>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+    <div className="flex flex-col gap-5">
+      <Section
+        title="The shelf"
+        hint="Every jar you have ever filled, all of them paying at once."
+      >
+        <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
+          <p className="font-display text-3xl font-semibold text-plum">
+            {formatNumber(state.shelfHearts, format)}
+          </p>
+          <p className="text-xs text-berry-soft">
+            hearts on the shelf, across {state.sealed.length} sealed{" "}
+            {state.sealed.length === 1 ? "jar" : "jars"}
+          </p>
+          <p className="mt-2 rounded-xl bg-blush/50 px-3 py-1.5 text-xs font-semibold text-rose-dark">
+            Paying {formatNumber(derived.shelfIncome, format)} hearts a second
+          </p>
+        </div>
       </Section>
 
-      {state.vesselsUnlocked.length === 1 && (
-        <EmptyRow>The Mason Jar is the first one you can move to.</EmptyRow>
+      <Section
+        title="The shelf tree"
+        hint={`${formatNumber(state.wallet.ribbons, format)} ribbons to spend`}
+      >
+        <ShelfTreeGraph />
+      </Section>
+
+      {next && (
+        <Section title="The next one" hint={next.jar.blurb}>
+          <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
+            <p className="font-display text-xl text-plum">{next.jar.name}</p>
+            <p className="mt-0.5 text-sm text-berry-soft">{next.jar.rule}</p>
+            <p className="mt-1 text-xs text-berry-soft">
+              Holds {formatNumber(next.jar.capacity, format)} · seats {next.jar.seats}
+            </p>
+            <Button
+              className="mt-3 w-full"
+              disabled={!next.affordable}
+              onClick={() =>
+                mutate((draft) => {
+                  const result = buyNextJar(draft);
+                  toast(result.message ?? "Cannot buy that");
+                })
+              }
+            >
+              {next.affordable
+                ? `Take it, ${next.jar.cost} ribbons`
+                : `${next.jar.cost} ribbons`}
+            </Button>
+          </div>
+        </Section>
       )}
+
+      <Section title="Every jar" hint="The ones you have had, and the ones to come.">
+        <ul className="flex flex-col gap-2">
+          {rows.map(({ jar, unlocked, current }) => (
+            <li
+              key={jar.id}
+              className={`rounded-card border p-3.5 ${
+                current
+                  ? "border-rose-dark bg-blush/40"
+                  : unlocked
+                    ? "border-line bg-white"
+                    : "border-line-soft bg-white opacity-60"
+              }`}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-berry">{jar.name}</p>
+                {current ? (
+                  <span className="shrink-0 text-xs font-bold text-rose-dark">Filling</span>
+                ) : unlocked ? (
+                  <button
+                    onClick={() =>
+                      mutate((draft) => {
+                        const result = useJar(draft, jar.id);
+                        toast(result.message ?? "");
+                      })
+                    }
+                    className="pressable shrink-0 rounded-full bg-cream px-3 py-1 text-xs font-semibold text-berry"
+                  >
+                    Use it
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-xs text-berry-soft">
+                    {jar.cost} ribbons
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-berry-soft">
+                {unlocked ? `${jar.blurb} ${jar.rule}` : jar.blurb}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Section>
     </div>
   );
 }

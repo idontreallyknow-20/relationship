@@ -182,6 +182,56 @@ export function EmptyState({
 /* Sheet: bottom sheet for composers and pickers.                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Move focus into a dialog, keep it there, and give it back on close.
+ *
+ * `Sheet` declared a ref for this from the day it was written and never read
+ * it, so keyboard focus stayed on the page behind an `aria-modal="true"`
+ * overlay: tabbing walked through the chat you could no longer see, and
+ * dismissing the dialog left focus wherever it had wandered to.
+ */
+function useDialogFocus(open: boolean, ref: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+
+    const focusables = () =>
+      Array.from(
+        node?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
+    const frame = requestAnimationFrame(() => {
+      const first = focusables()[0];
+      (first ?? node)?.focus();
+    });
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey);
+      previous?.focus?.();
+    };
+  }, [open, ref]);
+}
+
 export function Sheet({
   open,
   onClose,
@@ -196,6 +246,7 @@ export function Sheet({
   tall?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, ref);
 
   useEffect(() => {
     if (!open) return;
@@ -214,8 +265,12 @@ export function Sheet({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      {/* A full screen close target. Out of the tab order because there is a
+          real Close button in the header and this would otherwise be the first
+          thing a keyboard reached. */}
       <button
         aria-label="Close"
+        tabIndex={-1}
         className="fade-in absolute inset-0 bg-berry/40"
         onClick={onClose}
       />
@@ -224,6 +279,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         className={`rise-in relative flex w-full max-w-lg flex-col rounded-t-3xl bg-cream shadow-lift sm:rounded-3xl ${
           tall ? "h-[92dvh] sm:h-[85dvh]" : "max-h-[88dvh]"
         }`}
@@ -263,14 +319,35 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, ref);
+
+  // Escape and the body scroll lock: `Sheet` has both and this did not, which
+  // is an odd pair of siblings in one file given that this is the dialog
+  // guarding "revoke this device" and "delete everything".
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onCancel]);
+
   if (!open || typeof document === "undefined") return null;
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
-      <button aria-label="Cancel" className="fade-in absolute inset-0 bg-berry/40" onClick={onCancel} />
+      <button aria-label="Cancel" tabIndex={-1} className="fade-in absolute inset-0 bg-berry/40" onClick={onCancel} />
       <div
+        ref={ref}
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         className="rise-in relative w-full max-w-sm rounded-card border border-line bg-white p-5 shadow-lift"
       >
         <h2 className="font-display text-xl font-semibold text-plum">{title}</h2>
@@ -324,8 +401,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      {toasts.length > 0 &&
-        typeof document !== "undefined" &&
+      {/* The region is always mounted, even with nothing in it.
+          It used to be created together with its first toast, and a live region
+          inserted into the DOM at the same moment as its content is generally
+          not announced: it has to already exist and then change. Every
+          confirmation in the app goes through here, so all of them were
+          silent. */}
+      {typeof document !== "undefined" &&
         createPortal(
           <div
             className="pointer-events-none fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-4"
@@ -376,7 +458,7 @@ export function TopBar({
       className="sticky top-0 z-30 border-b border-line-soft bg-cream/95 backdrop-blur-sm"
       style={{ paddingTop: "var(--safe-top)" }}
     >
-      <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
+      <div className="mx-auto flex h-14 w-full max-w-lg items-center gap-2 px-4 lg:max-w-5xl">
         {back && (
           <IconButton label="Back" onClick={back} className="-ml-2">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

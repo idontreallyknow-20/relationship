@@ -7,6 +7,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { settled } from "@/lib/offline/cache";
 import { phraseLogin, pinLogin, pairingErrorMessage } from "@/lib/pairing";
 import { displayName, type Person } from "@/lib/types";
 import { Button, Card, Input } from "@/components/ui";
@@ -202,21 +203,32 @@ function WelcomeInner() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    // The front door must always open.
+    //
+    // Three RPCs ran inside this with no catch, so any rejection (offline, a
+    // dropped socket, a slow captive portal) skipped `setChecking(false)` and
+    // left the welcome screen spinning forever with no message and no retry.
+    // Whether a PIN exists only decides which way in is offered, so failing to
+    // find out has to fall through to the screen rather than replace it: the
+    // invite link and the secret phrase both still work from there.
     const sb = supabase();
-    sb.auth.getSession().then(async ({ data }) => {
-      if (data.session) {
-        router.replace("/home");
-        return;
-      }
-      const [cami, joseph, phrase] = await Promise.all([
-        sb.rpc("pin_available", { p: "cami" }),
-        sb.rpc("pin_available", { p: "joseph" }),
-        sb.rpc("phrase_available"),
-      ]);
-      setPinReady({ cami: cami.data === true, joseph: joseph.data === true });
-      setPhraseReady(phrase.data === true);
-      setChecking(false);
-    });
+    sb.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (data.session) {
+          router.replace("/home");
+          return;
+        }
+        const [cami, joseph, phrase] = await Promise.all([
+          settled(sb.rpc("pin_available", { p: "cami" })),
+          settled(sb.rpc("pin_available", { p: "joseph" })),
+          settled(sb.rpc("phrase_available")),
+        ]);
+        setPinReady({ cami: cami.data === true, joseph: joseph.data === true });
+        setPhraseReady(phrase.data === true);
+        setChecking(false);
+      })
+      .catch(() => setChecking(false));
   }, [router]);
 
   if (checking) {

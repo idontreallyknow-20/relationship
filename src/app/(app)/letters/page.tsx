@@ -65,27 +65,32 @@ function LettersScreen() {
         .order("created_at", { ascending: false })
         .limit(20)),
     ]);
+    const cached = (await readCache<CachedLetters>(CACHE_KEY))?.data ?? null;
     if (lettersRes.error && gratitudeRes.error) {
-      const cached = await readCache<CachedLetters>(CACHE_KEY);
       if (cached) {
-        setLetters(cached.data.letters);
-        setGratitude(cached.data.gratitude);
-        setGratitudeCount(cached.data.gratitudeCount);
+        setLetters(cached.letters);
+        setGratitude(cached.gratitude);
+        setGratitudeCount(cached.gratitudeCount);
       }
       setLoading(false);
       return;
     }
-    const nextLetters = (lettersRes.error ? [] : (lettersRes.data ?? [])) as Letter[];
-    const nextGratitude = (gratitudeRes.error ? [] : (gratitudeRes.data ?? [])) as Gratitude[];
-    const nextCount = gratitudeRes.count ?? 0;
+    // A failed half keeps what it had. Writing an empty array over a good
+    // cached copy meant a single timed-out request emptied the screen for
+    // every future offline open.
+    const nextLetters = (lettersRes.error ? cached?.letters ?? [] : (lettersRes.data ?? [])) as Letter[];
+    const nextGratitude = (gratitudeRes.error ? cached?.gratitude ?? [] : (gratitudeRes.data ?? [])) as Gratitude[];
+    const nextCount = gratitudeRes.error ? cached?.gratitudeCount ?? 0 : gratitudeRes.count ?? 0;
     setLetters(nextLetters);
     setGratitude(nextGratitude);
     setGratitudeCount(nextCount);
-    void writeCache<CachedLetters>(CACHE_KEY, {
-      letters: nextLetters,
-      gratitude: nextGratitude,
-      gratitudeCount: nextCount,
-    });
+    if (!lettersRes.error && !gratitudeRes.error) {
+      void writeCache<CachedLetters>(CACHE_KEY, {
+        letters: nextLetters,
+        gratitude: nextGratitude,
+        gratitudeCount: nextCount,
+      });
+    }
     setLoading(false);
   }, []);
 

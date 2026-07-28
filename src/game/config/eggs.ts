@@ -17,7 +17,7 @@ export interface EggDef {
   /** A short-lived buff, if it gives one. */
   mods?: Mods;
   durationMs?: number;
-  pearls?: number;
+  ribbons?: number;
 }
 
 export const EGGS: EggDef[] = [
@@ -32,7 +32,7 @@ export const EGGS: EggDef[] = [
     line: "You both opened it in the same minute.",
     mods: { mul: { all: 3 } },
     durationMs: 60 * 60_000,
-    pearls: 25,
+    ribbons: 25,
   },
   {
     id: "the_number",
@@ -55,13 +55,13 @@ export const EGGS: EggDef[] = [
   {
     id: "crab_sideways",
     line: "Sideways is still forwards.",
-    mods: { mul: { collectValue: 1.6 } },
+    mods: { mul: { petValue: 1.6 } },
     durationMs: 3 * 60 * 60_000,
   },
   {
     id: "patient",
     line: "A thousand taps. You really did sit there.",
-    pearls: 50,
+    ribbons: 50,
     mods: { mul: { click: 2 } },
     durationMs: 60 * 60_000,
   },
@@ -74,7 +74,7 @@ export const EGGS: EggDef[] = [
   {
     id: "the_mall",
     line: "The photo booth had a curtain that never quite closed.",
-    pearls: 100,
+    ribbons: 100,
   },
 ];
 

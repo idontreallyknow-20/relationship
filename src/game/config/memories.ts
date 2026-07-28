@@ -1,4 +1,4 @@
-import type { Mods } from "../types";
+import type { CurrencyId, Mods } from "../types";
 
 // The personal layer. Two kinds of thing.
 //
@@ -36,7 +36,7 @@ export const MEMORIES: MemoryDef[] = [
     name: "The Photo Booth",
     line: "Four pictures. One strip. Still have it.",
     cost: 20,
-    mods: { mul: { all: 1.1, pearlGain: 1.25 } },
+    mods: { mul: { all: 1.1, ribbonGain: 1.25 } },
     effect: "Everything pays more, and pearls turn up more often.",
     unlockLifetime: 60_000,
   },
@@ -45,7 +45,7 @@ export const MEMORIES: MemoryDef[] = [
     name: "The Crawfish",
     line: "She could eat these until the table gives up.",
     cost: 30,
-    mods: { mul: { shellGain: 1.4, creaturePower: 1.15 } },
+    mods: { mul: { ribbonGain: 1.4, creaturePower: 1.15 } },
     effect: "More shells, and everything in the jar works harder.",
     unlockLifetime: 300_000,
   },
@@ -81,7 +81,7 @@ export const MEMORIES: MemoryDef[] = [
     name: "The Purple One",
     line: "Her colour, and now the water's.",
     cost: 160,
-    mods: { mul: { crackValue: 1.4, pearlGain: 1.3 } },
+    mods: { mul: { petValue: 1.4, ribbonGain: 1.3 } },
     effect: "Otters crack far harder.",
     unlockLifetime: 1e9,
   },
@@ -90,7 +90,7 @@ export const MEMORIES: MemoryDef[] = [
     name: "The Dragon",
     line: "His, and nobody has ever asked why.",
     cost: 160,
-    mods: { mul: { collectValue: 1.4, glassGain: 1.3 } },
+    mods: { mul: { petValue: 1.4, ribbonGain: 1.3 } },
     effect: "Crabs collect far more.",
     unlockLifetime: 1e9,
   },
@@ -99,7 +99,7 @@ export const MEMORIES: MemoryDef[] = [
     name: "Every Ordinary Tuesday",
     line: "Not the big ones. The rest of them.",
     cost: 400,
-    mods: { mul: { all: 1.5, tideGain: 1.3 } },
+    mods: { mul: { all: 1.5, keepsakeGain: 1.3 } },
     effect: "The largest permanent boost in the game.",
     unlockLifetime: 1e12,
   },
@@ -152,7 +152,7 @@ export const TRIPS: TripDef[] = [
     line: "Somewhere with water, obviously.",
     cost: 60,
     hours: 48,
-    mods: { mul: { all: 2.5, crackValue: 1.5, collectValue: 1.5 } },
+    mods: { mul: { all: 2.5, petValue: 2.25 } },
     effect: "Two days of everything, and the jar likes it.",
     unlockLifetime: 5e7,
   },
@@ -162,7 +162,7 @@ export const TRIPS: TripDef[] = [
     line: "The big one. Worth every hour of the flight.",
     cost: 200,
     hours: 168,
-    mods: { mul: { all: 4, pearlGain: 2, tideGain: 1.5 } },
+    mods: { mul: { all: 4, ribbonGain: 2, keepsakeGain: 1.5 } },
     effect: "A full week at four times everything. The best boost there is.",
     unlockLifetime: 1e9,
   },
@@ -181,7 +181,7 @@ export interface FoodDef {
   id: string;
   name: string;
   line: string;
-  cost: { currency: "shells" | "glass" | "pearls"; amount: number };
+  cost: { currency: CurrencyId; amount: number };
   /** How much it fills a creature, out of 100. */
   fills: number;
   /** Experience it gives on top. */
@@ -196,7 +196,7 @@ export const FOODS: FoodDef[] = [
     id: "shellfish",
     name: "Shellfish",
     line: "Whatever is on the floor. Fine.",
-    cost: { currency: "shells", amount: 8 },
+    cost: { currency: "ribbons", amount: 8 },
     fills: 20,
     xp: 12,
     color: "#c0a880",
@@ -205,7 +205,7 @@ export const FOODS: FoodDef[] = [
     id: "urchin",
     name: "Sea Urchin",
     line: "Spiky, and worth the trouble.",
-    cost: { currency: "shells", amount: 30 },
+    cost: { currency: "ribbons", amount: 30 },
     fills: 45,
     xp: 35,
     favouredBy: "otter",
@@ -215,7 +215,7 @@ export const FOODS: FoodDef[] = [
     id: "kelp",
     name: "Kelp",
     line: "Green, endless, good for you.",
-    cost: { currency: "glass", amount: 40 },
+    cost: { currency: "ribbons", amount: 40 },
     fills: 35,
     xp: 25,
     favouredBy: "crab",
@@ -225,7 +225,7 @@ export const FOODS: FoodDef[] = [
     id: "crawfish",
     name: "Crawfish",
     line: "Her favourite. The whole table goes quiet.",
-    cost: { currency: "pearls", amount: 4 },
+    cost: { currency: "ribbons", amount: 4 },
     fills: 100,
     xp: 120,
     color: "#b8443a",

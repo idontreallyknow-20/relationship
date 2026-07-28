@@ -39,7 +39,7 @@ export const METERS: MeterDef[] = [
     fills: "Answering the daily question",
     color: "#7c6ba8",
     decayPerHour: 0.7,
-    full: { mul: { crackValue: 2, collectValue: 2 } },
+    full: { mul: { petValue: 4 } },
   },
   {
     id: "keeping",
@@ -47,7 +47,7 @@ export const METERS: MeterDef[] = [
     fills: "Memories, drawings, plans",
     color: "#5d7f5a",
     decayPerHour: 0.5,
-    full: { mul: { depthPower: 1.6 } },
+    full: { mul: { shelfRate: 1.6 } },
   },
   {
     id: "presence",
@@ -55,7 +55,7 @@ export const METERS: MeterDef[] = [
     fills: "Both of you in the jar the same evening",
     color: "#c99a3f",
     decayPerHour: 2.2,
-    full: { mul: { tideSpeed: 2, all: 1.25 } },
+    full: { mul: { petSpeed: 2, all: 1.25 } },
   },
 ];
 

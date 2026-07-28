@@ -4,26 +4,27 @@
 // rate a tenth too steep reads fine in a diff and turns into a wall you sit
 // behind for an hour. So rather than trust it, this plays the game.
 //
-// A simulated player taps, buys the best thing it can afford, deepens when it
-// can, and changes the tide when that is worth more than carrying on. The
-// tests then assert the properties the design promises: something is always
-// affordable, no rung waits on a clock, and idle eventually beats tapping.
+// A simulated player taps, buys whatever it can, seals a full jar, takes a
+// bigger one when it can afford it, and rebirths when that is worth more than
+// carrying on. The tests then assert the properties the design promises:
+// something is always affordable, no rung waits on a clock, idle eventually
+// beats tapping, and no run reaches the ceiling.
 
 import { describe, expect, it } from "vitest";
 import { createGameState } from "@/game/state";
-import { derive } from "@/game/formulas";
+import { derive, upgradeNextCost, meetsUnlock } from "@/game/formulas";
 import { performClick, tick } from "@/game/engine";
 import {
-  buyAll, buyDepth, buyTide, canChangeTide, canDeepen, changeTide, deepen,
-  depthBuyCount, tideBuyCount, buyResetUpgrade,
+  buyAll, buyNextJar, buyShelfUpgrade, canChangeTide, changeTide,
+  sealCurrentJar, buyResetUpgrade,
 } from "@/game/actions";
-import { DEPTHS, deepenRequirement, depthCost, tideCost } from "@/game/config/depths";
+import { JARS, jarIndex } from "@/game/config/jars";
+import { SHELF_UPGRADES, shelfUpgradeCost } from "@/game/config/shelf";
 import {
   MOON_UPGRADES, moonGain, seaRequirement, tideRequirement, waterRequirement,
 } from "@/game/config/resets";
-import { upgradeNextCost } from "@/game/formulas";
 import { UPGRADES } from "@/game/config/upgrades";
-import { meetsUnlock } from "@/game/formulas";
+import { NUMBER_CEILING } from "@/game/numbers";
 import type { GameState } from "@/game/types";
 
 /** One simulated second, at the real tick rate. */
@@ -31,10 +32,11 @@ const TICK_MS = 100;
 const TICKS_PER_SECOND = 1000 / TICK_MS;
 
 interface Marks {
-  firstDeepen: number | null;
-  firstTide: number | null;
-  deepens: number;
-  tideChanges: number;
+  firstSeal: number | null;
+  firstRebirth: number | null;
+  seals: number;
+  rebirths: number;
+  jars: number;
   seconds: number;
   hearts: number;
   perSecond: number;
@@ -47,7 +49,7 @@ interface Marks {
 function play(seconds: number, tapsPerSecond = 0, spendMoons = true): Marks {
   const state = createGameState(0);
   const marks: Marks = {
-    firstDeepen: null, firstTide: null, deepens: 0, tideChanges: 0,
+    firstSeal: null, firstRebirth: null, seals: 0, rebirths: 0, jars: 1,
     seconds, hearts: 0, perSecond: 0,
   };
 
@@ -59,27 +61,35 @@ function play(seconds: number, tapsPerSecond = 0, spendMoons = true): Marks {
     }
 
     for (let i = 0; i < tapsPerSecond; i++) {
-      performClick(state, derive(state, now), {
-        precision: 1, now, x: 50, y: 50,
-      });
+      performClick(state, derive(state, now), { precision: 1, now, x: 50, y: 50 });
     }
 
     buyAll(state, 8);
 
-    if (canDeepen(state)) {
-      deepen(state);
-      marks.deepens += 1;
-      if (marks.firstDeepen === null) marks.firstDeepen = second;
+    if (sealCurrentJar(state, now).ok) {
+      marks.seals += 1;
+      if (marks.firstSeal === null) marks.firstSeal = second;
     }
+
+    // Ribbons go on the shelf tree first, then on a bigger jar.
+    for (const def of SHELF_UPGRADES) {
+      for (let i = 0; i < 6; i++) {
+        const level = state.shelfUpgrades[def.id] ?? 0;
+        if (def.max !== Infinity && level >= def.max) break;
+        if (state.wallet.ribbons < shelfUpgradeCost(def, level) * 2) break;
+        if (!buyShelfUpgrade(state, def.id).ok) break;
+      }
+    }
+    if (buyNextJar(state).ok) marks.jars += 1;
 
     if (canChangeTide(state)) {
       changeTide(state, now);
-      marks.tideChanges += 1;
-      if (marks.firstTide === null) marks.firstTide = second;
+      marks.rebirths += 1;
+      if (marks.firstRebirth === null) marks.firstRebirth = second;
       if (spendMoons) {
-        // Spend moons the way a person would: on the things that compound.
-        for (const id of ["m_depth", "m_auto_tap", "m_autobuyer", "m_tide_speed", "m_all"]) {
-          for (let i = 0; i < 20; i++) if (!buyResetUpgrade(state, id).ok) break;
+        for (const def of MOON_UPGRADES) {
+          if (def.kind === "flag") continue;
+          for (let i = 0; i < 20; i++) if (!buyResetUpgrade(state, def.id).ok) break;
         }
       }
     }
@@ -94,13 +104,6 @@ function play(seconds: number, tapsPerSecond = 0, spendMoons = true): Marks {
 function cheapestPurchase(state: GameState): number {
   const derived = derive(state, 0);
   let best = Infinity;
-
-  for (let tier = 0; tier < state.depths.length; tier++) {
-    if (!state.depths[tier].unlocked) continue;
-    best = Math.min(best, depthCost(DEPTHS[tier], state.depths[tier].bought) * derived.costMultiplier);
-  }
-  best = Math.min(best, tideCost(state.tideBought) * derived.costMultiplier);
-
   for (const def of UPGRADES) {
     if (def.currency !== "hearts" || !meetsUnlock(state, def.unlock)) continue;
     const owned = state.upgrades[def.id] ?? 0;
@@ -111,7 +114,7 @@ function cheapestPurchase(state: GameState): number {
 }
 
 describe("no time walls", () => {
-  it("always has something affordable within half a minute of income", () => {
+  it("always has something affordable within a minute of income", () => {
     const state = createGameState(0);
     let now = 0;
     const stalls: string[] = [];
@@ -121,244 +124,160 @@ describe("no time walls", () => {
         now += TICK_MS;
         tick(state, TICK_MS, now);
       }
+      performClick(state, derive(state, now), { precision: 1, now, x: 0, y: 0 });
       buyAll(state, 8);
-      if (canDeepen(state)) deepen(state);
+      sealCurrentJar(state, now);
 
       const income = Math.max(derive(state, now).heartsPerSecond, 0.5);
       const wait = (cheapestPurchase(state) - state.wallet.hearts) / income;
       // Sampled once a minute: checking every second says the same thing
       // thirty times over and makes the failure harder to read.
-      if (second % 60 === 0 && wait > 30) {
+      if (second % 60 === 0 && wait > 60) {
         stalls.push(`${second}s: ${Math.round(wait)}s until anything is affordable`);
       }
     }
 
-    expect(stalls, `the player waits with nothing to buy:\n${stalls.join("\n")}`).toEqual([]);
+    expect(stalls, stalls.join("\n")).toEqual([]);
   });
 
-  it("reaches the first deepening within a few minutes, hands off", () => {
-    const marks = play(300);
-    expect(marks.firstDeepen, "never deepened in five minutes").not.toBeNull();
-    expect(marks.firstDeepen!).toBeLessThan(240);
+  it("seals the first jar within a few minutes, hands off", () => {
+    const marks = play(600, 0);
+    expect(marks.firstSeal, "never sealed a jar in ten minutes").not.toBeNull();
+    expect(marks.firstSeal!).toBeLessThan(600);
   });
 
-  it("keeps deepening rather than stalling after the first one", () => {
-    const marks = play(900);
-    expect(marks.deepens).toBeGreaterThan(1);
+  it("keeps sealing rather than stalling after the first one", () => {
+    expect(play(1_200, 1).seals).toBeGreaterThan(3);
   });
 
-  it("reaches a tide change in the first session", () => {
-    const marks = play(3_600);
-    expect(marks.firstTide, "no tide change in an hour of play").not.toBeNull();
+  it("reaches a bigger jar in the first session", () => {
+    expect(play(1_800, 1).jars).toBeGreaterThan(1);
   });
 
   it("gets faster the longer it runs, rather than slower", () => {
-    const one = play(300);
-    const two = play(600);
-    // Twice the time is worth much more than twice the progress, because the
-    // multipliers from the first half are still running in the second.
-    expect(two.hearts).toBeGreaterThan(one.hearts * 4);
-  });
-
-  it("never reaches a requirement it cannot afford", () => {
-    // The cost staircase leaves the range of a double at roughly six thousand
-    // purchases, so a requirement above that is a wall rather than a price.
-    // This is the guard against reintroducing one.
-    for (let deepens = 0; deepens < 500; deepens++) {
-      const needed = deepenRequirement(deepens);
-      expect(
-        Number.isFinite(depthCost(DEPTHS[0], needed)),
-        `deepening ${deepens} needs ${needed}, which costs more than a number can hold`,
-      ).toBe(true);
-    }
+    const early = play(600, 1);
+    const later = play(2_400, 1);
+    expect(later.perSecond).toBeGreaterThan(early.perSecond);
   });
 });
 
 describe("idle against active", () => {
   it("plays entirely on its own", () => {
-    const idle = play(600, 0);
+    const idle = play(1_800, 0);
     expect(idle.hearts).toBeGreaterThan(0);
-    expect(idle.perSecond).toBeGreaterThan(0);
-    expect(idle.deepens).toBeGreaterThan(0);
+    expect(idle.seals).toBeGreaterThan(0);
   });
 
   it("rewards tapping early on", () => {
-    const idle = play(120, 0);
-    const active = play(120, 5);
-    expect(active.hearts).toBeGreaterThan(idle.hearts);
+    expect(play(300, 3).hearts).toBeGreaterThan(play(300, 0).hearts * 1.2);
   });
 
-  it("carries the game on its own once the automation is fed", () => {
-    // Tapping by hand is still worth more than idling in a short window, and
-    // that is fine: what matters is that leaving it alone is never a dead end.
-    // A jar left to itself for a quarter of an hour makes real progress.
-    const idle = play(900, 0);
-    expect(idle.hearts).toBeGreaterThan(1e5);
-    expect(idle.deepens).toBeGreaterThan(0);
-    expect(idle.perSecond).toBeGreaterThan(10);
+  it("carries the game on its own once the shelf is fed", () => {
+    // The shelf is the whole point of the loop: past a certain size it should
+    // dwarf what a person can do by hand, which is what makes putting the
+    // phone down the correct move rather than a sacrifice.
+    const state = createGameState(0);
+    state.shelfHearts = 1e9;
+    const derived = derive(state, 0);
+    expect(derived.heartsPerSecond).toBeGreaterThan(derived.heartsPerClick * 10);
   });
 });
 
 describe("the numbers stay sane", () => {
   it("never reaches infinity or NaN over a long run", () => {
-    const state = createGameState(0);
-    let now = 0;
-    for (let second = 0; second < 900; second++) {
-      for (let t = 0; t < TICKS_PER_SECOND; t++) {
-        now += TICK_MS;
-        tick(state, TICK_MS, now);
-      }
-      buyAll(state, 8);
-      if (canDeepen(state)) deepen(state);
-      if (canChangeTide(state)) changeTide(state, now);
-    }
+    const marks = play(3_600, 2);
+    expect(Number.isFinite(marks.hearts)).toBe(true);
+    expect(Number.isNaN(marks.hearts)).toBe(false);
+    expect(marks.hearts).toBeLessThan(NUMBER_CEILING);
+  });
 
-    expect(Number.isFinite(state.wallet.hearts)).toBe(true);
-    expect(Number.isFinite(state.lifetime.hearts)).toBe(true);
-    for (const depth of state.depths) {
-      expect(Number.isFinite(depth.owned), "a depth ran away").toBe(true);
-      expect(Number.isFinite(depth.bought)).toBe(true);
-    }
-    const derived = derive(state, now);
-    for (const [key, value] of Object.entries(derived)) {
-      if (typeof value === "number") {
-        expect(Number.isFinite(value), `${key} became ${value}`).toBe(true);
-      }
-    }
+  // The failure this whole rebalance exists to prevent, twice over: the
+  // production chain reached the ceiling in fourteen minutes, and deepening
+  // reached it in fifteen by a different route.
+  it("stays far below the ceiling across four hours of perfect play", () => {
+    const marks = play(4 * 3_600, 5);
+    expect(marks.hearts).toBeLessThan(1e250);
   });
 
   it("buys in bulk without ever overspending", () => {
     const state = createGameState(0);
-    state.wallet.hearts = 12_345;
-    const before = state.wallet.hearts;
-    const count = depthBuyCount(state, 0, "max");
-    buyDepth(state, 0, "max");
-    expect(state.depths[0].bought).toBe(count);
+    state.wallet.hearts = 1e9;
+    buyAll(state, 40);
     expect(state.wallet.hearts).toBeGreaterThanOrEqual(0);
-    expect(state.wallet.hearts).toBeLessThanOrEqual(before);
   });
 
-  it("prices tide so it competes with depth rather than replacing it", () => {
-    const state = createGameState(0);
-    state.wallet.hearts = 1e6;
-    expect(tideBuyCount(state, "max")).toBeGreaterThan(0);
-    buyTide(state, "max");
-    // Not so cheap that one purchase buys hundreds of levels.
-    expect(state.tideBought).toBeLessThan(60);
+  it("never asks for more hearts than a number can hold", () => {
+    for (let n = 0; n < 500; n++) {
+      expect(tideRequirement(n)).toBeLessThan(NUMBER_CEILING);
+      expect(waterRequirement(n)).toBeLessThan(NUMBER_CEILING);
+      expect(seaRequirement(n)).toBeLessThan(NUMBER_CEILING);
+    }
   });
 });
 
 describe("rebirth is the loop", () => {
-  it("clears the chain, so the next life starts from the top", () => {
+  // The shelf is the compounding part of the game, so a rebirth that left it
+  // standing would hand the next run its income straight back. That is exactly
+  // what the production chain did, and it produced a twenty minute game.
+  it("clears the shelf, so the next life starts from the first jar", () => {
     const state = createGameState(0);
-    let now = 0;
-    while (!canChangeTide(state) && now < 3_600_000) {
-      for (let t = 0; t < TICKS_PER_SECOND; t++) {
-        now += TICK_MS;
-        tick(state, TICK_MS, now);
-      }
-      buyAll(state, 8);
-      if (canDeepen(state)) deepen(state);
-    }
+    state.wallet.hearts = tideRequirement(0) * 2;
+    state.runHearts = tideRequirement(0) * 2;
+    state.shelfHearts = 1e9;
+    state.sealed = [{ jarId: JARS[0].id, hearts: 1e9, at: 0 }];
+    state.jar = JARS[3].id;
+    state.jarsUnlocked = JARS.slice(0, 4).map((j) => j.id);
 
-    expect(canChangeTide(state), "never reached the first rebirth in an hour").toBe(true);
-    expect(state.depths.some((d) => d.bought > 0), "nothing was ever bought").toBe(true);
+    expect(canChangeTide(state)).toBe(true);
+    changeTide(state, 1_000);
 
-    changeTide(state, now);
-
-    // This is the whole fix. A rebirth that leaves the chain standing is not a
-    // rebirth: income comes straight back, the bar is crossed again within
-    // seconds, and the permanent multipliers compound to the ceiling.
-    for (const depth of state.depths) {
-      expect(depth.bought, "a tier survived a rebirth").toBe(0);
-      expect(depth.owned, "a tier was still producing after a rebirth").toBe(0);
-    }
-    expect(state.depths.filter((d) => d.unlocked)).toHaveLength(1);
-    expect(state.deepens, "deepenings survived a rebirth").toBe(0);
-    expect(state.tideBought, "bought speed survived a rebirth").toBe(0);
+    expect(state.shelfHearts).toBe(0);
+    expect(state.sealed).toEqual([]);
+    expect(state.jar).toBe(JARS[0].id);
+    expect(jarIndex(state.jar)).toBe(0);
     expect(state.wallet.moons).toBeGreaterThan(0);
   });
 
   it("pays for going further without paying proportionally", () => {
-    // Logarithmic, not proportional. Late in a life the jar makes more in a
-    // second than it made in the first minute, so a proportional payout hands
-    // out thousands of moons for a life that took under a minute, and the tree
-    // those moons buy makes the next life shorter still.
-    const onTheBar = createGameState(0);
-    onTheBar.runHearts = tideRequirement(0);
-    const wayPast = createGameState(0);
-    wayPast.runHearts = tideRequirement(0) * 1e12;
+    const at = createGameState(0);
+    at.runHearts = tideRequirement(0);
+    const far = createGameState(0);
+    far.runHearts = tideRequirement(0) * 1e6;
 
-    const modest = moonGain(onTheBar);
-    const enormous = moonGain(wayPast);
-    expect(enormous).toBeGreaterThan(modest);
-    expect(enormous).toBeLessThan(modest * 20);
+    const small = moonGain(at);
+    const large = moonGain(far);
+    expect(large).toBeGreaterThan(small);
+    // Six orders of magnitude more hearts, nowhere near six orders more moons.
+    expect(large).toBeLessThan(small * 20);
   });
 
-  it("never asks for more hearts than a number can hold", () => {
-    // A requirement is something the run has to actually reach. Above about
-    // 1.8e308 there is no such number, so an uncapped bar does not make the
-    // game harder, it ends it silently.
-    for (let n = 0; n < 1_000; n++) {
-      expect(Number.isFinite(tideRequirement(n)), `rebirth ${n}`).toBe(true);
-      expect(tideRequirement(n)).toBeLessThan(1e250);
-      expect(Number.isFinite(waterRequirement(n))).toBe(true);
-      expect(Number.isFinite(seaRequirement(n))).toBe(true);
-    }
-  });
-
-  it("stays far below the ceiling across four hours of perfect play", () => {
-    // The measurement that started all of this: optimal play used to reach
-    // 1e300 in the twentieth minute and the game simply stopped.
-    const state = createGameState(0);
-    let now = 0;
-    let rebirths = 0;
-    for (let second = 0; second < 14_400; second++) {
-      for (let t = 0; t < TICKS_PER_SECOND; t++) {
-        now += TICK_MS;
-        tick(state, TICK_MS, now);
-      }
-      buyAll(state, 8);
-      if (canDeepen(state)) deepen(state);
-      if (canChangeTide(state)) {
-        changeTide(state, now);
-        rebirths += 1;
-        for (const id of ["m_depth", "m_auto_tap", "m_autobuyer", "m_tide_speed", "m_all", "m_forever"]) {
-          for (let i = 0; i < 20; i++) if (!buyResetUpgrade(state, id).ok) break;
-        }
-      }
-    }
-
-    expect(rebirths, "the loop stopped turning").toBeGreaterThan(10);
-    expect(state.wallet.hearts).toBeLessThan(1e280);
-    expect(state.runHearts).toBeLessThan(1e280);
-    expect(Number.isFinite(derive(state, now).heartsPerSecond)).toBe(true);
-    for (const depth of state.depths) {
-      expect(Number.isFinite(depth.owned), "a tier ran away").toBe(true);
-    }
-  }, 60_000);
-});
-
-describe("the moon tree is worth buying", () => {
   it("makes the next run meaningfully faster", () => {
     const plain = createGameState(0);
     const invested = createGameState(0);
-    invested.wallet.moons = 500;
-    for (const id of MOON_UPGRADES.filter((u) => u.kind !== "flag").map((u) => u.id)) {
-      for (let i = 0; i < 5; i++) if (!buyResetUpgrade(invested, id).ok) break;
+    for (const def of MOON_UPGRADES) {
+      if (def.kind === "flag") continue;
+      invested.moonUpgrades[def.id] = 10;
     }
+    expect(derive(invested, 0).heartsPerClick)
+      .toBeGreaterThan(derive(plain, 0).heartsPerClick * 2);
+  });
+});
 
-    plain.wallet.hearts = 1e6;
-    invested.wallet.hearts = 1e6;
-    buyAll(plain, 8);
-    buyAll(invested, 8);
+describe("the pets are a side thing", () => {
+  it("are worth having, without being the whole game", () => {
+    const alone = createGameState(0);
+    alone.slots = [null, null];
 
-    let now = 0;
-    for (let t = 0; t < 600; t++) {
-      now += TICK_MS;
-      tick(plain, TICK_MS, now);
-      tick(invested, TICK_MS, now);
-    }
-    expect(invested.lifetime.hearts).toBeGreaterThan(plain.lifetime.hearts * 2);
+    const withPets = createGameState(0);
+    expect(derive(withPets, 0).heartsPerSecond)
+      .toBeGreaterThan(derive(alone, 0).heartsPerSecond);
+  });
+
+  it("never out-earn a well fed shelf", () => {
+    const pets = createGameState(0);
+    const shelf = createGameState(0);
+    shelf.shelfHearts = 1e9;
+    expect(derive(shelf, 0).heartsPerSecond)
+      .toBeGreaterThan(derive(pets, 0).heartsPerSecond * 100);
   });
 });

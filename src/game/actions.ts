@@ -2,8 +2,8 @@ import type {
   AutobuyerState, CreatureInstance, GameState, Gift, ItemInstance, ItemRarity, Person,
 } from "./types";
 import {
-  addCurrency, addBuff, earnHearts, grantCollectible, grantReward, metricTotal,
-  pushLog, recordMetric, spendCurrency,
+  addCurrency, addBuff, canSeal, earnHearts, grantCollectible, grantReward, metricTotal,
+  pushLog, recordMetric, sealJar, spendCurrency,
 } from "./engine";
 import {
   buyableTree, creaturesInJar, derive, hasFlag, meetsUnlock, upgradeCost, upgradeNextCost,
@@ -11,11 +11,12 @@ import {
 import { safe, seededRandom } from "./numbers";
 import { UPGRADES, UPGRADE_BY_ID } from "./config/upgrades";
 import {
-  DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID,
-  dropGain, moonGain, resetUpgradeCost, seaRequirement, starGain, tideRequirement,
+  SUN_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID,
+  sunGain, moonGain, resetUpgradeCost, seaRequirement, starGain, tideRequirement,
   waterRequirement,
 } from "./config/resets";
 import { SKILL_BY_ID, skillCost } from "./config/skills";
+import { SHELF_UPGRADES, SHELF_UPGRADE_BY_ID, shelfUpgradeCost } from "./config/shelf";
 import {
   CREATURES, CREATURE_BY_ID, LINE_OWNER, traitsFor, xpFor,
 } from "./config/creatures";
@@ -23,11 +24,10 @@ import {
   CRAFT_COST, RARITY_META, ROCK_NAMES, SHELL_NAMES,
   affixValue, affixesFor, itemLevelScale, polishCost, rerollCost, salvageValue,
 } from "./config/items";
-import { VESSELS, VESSEL_BY_ID, vesselIndex } from "./config/vessels";
+import { JARS, JAR_BY_ID, FIRST_JAR, jarIndex } from "./config/jars";
 import {
-  DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthAffordable, depthBulkCost,
-  tideAffordable, tideBulkCost,
-} from "./config/depths";
+  DILATION_UPGRADE_BY_ID, dilationUpgradeCost, hourGain,
+} from "./config/dilation";
 import { FOOD_BY_ID, MEMORY_BY_ID, TRIP_BY_ID } from "./config/memories";
 import { METERS, METER_BY_ID, METER_FILL } from "./config/meters";
 import { CHALLENGE_BY_ID, MISSIONS, MISSION_BY_ID, type MetricId, type MissionPeriod } from "./config/objectives";
@@ -101,7 +101,7 @@ export function levelSkill(state: GameState, id: string): ActionResult {
   if (!def || !skill) return fail("Unknown ability");
   if (skill.level >= def.maxLevel) return fail("Already at maximum");
   if (!meetsUnlock(state, def.unlock)) return fail("Not unlocked yet");
-  if (!spendCurrency(state, "pearls", skillCost(def, skill.level))) return fail("Not enough pearls");
+  if (!spendCurrency(state, "ribbons", skillCost(def, skill.level))) return fail("Not enough pearls");
   skill.level += 1;
   return done(`${def.name} is now level ${skill.level}`);
 }
@@ -223,7 +223,7 @@ export function growCreature(state: GameState, creatureId: string): ActionResult
   const target = CREATURE_BY_ID[def.evolvesTo];
   if (!target) return fail("This one does not grow any further");
   if (creature.level < def.evolveAt.level) return fail(`Reach level ${def.evolveAt.level} first`);
-  if (!spendCurrency(state, "glass", def.evolveAt.glass)) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", def.evolveAt.glass)) return fail("Not enough sea glass");
 
   creature.defId = target.id;
   creature.level = Math.max(1, Math.floor(creature.level * 0.65));
@@ -247,14 +247,9 @@ export function placeCreature(state: GameState, slot: number, creatureId: string
   if (creatureId) {
     const creature = state.creatures[creatureId];
     if (!creature) return fail("Unknown creature");
-    const def = CREATURE_BY_ID[creature.defId];
-    const vessel = VESSEL_BY_ID[state.vessel];
-    if (def?.needsDepth && vessel && vessel.depth < def.needsDepth) {
-      return fail(`${def.name} needs deeper water than this vessel has`);
-    }
-    if (def?.needsFloor && vessel && vessel.floor < def.needsFloor) {
-      return fail(`${def.name} needs more floor than this vessel has`);
-    }
+    // What limits a pet is a chair, not the water: they sit around the jar
+    // now rather than living in it, so `needsDepth` and `needsFloor` are gone
+    // and `derived.creatureSlots` (the jar's seats) is the only rule.
     // Take it out of wherever it was first.
     const previous = state.slots.indexOf(creatureId);
     if (previous >= 0) state.slots[previous] = null;
@@ -323,7 +318,7 @@ export function craftItem(state: GameState, kind: "rock" | "shell", rarity: Item
   if (!hasFlag(state, "items")) return fail("Rocks and shells are a moon upgrade");
   const derived = derive(state);
   const cost = Math.ceil(CRAFT_COST[rarity] * derived.costMultiplier);
-  if (!spendCurrency(state, "glass", cost)) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", cost)) return fail("Not enough sea glass");
 
   const id = crypto.randomUUID();
   const item: ItemInstance = {
@@ -346,7 +341,7 @@ export function polishItem(state: GameState, itemId: string): ActionResult {
   const item = state.items[itemId];
   if (!item) return fail("Unknown");
   if (item.level >= 20) return fail("Already at maximum");
-  if (!spendCurrency(state, "glass", polishCost(item.rarity, item.level))) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", polishCost(item.rarity, item.level))) return fail("Not enough sea glass");
   const before = item.level;
   item.level += 1;
   const factor = itemLevelScale(item.level) / itemLevelScale(before);
@@ -358,7 +353,7 @@ export function rerollItem(state: GameState, itemId: string): ActionResult {
   const item = state.items[itemId];
   if (!item) return fail("Unknown");
   if (item.locked) return fail("That one is locked");
-  if (!spendCurrency(state, "glass", rerollCost(item.rarity))) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", rerollCost(item.rarity))) return fail("Not enough sea glass");
   item.affixes = rollAffixes(item.kind, item.rarity, item.level, derive(state).luck);
   return done("Rerolled");
 }
@@ -372,7 +367,7 @@ export function salvageItem(state: GameState, itemId: string): ActionResult {
   for (const creature of Object.values(state.creatures)) {
     if (creature.itemId === itemId) creature.itemId = null;
   }
-  addCurrency(state, "glass", value);
+  addCurrency(state, "ribbons", value);
   return done(`Salvaged for ${value} sea glass`);
 }
 
@@ -402,123 +397,70 @@ export function giveItem(state: GameState, creatureId: string, itemId: string | 
 /* ------------------------------------------------------------------ */
 
 /** How many of this depth you can buy right now, honouring the buy amount. */
-export function depthBuyCount(state: GameState, tier: number, want?: number | "max"): number {
-  const def = DEPTHS[tier];
-  const slot = state.depths[tier];
-  if (!def || !slot?.unlocked) return 0;
-  const derived = derive(state);
-  const budget = state.wallet.hearts / Math.max(0.01, derived.costMultiplier);
-  const affordable = depthAffordable(def, slot.bought, budget);
-  const amount = want ?? state.settings.depthBuyAmount;
-  if (amount === "max") return affordable;
-  return Math.min(affordable, Math.max(0, Math.floor(Number(amount) || 0)));
+/* ------------------------------------------------------------------ */
+/* The shelf and the jars                                              */
+/* ------------------------------------------------------------------ */
+
+export function buyShelfUpgrade(state: GameState, id: string, want = 1): ActionResult {
+  const def = SHELF_UPGRADE_BY_ID[id];
+  if (!def) return fail("No such upgrade");
+
+  let bought = 0;
+  for (let i = 0; i < Math.max(1, want); i++) {
+    const level = state.shelfUpgrades[id] ?? 0;
+    if (def.max !== Infinity && level >= def.max) break;
+    const cost = shelfUpgradeCost(def, level);
+    if (!spendCurrency(state, "ribbons", cost)) break;
+    state.shelfUpgrades[id] = level + 1;
+    bought += 1;
+  }
+
+  if (bought === 0) return fail("Not enough ribbons");
+  return done(`${def.name} ${state.shelfUpgrades[id]}`);
+}
+
+/** Seal the jar you are on, by hand. */
+export function sealCurrentJar(state: GameState, now: number): ActionResult {
+  const derived = derive(state, now);
+  if (!canSeal(state, derived)) {
+    return fail(`The jar holds ${Math.floor(derived.jarCapacity)} before it is full`);
+  }
+  const result = sealJar(state, derived, now);
+  if (!result) return fail("The jar is not full yet");
+  return done(`Sealed, and ${result.ribbons} ribbon${result.ribbons === 1 ? "" : "s"}`);
 }
 
 /**
- * Buy into a depth.
+ * Move up to a bigger jar.
  *
- * Buying raises both `bought` and `owned`: the price of the next one, and the
- * number actually down there working. Production from below only ever raises
- * `owned`, which is why a depth fed from beneath never gets more expensive.
+ * Bought with ribbons rather than hearts, because hearts are the thing the jar
+ * is for and spending them on the container would be asking you to empty it in
+ * order to make it bigger.
  */
-export function buyDepth(state: GameState, tier: number, want?: number | "max"): ActionResult {
-  const def = DEPTHS[tier];
-  const slot = state.depths[tier];
-  if (!def) return fail("No such depth");
-  if (!slot?.unlocked) return fail("The jar is not that deep yet");
-
-  const count = depthBuyCount(state, tier, want);
-  if (count <= 0) return fail("Not enough hearts");
-
-  const derived = derive(state);
-  const cost = depthBulkCost(def, slot.bought, count) * derived.costMultiplier;
-  if (!spendCurrency(state, "hearts", cost)) return fail("Not enough hearts");
-
-  slot.bought += count;
-  slot.owned = safe(slot.owned + count);
-  recordMetric(state, "depthsBought", count);
-  return done();
-}
-
-/** Deepest depth currently open, as an index. */
-export function deepestUnlocked(state: GameState): number {
-  let last = 0;
-  for (let i = 0; i < state.depths.length; i++) if (state.depths[i].unlocked) last = i;
-  return last;
-}
-
-export function canDeepen(state: GameState): boolean {
-  const tier = deepestUnlocked(state);
-  return state.depths[tier].bought >= deepenRequirement(state.deepens);
-}
-
-/**
- * Go deeper.
- *
- * The fast inner loop: it costs you the whole chain and pays a permanent
- * multiplier plus, if there is any left, the next depth down. Requires a
- * count rather than a wait, so it is never something you sit and watch for.
- */
-export function deepen(state: GameState): ActionResult {
-  if (!canDeepen(state)) {
-    return fail(`Buy ${deepenRequirement(state.deepens)} of your deepest before going deeper`);
+export function buyNextJar(state: GameState): ActionResult {
+  const at = jarIndex(state.jar);
+  const next = JARS[at + 1];
+  if (!next) return fail("There is nothing bigger than this");
+  if (state.jarsUnlocked.includes(next.id)) {
+    state.jar = next.id;
+    return done(`Filling the ${next.name}`);
   }
-  const derived = derive(state);
-  const tier = deepestUnlocked(state);
-  const room = Math.min(derived.depthCount, DEPTHS.length);
-
-  state.deepens += 1;
-  recordMetric(state, "deepens", 1);
-
-  const opened = tier + 1 < room;
-  if (opened) state.depths[tier + 1].unlocked = true;
-
-  for (const depth of state.depths) {
-    depth.bought = 0;
-    depth.owned = 0;
+  if (!spendCurrency(state, "ribbons", next.cost)) {
+    return fail(`${next.name} costs ${next.cost} ribbons`);
   }
-  state.depths[0].unlocked = true;
-  // Hearts stay. Taking them as well meant rebuilding from nothing every time,
-  // and measured, that was one deepening per quarter of an hour: a wall in the
-  // one loop that is supposed to be the fast one. Losing the chain is the cost;
-  // losing the means to rebuild it is just waiting.
-
-  pushLog(state, "Deeper", opened ? DEPTHS[tier + 1].name : `x${DEEPEN_MULTIPLIER} again`);
-  return done(
-    opened
-      ? `The jar is deeper. ${DEPTHS[tier + 1].name} are down there.`
-      : `Everything is ${DEEPEN_MULTIPLIER} times stronger.`,
-  );
+  state.jarsUnlocked = [...state.jarsUnlocked, next.id];
+  state.jar = next.id;
+  recordMetric(state, "jars", 1);
+  pushLog(state, "Bigger", next.name);
+  return done(`${next.name}. ${next.rule}`);
 }
 
-/* ------------------------------------------------------------------ */
-/* Tide, the speed of everything                                       */
-/* ------------------------------------------------------------------ */
-
-export function tideBuyCount(state: GameState, want?: number | "max"): number {
-  const derived = derive(state);
-  const budget = state.wallet.hearts / Math.max(0.01, derived.costMultiplier);
-  const affordable = tideAffordable(state.tideBought, budget);
-  const amount = want ?? state.settings.depthBuyAmount;
-  if (amount === "max") return affordable;
-  return Math.min(affordable, Math.max(0, Math.floor(Number(amount) || 0)));
+/** Go back to a jar already unlocked, which is only ever cosmetic. */
+export function useJar(state: GameState, id: string): ActionResult {
+  if (!state.jarsUnlocked.includes(id)) return fail("Not unlocked yet");
+  state.jar = id;
+  return done(`Filling the ${JAR_BY_ID[id]?.name ?? "jar"}`);
 }
-
-/** Tide is the one dial that touches every depth at once. */
-export function buyTide(state: GameState, want?: number | "max"): ActionResult {
-  const count = tideBuyCount(state, want);
-  if (count <= 0) return fail("Not enough hearts");
-  const derived = derive(state);
-  const cost = tideBulkCost(state.tideBought, count) * derived.costMultiplier;
-  if (!spendCurrency(state, "hearts", cost)) return fail("Not enough hearts");
-  state.tideBought += count;
-  recordMetric(state, "tideBought", count);
-  return done();
-}
-
-/* ------------------------------------------------------------------ */
-/* Automation                                                          */
-/* ------------------------------------------------------------------ */
 
 export function setAutobuyer(
   state: GameState,
@@ -543,18 +485,6 @@ export function buyAll(state: GameState, passes = 40): ActionResult {
   for (let pass = 0; pass < passes; pass++) {
     let didSomething = false;
 
-    // Depths, deepest first: reaching down is worth more per heart.
-    for (let tier = state.depths.length - 1; tier >= 0; tier--) {
-      if (!state.depths[tier]?.unlocked) continue;
-      if (buyDepth(state, tier, "max").ok) {
-        didSomething = true;
-        bought += 1;
-      }
-    }
-    if (buyTide(state, "max").ok) {
-      didSomething = true;
-      bought += 1;
-    }
     if (buyCheapest(state).ok) {
       didSomething = true;
       bought += 1;
@@ -587,11 +517,12 @@ export function runAutobuyers(state: GameState, now: number): void {
     const allowance = held * Math.min(1, Math.max(0, buyer.threshold));
     state.wallet.hearts = allowance;
 
-    const want = buyer.max ? "max" : 1;
-    if (target === "tide") buyTide(state, want);
-    else {
-      const tier = DEPTHS.findIndex((d) => d.id === target);
-      if (tier >= 0) buyDepth(state, tier, want);
+    // Two things worth spending on without being asked: the upgrade lists,
+    // and the shelf tree that makes everything on the shelf pay faster.
+    if (target === "shelf") {
+      for (const def of SHELF_UPGRADES) buyShelfUpgrade(state, def.id, buyer.max ? 20 : 1);
+    } else {
+      buyCheapest(state);
     }
 
     state.wallet.hearts = safe(state.wallet.hearts + (held - allowance));
@@ -602,44 +533,6 @@ export function runAutobuyers(state: GameState, now: number): void {
 /* Vessels                                                             */
 /* ------------------------------------------------------------------ */
 
-export function unlockVessel(state: GameState, id: string): ActionResult {
-  const vessel = VESSEL_BY_ID[id];
-  if (!vessel) return fail("Unknown vessel");
-  if (state.vesselsUnlocked.includes(id)) return fail("Already yours");
-  if (id === "ocean" && !hasFlag(state, "ocean")) return fail("The Ocean is a star upgrade");
-  if (state.lifetime.hearts < vessel.unlockLifetime) return fail("Not enough lifetime hearts yet");
-  if (!spendCurrency(state, vessel.cost.currency, vessel.cost.amount)) return fail("Not enough");
-
-  state.vesselsUnlocked.push(id);
-  state.stats.vesselsUnlocked = state.vesselsUnlocked.length;
-  recordMetric(state, "vessels", 1);
-  grantCollectible(state, "vessels", id);
-  if (id === "aquarium") grantCollectible(state, "waters", "deep");
-  pushLog(state, "Vessel", vessel.name);
-  return done(`${vessel.name} is yours`);
-}
-
-export function moveTo(state: GameState, id: string): ActionResult {
-  if (!state.vesselsUnlocked.includes(id)) return fail("Not yours yet");
-  const vessel = VESSEL_BY_ID[id];
-  if (!vessel) return fail("Unknown vessel");
-
-  // Anything that cannot live here has to come out first.
-  for (const creature of creaturesInJar(state)) {
-    const def = CREATURE_BY_ID[creature.defId];
-    if (!def) continue;
-    const tooShallow = def.needsDepth && vessel.depth < def.needsDepth;
-    const tooNarrow = def.needsFloor && vessel.floor < def.needsFloor;
-    if (tooShallow || tooNarrow) {
-      const slot = state.slots.indexOf(creature.id);
-      if (slot >= 0) state.slots[slot] = null;
-      creature.slot = null;
-    }
-  }
-  state.vessel = id;
-  return done(`Moved to the ${vessel.name}`);
-}
-
 /* ------------------------------------------------------------------ */
 /* Memories, trips and water                                           */
 /* ------------------------------------------------------------------ */
@@ -649,7 +542,7 @@ export function buyMemory(state: GameState, id: string): ActionResult {
   if (!memory) return fail("Unknown");
   if ((state.collections["memories"] ?? []).includes(id)) return fail("Already yours");
   if (state.lifetime.hearts < memory.unlockLifetime) return fail("Not yet");
-  if (!spendCurrency(state, "tide", memory.cost)) return fail("Not enough tide");
+  if (!spendCurrency(state, "keepsakes", memory.cost)) return fail("Not enough keepsakes");
   grantCollectible(state, "memories", id);
   if (id === "the_dragon") grantCollectible(state, "waters", "dragon");
   pushLog(state, "Memory", memory.name);
@@ -661,7 +554,7 @@ export function startTrip(state: GameState, id: string, now: number): ActionResu
   if (!trip) return fail("Unknown");
   if (state.lifetime.hearts < trip.unlockLifetime) return fail("Not yet");
   if (state.buffs.some((b) => b.source === `trip:${id}`)) return fail("Already away");
-  if (!spendCurrency(state, "tide", trip.cost)) return fail("Not enough tide");
+  if (!spendCurrency(state, "keepsakes", trip.cost)) return fail("Not enough keepsakes");
 
   addBuff(state, {
     source: `trip:${id}`,
@@ -673,11 +566,6 @@ export function startTrip(state: GameState, id: string, now: number): ActionResu
   return done(trip.name);
 }
 
-export function setWater(state: GameState, id: string): ActionResult {
-  if (!(state.collections["waters"] ?? []).includes(id)) return fail("Not yours yet");
-  state.water = id;
-  return done();
-}
 
 /* ------------------------------------------------------------------ */
 /* Together                                                            */
@@ -711,8 +599,8 @@ export function grantTogether(state: GameState, action: TogetherAction, day: str
 
   state.togetherRewards.claimed.push(`${action}:${used}`);
   const derived = derive(state, now);
-  const tide = Math.max(1, Math.round(rule.tide * derived.mods.mul.tideGain));
-  addCurrency(state, "tide", tide);
+  const tide = Math.max(1, Math.round(rule.tide * derived.mods.mul.keepsakeGain));
+  addCurrency(state, "keepsakes", tide);
   state.tideLevel = Math.min(100, state.tideLevel + tide * 0.5);
 
   earnHearts(state, safe(Math.max(500, derived.heartsPerSecond * 120)), "together");
@@ -739,8 +627,8 @@ export function recordSameEvening(state: GameState, day: string, now: number): A
   state.togetherRewards.claimed.push("evening");
 
   const derived = derive(state, now);
-  const tide = Math.max(20, Math.round(35 * derived.mods.mul.tideGain));
-  addCurrency(state, "tide", tide);
+  const tide = Math.max(20, Math.round(35 * derived.mods.mul.keepsakeGain));
+  addCurrency(state, "keepsakes", tide);
   state.tideLevel = 100;
   state.storyProgress["evenings"] = (state.storyProgress["evenings"] ?? 0) + 1;
   recordMetric(state, "sameEvening", 1);
@@ -750,7 +638,7 @@ export function recordSameEvening(state: GameState, day: string, now: number): A
   addBuff(state, {
     source: "same_evening",
     label: "The same evening",
-    mods: { mul: { all: 2, crackValue: 1.5, collectValue: 1.5 } },
+    mods: { mul: { all: 2, petValue: 1.5 } },
     expiresAt: now + 3 * 3_600_000,
   });
   pushLog(state, "Together", "You are both here");
@@ -973,7 +861,7 @@ export function rerollMission(state: GameState, missionId: string, day: string):
   const def = MISSION_BY_ID[mission.defId];
   if (!def || def.period !== "daily") return fail("Only daily missions");
   if (mission.rerolled) return fail("Already rerolled today");
-  if (!spendCurrency(state, "pearls", 5)) return fail("Not enough pearls");
+  if (!spendCurrency(state, "ribbons", 5)) return fail("Not enough pearls");
 
   const taken = new Set(state.missions.map((m) => m.defId));
   const pool = MISSIONS.filter((m) => m.period === "daily" && !taken.has(m.id));
@@ -1007,7 +895,7 @@ export function startChallenge(state: GameState, id: string, now: number): Actio
     runHearts: state.runHearts,
     runStartedAt: state.runStartedAt,
     combo: state.combo,
-    vessel: state.vessel,
+    vessel: state.jar,
     slots: state.slots,
   });
 
@@ -1070,21 +958,25 @@ export function finishChallenge(state: GameState, now: number, abandon = false):
 /* ------------------------------------------------------------------ */
 
 /**
- * Put the chain back to how it looked on the first morning.
+ * Clear the shelf and go back to the first jar.
  *
- * Every rebirth calls this. Only the first tier is open, nothing is bought,
- * no deepening has happened and the jar is back to its ordinary speed. The
- * autobuyers keep their settings, because turning eight switches back on
- * after every rebirth is not a decision, it is a chore.
+ * Every rebirth calls this, and it is what makes a rebirth a rebirth: the
+ * shelf is the compounding part of the game, so a reset that left it standing
+ * would hand the next run its income back within seconds. That is exactly the
+ * bug the production chain had, and it produced a game that was over in twenty
+ * minutes.
+ *
+ * The sealed jars themselves are kept as a record, because they are the only
+ * thing in the save that says what the two of you have actually done, but they
+ * stop paying. The autobuyers keep their settings, since turning switches back
+ * on after every rebirth is a chore rather than a decision.
  */
-function resetChain(state: GameState): void {
-  for (let i = 0; i < state.depths.length; i++) {
-    state.depths[i].bought = 0;
-    state.depths[i].owned = 0;
-    state.depths[i].unlocked = i === 0;
-  }
-  state.deepens = 0;
-  state.tideBought = 0;
+function resetShelf(state: GameState): void {
+  state.sealed = [];
+  state.shelfHearts = 0;
+  state.shelfUpgrades = {};
+  state.jar = FIRST_JAR;
+  state.jarsUnlocked = [FIRST_JAR];
 }
 
 export function canChangeTide(state: GameState): boolean {
@@ -1126,9 +1018,6 @@ export function changeTide(state: GameState, now: number): ActionResult {
   state.combo = 0;
   state.comboExpiresAt = 0;
   state.buffs = state.buffs.filter((b) => b.source.startsWith("trip:"));
-  state.settled = [];
-  state.drifter = null;
-  state.vessel = "jam_jar";
 
   // The chain goes, and so does every deepening.
   //
@@ -1141,7 +1030,7 @@ export function changeTide(state: GameState, now: number): ActionResult {
   //
   // Clearing the chain is what makes a life have a shape. You rebuild it each
   // time, faster than the last, which is the entire pleasure of the genre.
-  resetChain(state);
+  resetShelf(state);
 
   leaveGift(state, state.owner, now);
   if (state.tideChanges >= 50) grantCollectible(state, "waters", "dawn");
@@ -1187,10 +1076,6 @@ export function changeWater(state: GameState, now: number): ActionResult {
   state.combo = 0;
   state.comboExpiresAt = 0;
   state.buffs = [];
-  state.settled = [];
-  state.drifter = null;
-  state.vessel = "jam_jar";
-  state.vesselsUnlocked = ["jam_jar"];
 
   if (!keepCreatures) {
     for (const creature of Object.values(state.creatures)) {
@@ -1217,7 +1102,7 @@ export function canLetGo(state: GameState): boolean {
 }
 
 export function seaPreview(state: GameState): number {
-  return dropGain(state, derive(state).mods.mul.dropGain);
+  return sunGain(state, derive(state).mods.mul.sunGain);
 }
 
 /**
@@ -1231,10 +1116,10 @@ export function seaPreview(state: GameState): number {
 export function letGo(state: GameState, now: number): ActionResult {
   if (state.newWaters < 3) return fail("Do three deep rebirths first");
   if (!canLetGo(state)) return fail("Not enough yet");
-  const drops = seaPreview(state);
-  if (drops <= 0) return fail("This one would not pay anything");
+  const suns = seaPreview(state);
+  if (suns <= 0) return fail("This one would not pay anything");
 
-  addCurrency(state, "drops", drops);
+  addCurrency(state, "suns", suns);
   state.seas += 1;
   recordMetric(state, "seas", 1);
 
@@ -1257,19 +1142,87 @@ export function letGo(state: GameState, now: number): ActionResult {
   state.combo = 0;
   state.comboExpiresAt = 0;
   state.buffs = [];
-  state.settled = [];
-  state.drifter = null;
-  state.vessel = "jam_jar";
-  state.vesselsUnlocked = ["jam_jar"];
-  state.tideBought = 0;
-  if (!keepDeepens) state.deepens = 0;
 
-  for (let i = 0; i < state.depths.length; i++) {
-    state.depths[i] = { bought: 0, owned: 0, unlocked: i === 0 };
+  pushLog(state, "Forever", `${suns} suns`);
+  return done(`${suns} suns. There was never a jar.`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Time dilation                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Dilation opens once you have let the sea go at least once.
+ *
+ * It is the only mechanic in the game that is worse than not having it until
+ * you have invested in it, so it sits behind the layer that proves you know
+ * what a reset is for.
+ */
+export function dilationUnlocked(state: GameState): boolean {
+  return state.seas >= 1;
+}
+
+/**
+ * Turn the jar down.
+ *
+ * Costs nothing and takes nothing away, which is deliberate: the price of
+ * dilation is that everything is slower while it is on, and adding a reset on
+ * top of that would make the first stretch feel like a punishment for reading
+ * the tooltip. Hearts already banked stay in the jar; they simply do not count
+ * toward what the stretch pays.
+ */
+export function enterDilation(state: GameState, now: number): ActionResult {
+  if (!dilationUnlocked(state)) return fail("Let the sea go first");
+  if (state.dilation.active) return fail("Already dilated");
+  state.dilation = { ...state.dilation, active: true, startedAt: now, hearts: 0 };
+  pushLog(state, "Dilation", "The jar slowed down");
+  return done("Everything is slower now. Keep going.");
+}
+
+export function dilationPreview(state: GameState): number {
+  return hourGain(state.dilation.hearts, state.dilation.runs, derive(state).mods.mul.hourGain);
+}
+
+/**
+ * Come back out, and be paid for how far you got.
+ *
+ * Leaving without reaching the bar is allowed and pays nothing. It has to be
+ * allowed: dilation can be entered before it is survivable, and a switch that
+ * will not turn off is a trap rather than a decision.
+ */
+export function leaveDilation(state: GameState, now: number): ActionResult {
+  if (!state.dilation.active) return fail("Not dilated");
+  const hours = dilationPreview(state);
+
+  state.dilation = {
+    active: false,
+    startedAt: now,
+    hearts: 0,
+    runs: hours > 0 ? state.dilation.runs + 1 : state.dilation.runs,
+  };
+
+  if (hours <= 0) return done("Back to normal speed. That stretch paid nothing.");
+  addCurrency(state, "hours", hours);
+  recordMetric(state, "dilations", 1);
+  pushLog(state, "Dilation", `${hours} hours`);
+  return done(`${hours} hours`);
+}
+
+export function buyDilationUpgrade(state: GameState, id: string): ActionResult {
+  const def = DILATION_UPGRADE_BY_ID[id];
+  if (!def) return fail("Unknown");
+  const level = state.dilationUpgrades[id] ?? 0;
+  if (level >= def.max) return fail("Already at maximum");
+  if (def.requires) {
+    const [needId, needLevel] = def.requires;
+    if ((state.dilationUpgrades[needId] ?? 0) < needLevel) {
+      return fail(`Needs ${DILATION_UPGRADE_BY_ID[needId]?.name ?? needId} first`);
+    }
   }
-
-  pushLog(state, "Last rebirth", `${drops} drops`);
-  return done(`${drops} drops. There was never a jar.`);
+  const cost = dilationUpgradeCost(def, level);
+  if (!spendCurrency(state, "hours", cost)) return fail("Not enough hours");
+  state.dilationUpgrades[id] = level + 1;
+  return done(`${def.name} is now level ${level + 1}`);
 }
 
 /**
@@ -1278,7 +1231,6 @@ export function letGo(state: GameState, now: number): ActionResult {
  * player would do by hand, at the first moment it is possible.
  */
 export function runDeepAutomation(state: GameState, now: number): void {
-  if (hasFlag(state, "auto_deepen") && canDeepen(state)) deepen(state);
   if (hasFlag(state, "auto_tide") && canChangeTide(state)) changeTide(state, now);
 }
 
@@ -1287,8 +1239,8 @@ export function buyResetUpgrade(state: GameState, id: string): ActionResult {
   if (!def) return fail("Unknown upgrade");
   const levels = MOON_UPGRADES.some((u) => u.id === id)
     ? state.moonUpgrades
-    : DROP_UPGRADES.some((u) => u.id === id)
-      ? state.dropUpgrades
+    : SUN_UPGRADES.some((u) => u.id === id)
+      ? state.sunUpgrades
       : state.starUpgrades;
   const owned = levels[id] ?? 0;
   if (owned >= def.max) return fail("Already at maximum");
@@ -1305,12 +1257,12 @@ export function buyResetUpgrade(state: GameState, id: string): ActionResult {
   return done(`${def.name} level ${owned + 1}`);
 }
 
-export function respec(state: GameState, layer: "moons" | "stars" | "drops"): ActionResult {
-  const defs = layer === "moons" ? MOON_UPGRADES : layer === "drops" ? DROP_UPGRADES : STAR_UPGRADES;
+export function respec(state: GameState, layer: "moons" | "stars" | "suns"): ActionResult {
+  const defs = layer === "moons" ? MOON_UPGRADES : layer === "suns" ? SUN_UPGRADES : STAR_UPGRADES;
   const levels = layer === "moons"
     ? state.moonUpgrades
-    : layer === "drops"
-      ? state.dropUpgrades
+    : layer === "suns"
+      ? state.sunUpgrades
       : state.starUpgrades;
   let refund = 0;
   for (const def of defs) {
@@ -1319,7 +1271,7 @@ export function respec(state: GameState, layer: "moons" | "stars" | "drops"): Ac
   }
   if (refund <= 0) return fail("Nothing to refund");
   if (layer === "moons") state.moonUpgrades = {};
-  else if (layer === "drops") state.dropUpgrades = {};
+  else if (layer === "suns") state.sunUpgrades = {};
   else state.starUpgrades = {};
   addCurrency(state, layer, Math.floor(refund * 0.9));
   return done(`Refunded ${Math.floor(refund * 0.9)}`);
@@ -1344,4 +1296,4 @@ export function freshState(person: Person): GameState {
   return createGameState(Date.now(), person);
 }
 
-export { LINE_OWNER, vesselIndex, VESSELS };
+export { LINE_OWNER, jarIndex, JARS };

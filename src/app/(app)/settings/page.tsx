@@ -9,6 +9,7 @@ import { Bell, Copy, Download, LogOut, ShieldCheck, Trash2 } from "lucide-react"
 import { supabase } from "@/lib/supabase";
 import { useCouple } from "@/lib/couple-context";
 import { signOutDevice } from "@/lib/pairing";
+import { idbWipe } from "@/lib/offline/db";
 import { compressImage, signedUrl, uploadMedia, validateUpload } from "@/lib/media";
 import { disablePush, enablePush, pushAvailableNow, pushStatus } from "@/lib/push";
 import { formatRelative } from "@/lib/format";
@@ -237,6 +238,9 @@ export default function SettingsPage() {
       await supabase().functions.invoke("couple-admin", { body: { action: "sign-out-everywhere" } });
     } finally {
       localStorage.removeItem("cj_device_id");
+      localStorage.removeItem("cj_person");
+      // The cached copy of everything lives in IndexedDB, not localStorage.
+      await idbWipe().catch(() => {});
       await supabase().auth.signOut();
       router.replace("/welcome");
     }
@@ -285,6 +289,7 @@ export default function SettingsPage() {
       if (error) throw new Error();
       if (data?.deleted) {
         localStorage.clear();
+        await idbWipe().catch(() => {});
         await supabase().auth.signOut();
         router.replace("/welcome");
       } else {

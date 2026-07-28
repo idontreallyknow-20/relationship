@@ -4,15 +4,20 @@ TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
   type UnlockRule, type UpgradeDef,
 } from "./config/upgrades";
 import {
-  DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
+  SUN_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
 } from "./config/resets";
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
-import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
+import { JAR_BY_ID, FIRST_JAR } from "./config/jars";
+import {
+  SHELF_UPGRADES, jarCapacity as capacityFor, ribbonGain, shelfIncome, type ShelfUpgradeDef,
+} from "./config/shelf";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
 import { combinedRebirths, jointReached } from "./config/together";
+import {
+  DILATION_UPGRADE_BY_ID, dilate, dilationPower, dilationUpgradeMods,
+} from "./config/dilation";
 import { featuresAt, stageFor } from "./config/stages";
 import { MEMORY_BY_ID } from "./config/memories";
-import { VESSEL_BY_ID } from "./config/vessels";
 import { CHALLENGE_BY_ID } from "./config/objectives";
 import { affordableLevels, bulkCost, safe, scale } from "./numbers";
 
@@ -25,19 +30,19 @@ const ADD_SET: Record<AddStat, true> = {
   comboCap: true, comboDurationMs: true, comboStart: true, comboShield: true,
   critChainChance: true, luck: true, offlineHours: true, capacity: true,
   creatureSlots: true, abilitySlots: true, startingUpgrades: true,
-  driftChance: true, freeUpgradeChance: true, autoTapsPerSecond: true,
-  extraDepths: true, autobuyerSpeed: true,
+  freeUpgradeChance: true, autoTapsPerSecond: true,
+  sealKeep: true, autoSeal: true, autobuyerSpeed: true,
 };
 
 const MUL_SET: Record<MulStat, true> = {
   all: true, click: true, cps: true, crit: true, megaCrit: true, comboGain: true,
-  comboPower: true, crackValue: true, crackSpeed: true,
-  collectValue: true, collectSpeed: true, pairBonus: true, creaturePower: true,
-  creatureXp: true, shellGain: true, glassGain: true, pearlGain: true,
-  tideGain: true, moonGain: true, starGain: true, offline: true, cost: true,
+  comboPower: true, petSpeed: true, petValue: true,
+  pairBonus: true, creaturePower: true, creatureXp: true,
+  ribbonGain: true, keepsakeGain: true, moonGain: true, starGain: true,
+  shelfRate: true, jarCapacity: true,
+  offline: true, cost: true,
   skillDuration: true, skillCooldown: true, missionReward: true,
-  driftReward: true, depthPower: true, tideSpeed: true, deepenGain: true,
-  dropGain: true,
+  sunGain: true, hourGain: true,
 };
 
 const ADD_KEYS = Object.keys(ADD_SET) as AddStat[];
@@ -73,8 +78,8 @@ export function hasFlag(state: GameState, flag: string): boolean {
   for (const def of STAR_UPGRADES) {
     if (def.flag === flag && (state.starUpgrades[def.id] ?? 0) > 0) return true;
   }
-  for (const def of DROP_UPGRADES) {
-    if (def.flag === flag && (state.dropUpgrades[def.id] ?? 0) > 0) return true;
+  for (const def of SUN_UPGRADES) {
+    if (def.flag === flag && (state.sunUpgrades[def.id] ?? 0) > 0) return true;
   }
   return false;
 }
@@ -84,7 +89,7 @@ export function meetsUnlock(state: GameState, rule: UnlockRule | undefined): boo
   if (rule.lifetimeHearts !== undefined && state.lifetime.hearts < rule.lifetimeHearts) return false;
   if (rule.tideChanges !== undefined && state.tideChanges < rule.tideChanges) return false;
   if (rule.newWaters !== undefined && state.newWaters < rule.newWaters) return false;
-  if (rule.vessel !== undefined && !state.vesselsUnlocked.includes(rule.vessel)) return false;
+  if (rule.jar !== undefined && !state.jarsUnlocked.includes(rule.jar)) return false;
   if (rule.upgrade) {
     const [id, level] = rule.upgrade;
     if ((state.upgrades[id] ?? 0) < level) return false;
@@ -168,22 +173,59 @@ export function fedFactor(creature: CreatureInstance): number {
 /* The one function everything else reads                              */
 /* ------------------------------------------------------------------ */
 
+
+/** A shelf upgrade's effect at a given level. Same three kinds as everywhere. */
+export function shelfUpgradeMods(def: ShelfUpgradeDef, level: number): Mods {
+  if (level <= 0) return {};
+  const stat = def.stat as AddStat | MulStat;
+  if (def.kind === "add") return { add: { [stat as AddStat]: def.per * level } };
+  if (def.kind === "mulLinear") return { mul: { [stat as MulStat]: 1 + def.per * level } };
+  return { mul: { [stat as MulStat]: Math.pow(1 + def.per, level) } };
+}
+
+/**
+ * What the pets carry over per second, all together.
+ *
+ * They used to work inside the jar: an otter cracked something open, the
+ * pieces sank, and a crab walked along the floor to pick them up. That was
+ * three mechanics to explain one number. Now each pet walks over on its own
+ * timer and drops a heart in, so what they are worth is simply how often they
+ * go times how much they carry.
+ */
+export function petIncome(state: GameState, bags: Bags): number {
+  const paired = heldHands(state);
+  let total = 0;
+  for (const creature of creaturesInJar(state)) {
+    const def = CREATURE_BY_ID[creature.defId];
+    if (!def) continue;
+    const every = Math.max(0.25, actionInterval(def, creature.level, bags.mul.petSpeed) / 1000);
+    const carried = def.power
+      * creatureScale(creature.level, creature.stars)
+      * fedFactor(creature)
+      * bags.mul.petValue
+      * bags.mul.creaturePower
+      * (paired.has(creature.id) ? bags.mul.pairBonus : 1);
+    total += carried / every;
+  }
+  return safe(total);
+}
+
 export function derive(state: GameState, now: number = Date.now()): Derived {
   const bags = emptyBags();
-  const vessel = VESSEL_BY_ID[state.vessel] ?? VESSEL_BY_ID["jam_jar"];
+  const jar = JAR_BY_ID[state.jar] ?? JAR_BY_ID[FIRST_JAR];
 
   bags.add.clickFlat = 1;
   bags.add.comboCap = 30;
   bags.add.comboDurationMs = 2_400;
   bags.add.critChance = 0.02;
   bags.add.offlineHours = 3;
-  bags.add.creatureSlots = vessel.slots;
+  bags.add.creatureSlots = jar.seats;
   bags.add.abilitySlots = 3;
-  bags.add.capacity = vessel.capacity === Infinity ? 1e300 : vessel.capacity;
+  bags.add.capacity = jar.capacity === Infinity ? 1e300 : jar.capacity;
   // The jar taps for you from the very first run. Upgrades make it quicker
   bags.add.autoTapsPerSecond = 1;
   bags.add.autobuyerSpeed = 1;
-  bags.add.extraDepths = 0;
+  bags.add.sealKeep = 0;
 
   for (const [id, level] of Object.entries(state.upgrades)) {
     const def = UPGRADE_BY_ID[id];
@@ -203,9 +245,13 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     const def = RESET_UPGRADE_BY_ID[id];
     if (def) apply(bags, resetUpgradeMods(def, level));
   }
-  for (const [id, level] of Object.entries(state.dropUpgrades)) {
+  for (const [id, level] of Object.entries(state.sunUpgrades)) {
     const def = RESET_UPGRADE_BY_ID[id];
     if (def) apply(bags, resetUpgradeMods(def, level));
+  }
+  for (const [id, level] of Object.entries(state.dilationUpgrades ?? {})) {
+    const def = DILATION_UPGRADE_BY_ID[id];
+    if (def) apply(bags, dilationUpgradeMods(def, level));
   }
 
   // Memories are permanent and personal.
@@ -214,7 +260,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     if (memory) apply(bags, memory.mods);
   }
 
-  apply(bags, vessel.mods);
+  apply(bags, jar.mods);
 
   // Creatures in the jar, each scaled by level, stars, trait, item and how
   // recently it was fed.
@@ -226,7 +272,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     apply(bags, TRAIT_BY_ID[creature.trait]?.mods);
     apply(bags, itemMods(state, creature.itemId));
     if (paired.has(creature.id)) {
-      apply(bags, { mul: { crackValue: 1.25, all: 1.03 } });
+      apply(bags, { mul: { petValue: 1.25, all: 1.03 } });
     }
   }
 
@@ -260,14 +306,10 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     apply(bags, meterMods(def, state.meters[def.id] ?? 0));
   }
 
-  // Every depth you own at least one of contributes its standing bonus.
-  for (let i = 0; i < state.depths.length && i < DEPTHS.length; i++) {
-    if (state.depths[i].owned > 0) apply(bags, DEPTHS[i].mods);
-  }
-
-  // Deepening pays a multiplier that survives everything below a rebirth.
-  if (state.deepens > 0) {
-    apply(bags, { mul: { depthPower: Math.pow(DEEPEN_MULTIPLIER, state.deepens) } });
+  // The shelf tree, bought with ribbons.
+  for (const def of SHELF_UPGRADES) {
+    const level = state.shelfUpgrades?.[def.id] ?? 0;
+    if (level > 0) apply(bags, shelfUpgradeMods(def, level));
   }
 
   if (state.activeChallenge) {
@@ -278,8 +320,11 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   // Clamps.
   bags.mul.cost = Math.max(0.1, bags.mul.cost);
   bags.mul.skillCooldown = Math.max(0.15, bags.mul.skillCooldown);
-  bags.mul.crackSpeed = Math.max(0.1, bags.mul.crackSpeed);
-  bags.mul.collectSpeed = Math.max(0.1, bags.mul.collectSpeed);
+  bags.mul.petSpeed = Math.max(0.1, bags.mul.petSpeed);
+  // A jar you can never fill is a loop you can never finish, and the shelf
+  // upgrade that shrinks capacity is uncapped.
+  bags.mul.jarCapacity = Math.max(0.05, bags.mul.jarCapacity);
+  bags.add.sealKeep = Math.min(0.9, Math.max(0, bags.add.sealKeep));
   bags.add.critChance = Math.min(1, Math.max(0, bags.add.critChance));
   bags.add.megaCritChance = Math.min(0.9, Math.max(0, bags.add.megaCritChance));
   bags.add.comboDurationMs = Math.max(500, bags.add.comboDurationMs);
@@ -289,33 +334,42 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   const global = bags.mul.all;
   const comboMultiplier = 1 + Math.min(state.combo, bags.add.comboCap) * 0.03 * bags.mul.comboPower;
 
-  // Passive output is the creatures plus whatever the trees add. Creatures
-  // are the larger share once the jar has anything in it.
-  const creatureOutput = creaturesInJar(state).reduce((sum, creature) => {
-    const def = CREATURE_BY_ID[creature.defId];
-    if (!def) return sum;
-    const per = def.power * creatureScale(creature.level, creature.stars) * fedFactor(creature);
-    const interval = actionInterval(
-      def,
-      creature.level,
-      def.line === "otter" ? bags.mul.crackSpeed : bags.mul.collectSpeed,
-    );
-    const value = def.line === "otter" ? bags.mul.crackValue : bags.mul.collectValue;
-    return sum + (per * value * bags.mul.creaturePower) / interval;
-  }, 0);
+  // Passive hearts come from two places, and both of them are things you can
+  // point at on the screen.
+  //
+  // The shelf pays a share of every heart ever sealed into it, which is what
+  // makes the run compound: income is proportional to what has been banked,
+  // and what gets banked is income times time. The pets carry hearts over one
+  // at a time, which is what makes the early game move before there is a shelf
+  // worth having.
+  //
+  // This used to be an eight tier chain where each tier produced the one above
+  // it, and it was the single largest reason nobody could say what the game
+  // was.
+  const stage = stageFor(state);
+  const jarCapacity = safe(
+    capacityFor(bags.add.capacity, state.shelfHearts ?? 0) * bags.mul.jarCapacity,
+  );
+  const shelfRate = bags.mul.shelfRate;
+  const shelfOutput = shelfIncome(state, shelfRate);
+  const petOutput = petIncome(state, bags);
 
-  // The chain. Depth one turns into hearts; every depth below turns into the
-  // one above it. `depthPower` and the tide speed apply at every rung, which
-  // is why a multiplier bought once is felt eight times over.
-  const stage = stageFor(state.lifetime.hearts);
-  const tideMul = tideSpeed(state.tideBought) * bags.mul.tideSpeed;
-  const depthPower = bags.mul.depthPower;
-  const surface = state.depths[0]?.owned ?? 0;
-  const chainOutput = surface * (DEPTHS[0]?.power ?? 1) * depthPower * tideMul;
+  // Time dilation, applied last of all.
+  //
+  // It has to be last, because it is an exponent rather than a factor: every
+  // multiplier above has to already be in the number before it is raised to a
+  // power, or dilating would penalise the base rate and leave the multipliers
+  // untouched, which is the opposite of what the layer is for.
+  const dilated = state.dilation?.active === true;
+  const power = dilationPower(state.dilationUpgrades ?? {});
+  const perClick = bags.add.clickFlat * bags.mul.click * global * comboMultiplier;
+  const perSecond = (bags.add.cpsFlat + petOutput) * bags.mul.cps * global + shelfOutput * global;
 
   return {
-    heartsPerClick: safe(bags.add.clickFlat * bags.mul.click * global * comboMultiplier),
-    heartsPerSecond: safe((bags.add.cpsFlat + creatureOutput + chainOutput) * bags.mul.cps * global),
+    heartsPerClick: safe(dilated ? dilate(perClick, power) : perClick),
+    heartsPerSecond: safe(dilated ? dilate(perSecond, power) : perSecond),
+    dilated,
+    dilationPower: power,
     critChance: bags.add.critChance,
     critMultiplier: safe(2 * bags.mul.crit),
     megaCritChance: bags.add.megaCritChance,
@@ -334,23 +388,21 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     abilitySlots: Math.min(9, Math.floor(bags.add.abilitySlots)),
     skillDuration: bags.mul.skillDuration,
     skillCooldown: bags.mul.skillCooldown,
-    crackValue: bags.mul.crackValue,
-    crackSpeed: bags.mul.crackSpeed,
-    collectValue: bags.mul.collectValue,
-    collectSpeed: bags.mul.collectSpeed,
+    petValue: bags.mul.petValue,
+    petSpeed: bags.mul.petSpeed,
     pairBonus: bags.mul.pairBonus,
     globalMultiplier: global,
     freeUpgradeChance: bags.add.freeUpgradeChance,
-    driftChance: bags.add.driftChance,
-    depth: vessel.depth,
-    floor: vessel.floor,
 
     stage,
     features: featuresAt(stage),
 
-    depthCount: maxDepthCount(Math.floor(bags.add.extraDepths)),
-    tideSpeedMultiplier: safe(tideMul),
-    depthPower: safe(depthPower),
+    shelfRate: safe(shelfRate),
+    shelfIncome: safe(shelfOutput * global),
+    jarCapacity: safe(jarCapacity),
+    sealKeep: bags.add.sealKeep,
+    autoSeal: bags.add.autoSeal > 0,
+    ribbonsIfSealed: ribbonGain(state.wallet.hearts, jarCapacity, bags.mul.ribbonGain),
     autoTapsPerSecond: safe(bags.add.autoTapsPerSecond),
       autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
 

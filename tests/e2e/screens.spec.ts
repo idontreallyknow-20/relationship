@@ -16,7 +16,8 @@ const screens: { path: string; name: string; expectText: string | RegExp }[] = [
   { path: "/memories", name: "memories", expectText: /memor/i },
   { path: "/plans", name: "plans", expectText: /calendar|plan|bucket/i },
   { path: "/location", name: "location", expectText: /location|share/i },
-  { path: "/us", name: "us", expectText: /Cami & Joseph/ },
+  // Whoever is reading comes first, so this is "Joseph & Cami" on his phone.
+  { path: "/us", name: "us", expectText: /Cami & Joseph|Joseph & Cami/ },
   { path: "/settings", name: "settings", expectText: /profile|Settings/i },
   { path: "/draw", name: "draw", expectText: /draw/i },
 ];

@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { Lock, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  TREES, UPGRADES, UPGRADE_BY_ID, nextEffectLabel, type Tree, type UpgradeDef,
+  TREES, UPGRADES, UPGRADE_BY_ID, nextEffectLabel, parentsOf, type Tree, type UpgradeDef,
 } from "@/game/config/upgrades";
 import { SKILLS, skillCost } from "@/game/config/skills";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
@@ -144,7 +144,7 @@ export function UpgradesTab() {
         />
       </div>
 
-      {view === "tree" && rows.length > 0 && <TreeGraph tree={tree} onDetail={setDetail} />}
+      {view === "tree" && <TreeGraph tree={tree} />}
 
       {view === "list" && (rows.length === 0 ? (
         <EmptyRow>Nothing here yet.</EmptyRow>
@@ -215,8 +215,8 @@ function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void 
   const toast = useToast();
   const owned = state.upgrades[def.id] ?? 0;
   const format = state.settings.numberFormat;
-  const grownFrom = def.after ? UPGRADE_BY_ID[def.after] : null;
-  const leadsTo = UPGRADES.filter((u) => u.after === def.id);
+  const grownFrom = parentsOf(def).map((id) => UPGRADE_BY_ID[id]).filter(Boolean);
+  const leadsTo = UPGRADES.filter((u) => parentsOf(u).includes(def.id));
 
   const atMax = def.max !== Infinity && owned >= def.max;
   const count = Math.max(1, resolveBuyCount(state, def, derived));
@@ -236,11 +236,13 @@ function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void 
           <Row label="Affordable" value={`${maxAffordable(state, def, derived)}`} />
         </dl>
 
-        {(grownFrom || leadsTo.length > 0) && (
+        {(grownFrom.length > 0 || leadsTo.length > 0) && (
           <div className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-xs text-berry-soft">
-            {grownFrom && <p>Grows out of {grownFrom.name}.</p>}
+            {grownFrom.length > 0 && (
+              <p>Grows out of {grownFrom.map((u) => u.name).join(" and ")}.</p>
+            )}
             {leadsTo.length > 0 && (
-              <p className={grownFrom ? "mt-1" : undefined}>
+              <p className={grownFrom.length > 0 ? "mt-1" : undefined}>
                 Leads to {leadsTo.map((u) => u.name).join(", ")}.
               </p>
             )}
@@ -311,7 +313,7 @@ export function AbilitiesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Abilities" hint={`${formatNumber(state.wallet.pearls, format)} pearls`}>
+      <Section title="Abilities" hint={`${formatNumber(state.wallet.ribbons, format)} pearls`}>
         <p className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-berry-soft">
           Pearls come out of shells the otters crack.
         </p>
@@ -335,7 +337,7 @@ export function AbilitiesTab() {
               </li>
             );
           }
-          const affordable = state.wallet.pearls >= cost && skill.level < def.maxLevel;
+          const affordable = state.wallet.ribbons >= cost && skill.level < def.maxLevel;
           return (
             <li key={def.id} className="rounded-card border border-line bg-white p-3.5 shadow-soft">
               <div className="flex items-start gap-2">

@@ -7,15 +7,22 @@ import type { Feature } from "./config/stages";
 
 export type Person = "cami" | "joseph";
 
+export interface DilationState {
+  active: boolean;
+  startedAt: number;
+  hearts: number;
+  /** How many stretches have been finished, which sets the bar for the next. */
+  runs: number;
+}
+
 export type CurrencyId =
   | "hearts"
-  | "pearls"
-  | "shells"
-  | "glass"
-  | "tide"
+  | "ribbons"
+  | "keepsakes"
   | "moons"
   | "stars"
-  | "drops";
+  | "suns"
+  | "hours";
 
 /** Stats that contributors add to. Sums across every source. */
 export type AddStat =
@@ -34,11 +41,12 @@ export type AddStat =
   | "creatureSlots"
   | "abilitySlots"
   | "startingUpgrades"
-  | "driftChance"
   | "freeUpgradeChance"
-  // Automation and the depth chain.
+  // The shelf.
+  | "sealKeep"
+  | "autoSeal"
+  // Automation.
   | "autoTapsPerSecond"
-  | "extraDepths"
   | "autobuyerSpeed";
 
 /** Stats that contributors multiply. Products across every source. */
@@ -50,33 +58,28 @@ export type MulStat =
   | "megaCrit"
   | "comboGain"
   | "comboPower"
-  // The two creature lines.
-  | "crackValue"
-  | "crackSpeed"
-  | "collectValue"
-  | "collectSpeed"
+  // The pets, who now sit around the jar rather than inside it.
+  | "petSpeed"
+  | "petValue"
   | "pairBonus"
   | "creaturePower"
   | "creatureXp"
   // Currencies.
-  | "shellGain"
-  | "glassGain"
-  | "pearlGain"
-  | "tideGain"
+  | "ribbonGain"
+  | "keepsakeGain"
   | "moonGain"
   | "starGain"
+  // The jar and the shelf.
+  | "shelfRate"
+  | "jarCapacity"
   // Everything else.
   | "offline"
   | "cost"
   | "skillDuration"
   | "skillCooldown"
   | "missionReward"
-  | "driftReward"
-  // The depth chain.
-  | "depthPower"
-  | "tideSpeed"
-  | "deepenGain"
-  | "dropGain";
+  | "sunGain"
+  | "hourGain";
 
 export interface Mods {
   add?: Partial<Record<AddStat, number>>;
@@ -120,26 +123,16 @@ export interface ItemInstance {
 
 export type ItemRarity = "plain" | "smooth" | "banded" | "opaline" | "moonstone";
 
-/** Something an otter cracked open, sinking toward the floor. */
-export interface Settled {
-  id: string;
-  kind: "shell" | "glass" | "pearl";
-  x: number;
-  /** 0 at the surface, 1 on the floor. */
-  y: number;
-  value: number;
-  droppedAt: number;
-}
-
-/** Something that floated in and needs tapping open. */
-export interface Drifter {
-  defId: string;
-  id: string;
-  taps: number;
-  tapsDone: number;
-  x: number;
-  y: number;
-  arrivedAt: number;
+/**
+ * A jar that was filled, sealed and put on the shelf.
+ *
+ * It keeps paying a share of what was in it, forever, which is why sealing
+ * never destroys anything: the hearts are moved rather than spent.
+ */
+export interface SealedJar {
+  jarId: string;
+  hearts: number;
+  at: number;
 }
 
 export interface SkillState {
@@ -182,20 +175,6 @@ export interface RewardLogEntry {
   detail: string;
 }
 
-/**
- * One rung of the chain.
- *
- * `bought` is what you paid for and drives the price of the next one.
- * `owned` is what is actually down there producing, and includes everything
- * the depth below has made for you. They diverge on purpose: production is
- * free, and only buying makes the next one dearer.
- */
-export interface DepthState {
-  bought: number;
-  owned: number;
-  unlocked: boolean;
-}
-
 /** The jar playing itself. */
 export interface AutoState {
   /** Tap on your behalf. */
@@ -204,7 +183,7 @@ export interface AutoState {
   tapCredit: number;
 }
 
-/** One autobuyer. `target` is a depth id, "tide", or a reset rung id. */
+/** One autobuyer. `target` names what it buys. */
 export interface AutobuyerState {
   on: boolean;
   /** Buy as many as affordable rather than one at a time. */
@@ -242,16 +221,15 @@ export interface GameStats {
   heartsFromCreatures: number;
   heartsFromOffline: number;
   heartsFromTogether: number;
-  heartsFromDrifters: number;
-  cracks: number;
-  collects: number;
-  driftersOpened: number;
+  heartsFromShelf: number;
+  petDrops: number;
+  jarsSealed: number;
   upgradesBought: number;
   skillsUsed: number;
   creaturesArrived: number;
   creaturesEvolved: number;
   itemsMade: number;
-  vesselsUnlocked: number;
+  jarsUnlocked: number;
   challengesCompleted: number;
   missionsCompleted: number;
   achievementsUnlocked: number;
@@ -276,9 +254,6 @@ export interface GameSettings {
   numberFormat: "short" | "scientific" | "engineering" | "full";
   confirmRareSpends: boolean;
   buyAmount: 1 | 10 | 25 | 100 | "max";
-  /** Kept apart from `buyAmount`: the chain wants max, upgrade lists rarely do. */
-  depthBuyAmount: 1 | 10 | 100 | "max";
-  drifters: boolean;
   autoSkills: boolean;
   tutorialDone: boolean;
 }
@@ -318,29 +293,34 @@ export interface GameState {
   slots: (string | null)[];
   codex: string[];
 
-  /** The chain, surface first. Grows as the drop tree extends it. */
-  depths: DepthState[];
-  /** How many times the jar has been deepened, and the multiplier it bought. */
-  deepens: number;
-  /** Purchases of Tide, which is the speed of every depth at once. */
-  tideBought: number;
+  /** Every jar filled and put away, and what is banked across all of them. */
+  sealed: SealedJar[];
+  shelfHearts: number;
+  shelfUpgrades: Record<string, number>;
 
-  /** Resets of the fourth rung, and the tree it pays for. */
+  /** Resets of the third rung, Forever, and the tree it pays for. */
   seas: number;
   seaHearts: number;
   seaStartedAt: number;
-  dropUpgrades: Record<string, number>;
+  sunUpgrades: Record<string, number>;
+
+  /**
+   * Time dilation: the jar running slowly on purpose.
+   *
+   * `active` is the switch, `hearts` is what this dilated stretch has earned
+   * so far, and `startedAt` is when it began. All three live in the save
+   * because a dilated run has to survive being closed, and the whole point of
+   * the layer is that it takes a long time.
+   */
+  dilation: DilationState;
+  dilationUpgrades: Record<string, number>;
 
   auto: AutoState;
   autobuyers: Record<string, AutobuyerState>;
 
-  vessel: string;
-  vesselsUnlocked: string[];
-  /** Which of the unlocked water colours the jar is filled with. */
-  water: string;
-
-  settled: Settled[];
-  drifter: Drifter | null;
+  /** The jar being filled, and every jar unlocked so far. */
+  jar: string;
+  jarsUnlocked: string[];
 
   challenges: Record<string, { completed: number; best: number }>;
   activeChallenge: ChallengeRun | null;
@@ -351,9 +331,17 @@ export interface GameState {
   achievements: Record<string, { tier: number; at: number }>;
   collections: Record<string, string[]>;
 
-  /** Love meters, by id, 0 to 100. They fill from the rest of the app. */
   /** The highest stage whose arrival has been shown to the player. */
   stageSeen: number;
+  /**
+   * The highest stage actually reached. A high-water mark rather than a
+   * function of the current state, because a rebirth wipes the chain and the
+   * deepenings that two of the rungs ask for, and a game that takes a feature
+   * back is worse than one that gave it too early.
+   */
+  stageReached: number;
+  /** When the mark last moved, so reveals cannot arrive on top of each other. */
+  stageAt: number;
 
   meters: Record<string, number>;
   /** When each meter was last brought up to date, for decay. */
@@ -386,6 +374,10 @@ export interface GameState {
 export interface Derived {
   heartsPerClick: number;
   heartsPerSecond: number;
+  /** True while the jar is deliberately running slowly. */
+  dilated: boolean;
+  /** The exponent dilation applies, whether or not it is switched on. */
+  dilationPower: number;
   critChance: number;
   critMultiplier: number;
   megaCritChance: number;
@@ -404,28 +396,28 @@ export interface Derived {
   abilitySlots: number;
   skillDuration: number;
   skillCooldown: number;
-  crackValue: number;
-  crackSpeed: number;
-  collectValue: number;
-  collectSpeed: number;
+  petSpeed: number;
+  petValue: number;
   pairBonus: number;
   globalMultiplier: number;
   freeUpgradeChance: number;
-  driftChance: number;
-  /** Water depth and floor width of the current vessel. */
-  depth: number;
-  floor: number;
 
   /** How far the game has been revealed, and what that means is on screen. */
   stage: number;
   features: Set<Feature>;
 
-  /** How many depths are playable right now. */
-  depthCount: number;
-  /** Speed multiplier every depth is running at. */
-  tideSpeedMultiplier: number;
-  /** Output multiplier from deepenings, the drop tree and everything else. */
-  depthPower: number;
+  /** What one heart on the shelf pays per second, after every multiplier. */
+  shelfRate: number;
+  /** What the shelf is paying per second in total. */
+  shelfIncome: number;
+  /** Hearts this jar holds before it is full, after every multiplier. */
+  jarCapacity: number;
+  /** How much of a sealed jar is left behind rather than banked, 0 to 1. */
+  sealKeep: number;
+  /** A full jar seals itself. */
+  autoSeal: boolean;
+  /** Ribbons the next seal would pay. */
+  ribbonsIfSealed: number;
   /** Taps a second the jar makes for you. */
   autoTapsPerSecond: number;
   /** How often an autobuyer may fire, in milliseconds. */

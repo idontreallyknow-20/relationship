@@ -14,7 +14,7 @@ import { AlreadyAppliedError, enqueue, PermanentOpError, registerOp } from "@/li
 import { isTransportError } from "@/lib/offline/net";
 import type { Person } from "@/lib/types";
 import type { GameState } from "./types";
-import { migrateSave, SAVE_VERSION } from "./state";
+import { migrateSave, RESET_SAVES_BEFORE, SAVE_VERSION } from "./state";
 import { applyLegacy } from "./actions";
 
 const localKey = (person: Person) => `game:${person}`;
@@ -82,6 +82,12 @@ export async function loadBothSaves(): Promise<ServerSave[]> {
   return (data ?? []) as ServerSave[];
 }
 
+/** True when this server row predates the reset and has nothing to offer. */
+function serverIsStale(server: ServerSave): boolean {
+  const version = (server.state as { version?: number } | null)?.version ?? 0;
+  return version < RESET_SAVES_BEFORE;
+}
+
 /**
  * Pick between the local save and the server save.
  *
@@ -89,12 +95,29 @@ export async function loadBothSaves(): Promise<ServerSave[]> {
  * more life". Permanent counters are then floored to the larger of the two.
  */
 export function reconcile(local: GameState | null, server: ServerSave | null, person: Person): GameState | null {
+  // A row written before the reset is not a save any more, whatever its
+  // columns say. Discarding it here as well as in `migrateSave` matters,
+  // because the high water marks below are read from the columns rather than
+  // from the state, and would otherwise hand back the very numbers the reset
+  // exists to remove.
+  if (server && serverIsStale(server)) server = null;
+
   if (!local && !server) return null;
   if (!local) return migrateSave(server!.state, person);
   if (!server) return local;
 
   const serverState = migrateSave(server.state, person);
   const chosen = Number(server.lifetime_hearts) > local.lifetime.hearts ? serverState : local;
+
+  // Settings belong to this device, not to the save.
+  //
+  // Whichever save wins takes its settings with it, and that is wrong for every
+  // field in there: reduced motion, sound, haptics, battery saver and the
+  // number format are all statements about the phone in your hand, not about
+  // the jar. `tutorialDone` is the one that shows: a server save arriving with
+  // a higher lifetime total would replay the first-run tour on a device that
+  // had already finished it, which is exactly how it was found.
+  if (chosen !== local) chosen.settings = { ...local.settings };
 
   chosen.lifetime.hearts = Math.max(chosen.lifetime.hearts, Number(server.lifetime_hearts) || 0);
   chosen.tideChanges = Math.max(chosen.tideChanges, Number(server.tide_changes) || 0);

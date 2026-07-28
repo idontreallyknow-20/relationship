@@ -112,15 +112,28 @@ function Drops({ className, color }: GlyphProps) {
   );
 }
 
+function Hours({ className, color }: GlyphProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {/* An hourglass, most of the sand already through. */}
+      <path d="M6.5 3h11a1 1 0 0 1 .8 1.6L13.3 12l5 7.4a1 1 0 0 1-.8 1.6h-11a1 1 0 0 1-.8-1.6l5-7.4-5-7.4A1 1 0 0 1 6.5 3z" fill={color} />
+      <path d="M9 18.4c.9-1.4 1.9-2.3 3-2.3s2.1.9 3 2.3z" fill="#fff" opacity="0.45" />
+      <circle cx="12" cy="9.4" r="1" fill="#fff" opacity="0.5" />
+    </svg>
+  );
+}
+
 const GLYPHS: Record<CurrencyId, (props: GlyphProps) => React.ReactElement> = {
   hearts: Hearts,
-  pearls: Pearls,
-  shells: Shells,
-  glass: Glass,
-  tide: Tide,
+  // Ribbons reuse the shell drawing: a sealed jar's lid ring is closer to a
+  // shell than to anything else already drawn, and one new glyph is cheaper
+  // than one wrong one.
+  ribbons: Shells,
+  keepsakes: Tide,
   moons: Moons,
   stars: Stars,
-  drops: Drops,
+  suns: Drops,
+  hours: Hours,
 };
 
 export function CurrencyIcon({ currency, className = "h-4 w-4" }: {

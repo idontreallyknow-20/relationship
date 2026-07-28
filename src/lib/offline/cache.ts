@@ -67,16 +67,31 @@ export async function settled<T extends { error: unknown }>(
     // leave a request neither resolving nor rejecting. Without a deadline the
     // caller waits on it forever, which on a screen that gates its render is
     // an app stuck on a spinner with no way out.
-    return await Promise.race([
+    const result = await Promise.race([
       query,
       new Promise<{ data: null; error: unknown; count: null }>((resolve) => {
         timer = setTimeout(
-          () => resolve({ data: null, error: new Error("timed out"), count: null }),
+          // "timed out", not "timeout", used to be the whole bug: this is the
+          // only place a deadline error is minted, and `isTransportError`
+          // matches on the substring "timeout", which "timed out" does not
+          // contain. A hung socket therefore looked like an ordinary failure.
+          () => resolve({ data: null, error: new Error("Request timeout"), count: null }),
           timeoutMs,
         );
       }),
     ]);
+    // And say so. `settled` is the only path that can produce a deadline, and
+    // it never told the network watcher anything, so a dead socket left
+    // `useOnline()` returning true: no sync badge, no offline notice, and the
+    // outbox draining into nothing while the user was told all was well.
+    if (result.error) {
+      if (isTransportError(result.error)) reportOffline();
+    } else {
+      reportOnline();
+    }
+    return result;
   } catch (error) {
+    if (isTransportError(error)) reportOffline();
     return { data: null, error, count: null };
   } finally {
     if (timer) clearTimeout(timer);

@@ -58,21 +58,27 @@ function MoodsScreen() {
         .gte("created_at", signalsSince)
         .order("created_at", { ascending: false })),
     ]);
+    const cached = (await readCache<{ entries: MoodEntry[]; signals: Signal[] }>(CACHE_KEY))?.data ?? null;
     if (moodsRes.error && signalsRes.error) {
       // Both failed, so show the last thing we saw rather than an empty page.
-      const cached = await readCache<{ entries: MoodEntry[]; signals: Signal[] }>(CACHE_KEY);
       if (cached) {
-        setEntries(cached.data.entries);
-        setSignals(cached.data.signals);
+        setEntries(cached.entries);
+        setSignals(cached.signals);
       }
       setLoading(false);
       return;
     }
-    const nextEntries = (moodsRes.error ? [] : (moodsRes.data ?? [])) as MoodEntry[];
-    const nextSignals = (signalsRes.error ? [] : (signalsRes.data ?? [])) as Signal[];
+    // A failed half keeps what it had rather than being read as "none".
+    // Substituting an empty array and then writing that to the cache meant one
+    // timed-out request destroyed the good copy behind it, and the next open
+    // with no connection showed an empty page for good.
+    const nextEntries = (moodsRes.error ? cached?.entries ?? [] : (moodsRes.data ?? [])) as MoodEntry[];
+    const nextSignals = (signalsRes.error ? cached?.signals ?? [] : (signalsRes.data ?? [])) as Signal[];
     setEntries(nextEntries);
     setSignals(nextSignals);
-    void writeCache(CACHE_KEY, { entries: nextEntries, signals: nextSignals });
+    if (!moodsRes.error && !signalsRes.error) {
+      void writeCache(CACHE_KEY, { entries: nextEntries, signals: nextSignals });
+    }
     setLoading(false);
   }, []);
 

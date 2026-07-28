@@ -6,9 +6,9 @@ import type { UnlockRule } from "./upgrades";
 
 export type InstantEffect =
   | "heart_burst"
-  | "crack_all"
-  | "collect_all"
-  | "spawn_drifter"
+  | "everyone_at_once"
+  | "top_it_up"
+  | "seal_it"
   | "reset_cooldowns"
   | "max_combo"
   | "feed_all"
@@ -42,17 +42,17 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: "feeding_frenzy",
-    name: "Feeding Frenzy",
-    description: "Every otter cracks at once.",
-    effect: { kind: "instant", instant: "crack_all", power: (l) => 3 + l * 0.5 },
+    name: "All At Once",
+    description: "Everyone makes the trip at once.",
+    effect: { kind: "instant", instant: "everyone_at_once", power: (l) => 3 + l * 0.5 },
     cooldownMs: 150_000, durationMs: 0, maxLevel: 25, costBase: 2, costGrowth: 1.42,
     unlock: { lifetimeHearts: 20_000 }, flourish: "surge", autoLevel: 12,
   },
   {
     id: "low_tide",
-    name: "Low Tide",
-    description: "The floor empties. Every crab collects everything at once.",
-    effect: { kind: "instant", instant: "collect_all", power: (l) => 2 + l * 0.4 },
+    name: "Top It Up",
+    description: "A minute of the shelf, poured straight in.",
+    effect: { kind: "instant", instant: "top_it_up", power: (l) => 2 + l * 0.4 },
     cooldownMs: 150_000, durationMs: 0, maxLevel: 25, costBase: 2, costGrowth: 1.42,
     unlock: { lifetimeHearts: 20_000 }, flourish: "still", autoLevel: 12,
   },
@@ -60,7 +60,7 @@ export const SKILLS: SkillDef[] = [
     id: "quickening",
     name: "Quickening",
     description: "Everything in the jar moves at double speed.",
-    effect: { kind: "buff", mods: (l) => ({ mul: { crackSpeed: 2 + 0.1 * l, collectSpeed: 2 + 0.1 * l } }) },
+    effect: { kind: "buff", mods: (l) => ({ mul: { petSpeed: 2 + 0.1 * l } }) },
     cooldownMs: 180_000, durationMs: 25_000, maxLevel: 20, costBase: 3, costGrowth: 1.45,
     unlock: { lifetimeHearts: 250_000 }, flourish: "surge", autoLevel: 12,
   },
@@ -108,7 +108,7 @@ export const SKILLS: SkillDef[] = [
     id: "something_drifts_in",
     name: "Something Drifts In",
     description: "Calls in whatever is passing.",
-    effect: { kind: "instant", instant: "spawn_drifter", power: (l) => 1 + Math.floor(l / 6) },
+    effect: { kind: "instant", instant: "seal_it", power: (l) => 1 + Math.floor(l / 6) },
     cooldownMs: 300_000, durationMs: 0, maxLevel: 15, costBase: 4, costGrowth: 1.5,
     unlock: { lifetimeHearts: 5e7 }, flourish: "calm", autoLevel: 10,
   },
@@ -116,7 +116,7 @@ export const SKILLS: SkillDef[] = [
     id: "spring_tide",
     name: "Spring Tide",
     description: "Tide rises for both of you, fast.",
-    effect: { kind: "buff", mods: (l) => ({ mul: { tideGain: 3 + 0.3 * l, all: 1.5 } }) },
+    effect: { kind: "buff", mods: (l) => ({ mul: { keepsakeGain: 3 + 0.3 * l, all: 1.5 } }) },
     cooldownMs: 420_000, durationMs: 45_000, maxLevel: 20, costBase: 6, costGrowth: 1.55,
     unlock: { lifetimeHearts: 1e8 }, flourish: "swell", autoLevel: 12,
   },
