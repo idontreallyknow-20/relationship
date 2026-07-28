@@ -99,31 +99,54 @@ export default function HomePage() {
     // Every one of these can fail together when there is no connection, in
     // which case the dashboard shows the last state it saw rather than blank
     // cards. Home is read-only, so a stale copy is always safe.
+    const cached = (await readCache<HomeData>(CACHE_KEY))?.data ?? null;
     if (moods.error && msgs.error && dq.error) {
-      const cached = await readCache<HomeData>(CACHE_KEY);
-      if (cached) setData(cached.data);
+      if (cached) setData(cached);
       return;
     }
 
+    // A query that failed keeps whatever was last known, rather than being
+    // read as an empty answer.
+    //
+    // This used to substitute `[]` and `null` for any single failed query and
+    // then write the result to the cache, so one timed-out request while the
+    // others succeeded both blanked that card and destroyed the good copy
+    // behind it. The next open with no connection then showed nothing, and
+    // kept showing nothing until a fully successful load happened to occur.
+    const failed = Boolean(
+      moods.error || msgs.error || unreadRes.error || dq.error || locations.error || signals.error,
+    );
+
     const next: HomeData = {
-      myMood: activeMood(moodRows, me.person, false),
-      partnerMood: activeMood(moodRows, partnerPerson, true),
-      lastMessage: (msgs.data?.[0] as Message | undefined) ?? null,
-      unread: unreadRes.count ?? 0,
-      todayQuestion: dqRow
-        ? {
-            ...dqRow,
-            question: dqRow.questions,
-            myAnswered: dqRow.answers.some((a) => a.person === me.person),
-            bothAnswered: dqRow.answers.length >= 2,
-          }
-        : null,
-      mySharing: (locations.data ?? []).some((l) => l.person === me.person),
-      partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
-      recentSignals: (signals.data ?? []) as Signal[],
+      myMood: moods.error && cached ? cached.myMood : activeMood(moodRows, me.person, false),
+      partnerMood: moods.error && cached ? cached.partnerMood : activeMood(moodRows, partnerPerson, true),
+      lastMessage: msgs.error && cached
+        ? cached.lastMessage
+        : (msgs.data?.[0] as Message | undefined) ?? null,
+      unread: unreadRes.error && cached ? cached.unread : unreadRes.count ?? 0,
+      todayQuestion: dq.error && cached
+        ? cached.todayQuestion
+        : dqRow
+          ? {
+              ...dqRow,
+              question: dqRow.questions,
+              myAnswered: (dqRow.answers ?? []).some((a) => a.person === me.person),
+              bothAnswered: (dqRow.answers ?? []).length >= 2,
+            }
+          : null,
+      mySharing: locations.error && cached
+        ? cached.mySharing
+        : (locations.data ?? []).some((l) => l.person === me.person),
+      partnerSharing: locations.error && cached
+        ? cached.partnerSharing
+        : (locations.data ?? []).some((l) => l.person === partnerPerson),
+      recentSignals: signals.error && cached
+        ? cached.recentSignals
+        : (signals.data ?? []) as Signal[],
     };
     setData(next);
-    void writeCache(CACHE_KEY, next);
+    // Only a complete answer is worth remembering.
+    if (!failed) void writeCache(CACHE_KEY, next);
   }, [me.person, partnerPerson, couple.timezone]);
 
   useEffect(() => {
@@ -157,10 +180,19 @@ export default function HomePage() {
     setSendingThought(false);
   };
 
+  // Only theirs.
+  //
+  // This had no `from_person` filter, so "Felt it" acknowledged every
+  // unacknowledged signal in the table, including the ones you had just sent
+  // and your partner had not seen yet. Tapping it on one phone quietly cleared
+  // a thinking-of-you off the other one before it was ever read. The query
+  // that puts these on screen has always been scoped to the partner; the write
+  // that clears them was not.
   const acknowledgeAll = async () => {
     await supabase()
       .from("signals")
       .update({ acknowledged_at: new Date().toISOString() })
+      .eq("from_person", partnerPerson)
       .is("acknowledged_at", null);
     void load();
   };

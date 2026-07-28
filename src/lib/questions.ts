@@ -9,7 +9,7 @@
 
 import { supabase } from "./supabase";
 import { addDays, deviceZone, todayIn } from "./day";
-import { patchCache, readCache, writeCache } from "./offline/cache";
+import { patchCache, readCache, settled, writeCache } from "./offline/cache";
 import {
   AlreadyAppliedError, PermanentOpError, enqueue, pendingOps, registerOp,
 } from "./offline/outbox";
@@ -136,20 +136,28 @@ export async function loadBundle(person: Person, timezone: string): Promise<Ques
   const sb = supabase();
   const today = todayIn(timezone);
 
+  // Every one of these goes through `settled`.
+  //
+  // This was a bare `Promise.all` of seven raw queries, which made Questions
+  // the one screen fully on the caching framework and the one screen the eight
+  // second deadline did not protect. A request that neither resolves nor
+  // rejects (a dead socket, a captive portal) left the page on `loading`
+  // forever with no cached copy shown and no error: exactly the failure the
+  // rest of this layer exists to prevent.
   const [todayRes, histRes, favRes, questionsRes, packsRes, statsRes, milestonesRes] =
     await Promise.all([
-      sb.from("daily_questions").select("*, question:questions(*)").eq("for_date", today).maybeSingle(),
-      sb
+      settled(sb.from("daily_questions").select("*, question:questions(*)").eq("for_date", today).maybeSingle()),
+      settled(sb
         .from("daily_questions")
         .select("*, question:questions(*)")
         .lt("for_date", today)
         .order("for_date", { ascending: false })
-        .limit(120),
-      sb.from("question_favorites").select("question_id, person"),
-      sb.from("questions").select("*").eq("active", true).order("created_at", { ascending: false }),
-      sb.from("question_packs").select("*").order("created_at", { ascending: false }),
-      sb.rpc("question_stats", { p_today: today }),
-      sb.from("question_milestones").select("*").order("reached_on", { ascending: false }),
+        .limit(120)),
+      settled(sb.from("question_favorites").select("question_id, person")),
+      settled(sb.from("questions").select("*").eq("active", true).order("created_at", { ascending: false })),
+      settled(sb.from("question_packs").select("*").order("created_at", { ascending: false })),
+      settled(sb.rpc("question_stats", { p_today: today })),
+      settled(sb.from("question_milestones").select("*").order("reached_on", { ascending: false })),
     ]);
 
   for (const res of [todayRes, histRes, favRes, questionsRes]) {

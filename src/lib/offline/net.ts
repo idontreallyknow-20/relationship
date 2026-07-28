@@ -44,13 +44,26 @@ export function reportOnline(): void {
  * treated as "offline", otherwise we would retry it forever.
  */
 export function isTransportError(error: unknown): boolean {
-  if (!online) return true;
   if (!error) return false;
+  // Being offline is not a reason to call everything a transport error.
+  //
+  // This used to short-circuit to true whenever the flag was down, which meant
+  // that once the app believed it was offline, a real server rejection (an RLS
+  // denial, a constraint violation) was classified as retryable. The outbox
+  // breaks its drain on a transport error, so a permanently rejected operation
+  // at the head of the queue blocked everything behind it forever, with the
+  // flag it depended on only clearable by some unrelated request succeeding.
+  //
+  // The flag still counts, but as a tiebreaker for errors that carry nothing
+  // to judge them by, not as an override of the ones that do.
   if (error instanceof TypeError) return true;
   const e = error as { message?: string; code?: string; name?: string };
   if (e.name === "AbortError") return true;
+  // A PostgREST error always carries a code; something with neither a code nor
+  // a message came from the transport, and if we already believe we are
+  // offline that is the likeliest reading.
   const message = (e.message ?? "").toLowerCase();
-  if (!message) return false;
+  if (!message) return !online || e.code === undefined;
   return (
     message.includes("failed to fetch") ||
     message.includes("networkerror") ||

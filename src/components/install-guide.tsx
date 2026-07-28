@@ -31,7 +31,14 @@ export function isEmbeddedBrowser(): boolean {
   );
 }
 
-export function InstallGuide({ person, onDone }: { person: Person; onDone?: () => void }) {
+/**
+ * `person` is null before pairing, when the guide is shown to explain how to
+ * move out of an embedded browser and nobody has said who they are yet. Push
+ * cannot be enabled without one, because `enablePush` writes it to the
+ * subscription row; the invite page used to pass "cami" outright rather than
+ * admit it did not know.
+ */
+export function InstallGuide({ person, onDone }: { person: Person | null; onDone?: () => void }) {
   const [installed, setInstalled] = useState(false);
   const [notifState, setNotifState] = useState<string>("default");
 
@@ -136,7 +143,7 @@ export function InstallGuide({ person, onDone }: { person: Person; onDone?: () =
             Get a gentle nudge for new messages, letters, and thinking-of-you
             moments. Nothing private ever shows on your lock screen.
           </p>
-          {pushAvailableNow() ? (
+          {pushAvailableNow() && person ? (
             <Button
               onClick={async () => {
                 const ok = await enablePush(person);

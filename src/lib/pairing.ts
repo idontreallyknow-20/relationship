@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { idbWipe } from "./offline/db";
 import type { Person } from "./types";
 
 const DEVICE_KEY = "cj_device_id";
@@ -128,7 +129,18 @@ export function pairingErrorMessage(code: string): string {
   }
 }
 
-/** Sign out this device and mark it revoked so it disappears from the list. */
+/**
+ * Sign out this device and mark it revoked so it disappears from the list.
+ *
+ * The wipe is the point, not tidiness. This used to clear two localStorage keys
+ * and the Supabase session and stop, leaving the whole IndexedDB read cache
+ * sitting on the device: messages, memories, letters, moods, plans and the game
+ * save, all under keys like "chat:messages" that are not scoped to a person and
+ * so would have been read straight back by whoever signed in next. `idbWipe`
+ * was written for exactly this, documented as "used when a device signs out",
+ * and had no callers anywhere. Revoking a lost or stolen phone is the whole
+ * reason the feature exists.
+ */
 export async function signOutDevice(): Promise<void> {
   const deviceId = storedDeviceId();
   try {
@@ -137,6 +149,9 @@ export async function signOutDevice(): Promise<void> {
     }
   } finally {
     localStorage.removeItem(DEVICE_KEY);
+    localStorage.removeItem(PERSON_KEY);
+    // Best effort: a device with no IndexedDB must still be able to sign out.
+    await idbWipe().catch(() => {});
     await supabase().auth.signOut();
   }
 }

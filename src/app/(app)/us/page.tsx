@@ -10,6 +10,7 @@ import {
   CalendarHeart, HandHeart, House, Mail, MapPin, Settings, Smile, Sparkles, MessageCircleHeart,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { settled } from "@/lib/offline/cache";
 import { queueInsert } from "@/lib/offline/ops";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
@@ -65,19 +66,38 @@ export default function UsPage() {
     toast(message);
   };
 
+  // "None saved yet" has to mean none saved yet.
+  //
+  // There was no error handling here, so a failed query produced no rows, which
+  // was read as an empty shelf: offline, a couple with a hundred memories was
+  // told they had never made one and pushed into the composer. It also asked
+  // for a thousand full rows, and for an exact count it then discarded with a
+  // `void count;`, in order to pick one at random.
   const showRandomMemory = async () => {
-    const { data, count } = await supabase()
-      .from("memories")
-      .select("*", { count: "exact" })
-      .limit(1000);
-    const rows = (data ?? []) as Memory[];
-    if (!rows.length) {
+    const { data, error, count } = await settled(
+      supabase().from("memories").select("id", { count: "exact", head: true }),
+    );
+    void data;
+    if (error) {
+      toast("Cannot reach your memories right now.");
+      return;
+    }
+    const total = count ?? 0;
+    if (total === 0) {
       toast("No memories saved yet. Add your first one.");
       router.push("/memories?new=1");
       return;
     }
-    void count;
-    const pick = rows[Math.floor(Math.random() * rows.length)];
+    // One row, chosen by offset, rather than every row chosen in the client.
+    const offset = Math.floor(Math.random() * total);
+    const picked = await settled(
+      supabase().from("memories").select("*").order("created_at", { ascending: false }).range(offset, offset),
+    );
+    const pick = (picked.data as Memory[] | null)?.[0];
+    if (!pick) {
+      toast("Cannot reach your memories right now.");
+      return;
+    }
     setRandomMemory({ ...pick, url: pick.media_path ? await signedUrl(pick.media_path) : null });
     setMemoryOpen(true);
   };
@@ -94,7 +114,7 @@ export default function UsPage() {
           <Avatar name={partnerName} url={avatarUrls.partner} size="lg" />
         </div>
         <h1 className="mt-3 font-display text-4xl font-semibold text-plum">
-          {me.person === "cami" ? "Cami & Joseph" : "Cami & Joseph"}
+          {me.person === "cami" ? "Cami & Joseph" : "Joseph & Cami"}
         </h1>
         {days !== null && days > 0 ? (
           <>
