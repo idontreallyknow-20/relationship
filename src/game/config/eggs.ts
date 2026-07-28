@@ -5,7 +5,7 @@
 // says one line and pays something small.
 //
 // The rule for all of them: never worth hunting, always worth finding. Nothing
-// here is more than a modest multiplier or a handful of pearls, because an egg
+// here is more than a modest multiplier or a handful of ribbons, because an egg
 // that mattered would turn into a checklist the moment one of you found it.
 
 import type { Mods } from "../types";

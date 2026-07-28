@@ -37,7 +37,7 @@ export const MEMORIES: MemoryDef[] = [
     line: "Four pictures. One strip. Still have it.",
     cost: 20,
     mods: { mul: { all: 1.1, ribbonGain: 1.25 } },
-    effect: "Everything pays more, and pearls turn up more often.",
+    effect: "Everything pays more, and sealing pays more ribbons.",
     unlockLifetime: 60_000,
   },
   {
@@ -195,7 +195,7 @@ export const FOODS: FoodDef[] = [
   {
     id: "shellfish",
     name: "Shellfish",
-    line: "Whatever is on the floor. Fine.",
+    line: "Whatever is in the cupboard. Fine.",
     cost: { currency: "ribbons", amount: 8 },
     fills: 20,
     xp: 12,
@@ -254,7 +254,7 @@ export const WATERS: WaterDef[] = [
   { id: "deep", name: "Deep", color: "#2f5a80", source: "Reach the Aquarium." },
   { id: "dawn", name: "Dawn", color: "#e0b088", source: "Fifty rebirths." },
   { id: "dragon", name: "Dragon", color: "#a03a2a", source: "Buy The Dragon." },
-  { id: "moonstone", name: "Moonstone", color: "#c8c0e0", source: "Three deep rebirths." },
+  { id: "moonstone", name: "Moonstone", color: "#c8c0e0", source: "Three ascensions." },
 ];
 
 export const WATER_BY_ID: Record<string, WaterDef> = Object.fromEntries(WATERS.map((w) => [w.id, w]));

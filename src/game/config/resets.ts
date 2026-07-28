@@ -2,11 +2,11 @@ import type { AddStat, CurrencyId, GameState, Mods, MulStat } from "../types";
 
 // Rebirth: start the jar again, keep what you learned.
 //
-// Three rungs of the same shape. The first is the one you do constantly, the
-// second is rare, the third is the end. They used to be called Tide Change,
-// New Water and The Sea, which meant the game had three poetic names for
-// "reset" plus a separate mechanic actually called Tide. Nobody could keep
-// them apart, so they are all just Rebirth now, with a plain adjective.
+// Three rungs of the same shape: Rebirth, Ascension, Forever. The first is the
+// one you do constantly, the second is rare, the third is the end. They used to
+// be called Tide Change, New Water and The Sea, which meant the game had three
+// poetic names for "reset" plus a separate mechanic actually called Tide, and
+// nobody could keep them apart. Three plain words, in obvious order, instead.
 //
 // The internal ids and save fields keep the old words (`tideChanges`,
 // `newWaters`, `seas`) so that no existing save has to be rewritten. Nothing
@@ -26,7 +26,7 @@ export interface ResetLayerDef {
 
 export const TIDE_REQUIREMENT = 1e6;
 export const WATER_REQUIREMENT = 1e13;
-/** The last rung, and reachable only after several deep rebirths. */
+/** The last rung, and reachable only after several ascensions. */
 export const SEA_REQUIREMENT = 1e25;
 
 /**
@@ -44,9 +44,9 @@ export const SEA_REQUIREMENT = 1e25;
  * This is also the answer to "can we just use bigger numbers". Bigger numbers
  * would let the bar keep rising, but the bar rising is not what makes the game
  * long; doing the loop again is. What was actually broken was that a rebirth
- * left the whole production chain standing, so the next one arrived seconds
- * later and the multipliers compounded until the ceiling. Rebirth clears the
- * chain now, which bounds the run, which is why these caps are enough.
+ * left every source of income standing, so the next one arrived seconds later
+ * and the multipliers compounded until the ceiling. Every rebirth clears the
+ * shelf now, which bounds the run, which is why these caps are enough.
  */
 const REQUIREMENT_CEILING = 1e200;
 
@@ -158,23 +158,23 @@ const MOON_RAW: ResetUpgradeDef[] = [
   // Linear in level with a cost that grows twelve percent a step, so it is
   // always worth buying and never runs away.
   { id: "m_forever", name: "Every Life So Far", description: "Everything, a little more, with no limit. Buy it forever.", currency: "moons", baseCost: 30, growth: 1.12, max: Infinity, kind: "mulLinear", stat: "all", per: 0.04 },
-  { id: "m_crack", name: "Practised Hands", description: "Otters crack harder in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "petValue", per: 0.2 },
-  { id: "m_collect", name: "Worn Path", description: "Crabs collect more in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "petValue", per: 0.2 },
+  { id: "m_crack", name: "Practised Hands", description: "Her otters carry a bigger heart to the jar, in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "petValue", per: 0.2 },
+  { id: "m_collect", name: "Worn Path", description: "His crabs carry a bigger heart to the jar, in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "petValue", per: 0.2 },
   { id: "m_crit", name: "Sharp Edge", description: "Better criticals from the first tap.", currency: "moons", baseCost: 3, growth: 1.45, max: 40, kind: "add", stat: "critChance", per: 0.01 },
   { id: "m_combo", name: "Warm Start", description: "Start each life with a combo already going.", currency: "moons", baseCost: 2, growth: 1.4, max: 50, kind: "add", stat: "comboStart", per: 4 },
   { id: "m_keep", name: "Muscle Memory", description: "Keep this many levels of every upgrade through a rebirth.", currency: "moons", baseCost: 6, growth: 1.6, max: 25, kind: "add", stat: "startingUpgrades", per: 1 },
-  { id: "m_slots", name: "Room To Move", description: "One more creature in the jar.", currency: "moons", baseCost: 15, growth: 2.2, max: 6, kind: "add", stat: "creatureSlots", per: 1 },
+  { id: "m_slots", name: "Room To Move", description: "One more chair at the table, so one more pet can help.", currency: "moons", baseCost: 15, growth: 2.2, max: 6, kind: "add", stat: "creatureSlots", per: 1 },
   { id: "m_ability", name: "One More Ability", description: "One more ability equipped.", currency: "moons", baseCost: 18, growth: 2.3, max: 3, kind: "add", stat: "abilitySlots", per: 1 },
-  { id: "m_offline", name: "Long Night", description: "Collect from more hours away, permanently.", currency: "moons", baseCost: 5, growth: 1.55, max: 40, kind: "add", stat: "offlineHours", per: 1 },
+  { id: "m_offline", name: "Long Night", description: "More hours away are counted, permanently.", currency: "moons", baseCost: 5, growth: 1.55, max: 40, kind: "add", stat: "offlineHours", per: 1 },
   { id: "m_cost", name: "Cheaper Everything", description: "Everything costs less, in every life.", currency: "moons", baseCost: 10, growth: 1.75, max: 25, kind: "mulLinear", stat: "cost", per: -0.02 },
-  { id: "m_creature", name: "Well Fed", description: "Creatures are stronger in every life.", currency: "moons", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "creaturePower", per: 0.15 },
+  { id: "m_creature", name: "Well Fed", description: "Every pet is stronger, in every life.", currency: "moons", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "creaturePower", per: 0.15 },
   { id: "m_moons", name: "More Moons", description: "Every future rebirth pays more.", currency: "moons", baseCost: 8, growth: 1.7, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.12 },
   { id: "m_gift", name: "Something For You", description: "What you leave your partner when you are reborn is worth much more.", currency: "moons", baseCost: 12, growth: 1.8, max: 20, kind: "mulLinear", stat: "all", per: 0.05 },
   // Unlocks.
-  { id: "m_items", name: "Rocks And Shells", description: "Creatures can carry something.", currency: "moons", baseCost: 10, growth: 1, max: 1, kind: "flag", flag: "items" },
+  { id: "m_items", name: "Something To Carry", description: "Pets can carry a rock or a shell of their own.", currency: "moons", baseCost: 10, growth: 1, max: 1, kind: "flag", flag: "items" },
   { id: "m_challenges", name: "Challenges", description: "Runs with a rule attached, and a prize for clearing them.", currency: "moons", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "challenges" },
   { id: "m_auto_buy", name: "Buys For You", description: "Buys the cheapest affordable upgrade on its own.", currency: "moons", baseCost: 25, growth: 1, max: 1, kind: "flag", flag: "auto_buy" },
-  { id: "m_auto_feed", name: "Feeds For You", description: "Creatures feed themselves from your shells.", currency: "moons", baseCost: 18, growth: 1, max: 1, kind: "flag", flag: "auto_feed" },
+  { id: "m_auto_feed", name: "Feeds For You", description: "Pets feed themselves out of your ribbons.", currency: "moons", baseCost: 18, growth: 1, max: 1, kind: "flag", flag: "auto_feed" },
   { id: "m_auto_skill", name: "Fires For You", description: "Abilities can fire themselves once maxed.", currency: "moons", baseCost: 30, growth: 1, max: 1, kind: "flag", flag: "auto_skill" },
   { id: "m_auto_rebirth", name: "Reborn For You", description: "Rebirth happens on its own the moment it is worth it.", currency: "moons", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_rebirth", requires: ["m_forever", 10] },
 
@@ -183,33 +183,33 @@ const MOON_RAW: ResetUpgradeDef[] = [
   { id: "m_auto_tap", name: "Quick Hands", description: "The jar taps for you more often.", currency: "moons", baseCost: 2, growth: 1.28, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 1 },
   { id: "m_auto_crit", name: "Learns The Rhythm", description: "The taps it makes for you crit far more often.", currency: "moons", baseCost: 6, growth: 1.4, max: 20, kind: "add", stat: "critChance", per: 0.02 },
   { id: "m_autobuyer", name: "Faster Autobuyers", description: "Every autobuyer runs faster.", currency: "moons", baseCost: 5, growth: 1.35, max: 100, kind: "add", stat: "autobuyerSpeed", per: 1 },
-  { id: "m_depth", name: "Heavier Chain", description: "Every tier of the chain produces more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "shelfRate", per: 0.3 },
-  { id: "m_tide_speed", name: "Faster Jar", description: "Everything in the jar moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "petSpeed", per: 0.2 },
-  { id: "m_new_water", name: "Deep Rebirth", description: "Unlocks the rebirth above rebirth. This is what the tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
+  { id: "m_depth", name: "Warmer Shelf", description: "Everything on the shelf pays more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "shelfRate", per: 0.3 },
+  { id: "m_tide_speed", name: "Busier Table", description: "Every pet moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "petSpeed", per: 0.2 },
+  { id: "m_new_water", name: "Ascension", description: "Unlocks Ascension, the rebirth above rebirth. This is what the moon tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
 ];
 
 const STAR_RAW: ResetUpgradeDef[] = [
   { id: "s_all", name: "Everything Rises", description: "Every heart, everywhere.", currency: "stars", baseCost: 1, growth: 1.4, max: 100, kind: "mulLinear", stat: "all", per: 0.4 },
-  { id: "s_crack", name: "Old Hands", description: "Otters, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "petValue", per: 0.35 },
-  { id: "s_collect", name: "Old Paths", description: "Crabs, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "petValue", per: 0.35 },
+  { id: "s_crack", name: "Old Hands", description: "Her otters carry far bigger hearts.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "petValue", per: 0.35 },
+  { id: "s_collect", name: "Old Paths", description: "His crabs carry far bigger hearts.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "petValue", per: 0.35 },
   { id: "s_moons", name: "Richer Rebirths", description: "Rebirths pay far more moons.", currency: "stars", baseCost: 4, growth: 1.55, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.3 },
   { id: "s_keep", name: "Deep Roots", description: "Keep far more through a rebirth.", currency: "stars", baseCost: 8, growth: 1.8, max: 20, kind: "add", stat: "startingUpgrades", per: 5 },
-  { id: "s_slots", name: "Open Water", description: "Two more creatures in the jar.", currency: "stars", baseCost: 12, growth: 2.4, max: 4, kind: "add", stat: "creatureSlots", per: 1 },
-  { id: "s_offline_cap", name: "Long Away", description: "Far more time away counts.", currency: "stars", baseCost: 6, growth: 1.6, max: 40, kind: "add", stat: "offlineHours", per: 4 },
+  { id: "s_slots", name: "A Bigger Table", description: "One more chair, four times over.", currency: "stars", baseCost: 12, growth: 2.4, max: 4, kind: "add", stat: "creatureSlots", per: 1 },
+  { id: "s_offline_cap", name: "Long Away", description: "Far more time away is counted.", currency: "stars", baseCost: 6, growth: 1.6, max: 40, kind: "add", stat: "offlineHours", per: 4 },
   { id: "s_offline_rate", name: "Still Working", description: "Time away is worth much more.", currency: "stars", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "offline", per: 0.25 },
-  { id: "s_pearls", name: "Pearl Beds", description: "Pearls, far more often.", currency: "stars", baseCost: 5, growth: 1.55, max: 40, kind: "mulLinear", stat: "ribbonGain", per: 0.3 },
-  { id: "s_glass", name: "Glass Beach", description: "Sea glass, far more often.", currency: "stars", baseCost: 5, growth: 1.55, max: 40, kind: "mulLinear", stat: "ribbonGain", per: 0.3 },
-  { id: "s_tide", name: "Spring Tide", description: "Tide rises far faster for both of you.", currency: "stars", baseCost: 7, growth: 1.6, max: 30, kind: "mulLinear", stat: "keepsakeGain", per: 0.3 },
+  { id: "s_ribbons", name: "Wider Ribbon", description: "Sealing a jar pays far more ribbons.", currency: "stars", baseCost: 5, growth: 1.55, max: 40, kind: "mulLinear", stat: "ribbonGain", per: 0.3 },
+  { id: "s_capacity", name: "Blown Wider", description: "Every jar holds far more before it is full.", currency: "stars", baseCost: 5, growth: 1.55, max: 40, kind: "mulLinear", stat: "jarCapacity", per: 0.3 },
+  { id: "s_keepsakes", name: "Worth Keeping", description: "Sealing a jar pays far more keepsakes.", currency: "stars", baseCost: 7, growth: 1.6, max: 30, kind: "mulLinear", stat: "keepsakeGain", per: 0.3 },
   { id: "s_cooldown", name: "No Waiting", description: "Abilities come back much sooner.", currency: "stars", baseCost: 9, growth: 1.7, max: 25, kind: "mulLinear", stat: "skillCooldown", per: -0.025 },
-  { id: "s_creature_keep", name: "They Stay", description: "Creatures keep their levels through a deep rebirth.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "creature_retention" },
-  { id: "s_item_keep", name: "Keepsakes", description: "Rocks and shells survive a deep rebirth.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "item_retention" },
+  { id: "s_creature_keep", name: "They Stay", description: "Pets keep their levels through a ascension.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "creature_retention" },
+  { id: "s_item_keep", name: "What They Carry", description: "The rocks and shells your pets carry survive a ascension.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "item_retention" },
   { id: "s_auto_upgrade", name: "It Runs Itself", description: "Buys upgrades continuously.", currency: "stars", baseCost: 20, growth: 1, max: 1, kind: "flag", flag: "auto_upgrade" },
-  { id: "s_ocean", name: "The Ocean", description: "Unlocks the last vessel.", currency: "stars", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "ocean" },
+  { id: "s_ocean", name: "The Ocean", description: "Sealing leaves a quarter of the jar behind, every time.", currency: "stars", baseCost: 40, growth: 1, max: 1, kind: "add", stat: "sealKeep", per: 0.25 },
   { id: "s_auto_tap", name: "Never Stops", description: "The jar taps far, far more often.", currency: "stars", baseCost: 3, growth: 1.45, max: 100, kind: "add", stat: "autoTapsPerSecond", per: 25 },
-  { id: "s_depth", name: "Pressure", description: "Every depth, far stronger.", currency: "stars", baseCost: 3, growth: 1.5, max: 100, kind: "mulLinear", stat: "shelfRate", per: 1 },
+  { id: "s_depth", name: "A Warmer Room", description: "Every jar on the shelf pays far more.", currency: "stars", baseCost: 3, growth: 1.5, max: 100, kind: "mulLinear", stat: "shelfRate", per: 1 },
   { id: "s_autobuyer", name: "It Never Sleeps", description: "Autobuyers run many times faster.", currency: "stars", baseCost: 6, growth: 1.5, max: 100, kind: "add", stat: "autobuyerSpeed", per: 20 },
-  { id: "s_deepen", name: "Further Down", description: "Deepening pays much more.", currency: "stars", baseCost: 10, growth: 1.7, max: 40, kind: "mulLinear", stat: "ribbonGain", per: 0.25 },
-  { id: "s_stars", name: "More Stars", description: "Every deep rebirth pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
+  { id: "s_deep_pockets", name: "Deeper Pockets", description: "Sealing leaves more of the jar behind for the next one.", currency: "stars", baseCost: 10, growth: 1.7, max: 40, kind: "add", stat: "sealKeep", per: 0.005 },
+  { id: "s_stars", name: "More Stars", description: "Every ascension pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
 ];
 
 
@@ -225,37 +225,37 @@ export function resetUpgradeCost(def: ResetUpgradeDef, level: number): number {
 }
 
 /**
- * The drop tree, which is the only place the shape of the game changes rather
- * than its numbers: it lengthens the chain, automates the inner loop, and
+ * The sun tree, which is the only place the shape of the game changes rather
+ * than its numbers: it adds chairs to the table, automates the inner loop, and
  * removes the ceilings the layers above it live under.
  */
 const SUN_RAW: ResetUpgradeDef[] = [
   { id: "d_all", name: "The Whole Sea", description: "Everything, everywhere.", currency: "suns", baseCost: 1, growth: 1.5, max: 200, kind: "mulLinear", stat: "all", per: 1 },
-  { id: "d_depth", name: "Deep Pressure", description: "Every depth, enormously stronger.", currency: "suns", baseCost: 2, growth: 1.5, max: 200, kind: "mulLinear", stat: "shelfRate", per: 3 },
+  { id: "d_depth", name: "The Whole Room", description: "Every jar on the shelf pays enormously more.", currency: "suns", baseCost: 2, growth: 1.5, max: 200, kind: "mulLinear", stat: "shelfRate", per: 3 },
   { id: "d_tide", name: "The Long Pull", description: "Everything moves far faster.", currency: "suns", baseCost: 3, growth: 1.55, max: 100, kind: "mulLinear", stat: "petSpeed", per: 1 },
   { id: "d_tap", name: "Countless Hands", description: "The jar taps for you constantly.", currency: "suns", baseCost: 2, growth: 1.45, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 500 },
   { id: "d_autobuyer", name: "Tireless", description: "Autobuyers run as fast as the game ticks.", currency: "suns", baseCost: 4, growth: 1.5, max: 200, kind: "add", stat: "autobuyerSpeed", per: 100 },
   { id: "d_moons", name: "Bright Moons", description: "Rebirths pay vastly more.", currency: "suns", baseCost: 6, growth: 1.6, max: 100, kind: "mulLinear", stat: "moonGain", per: 1 },
-  { id: "d_stars", name: "Whole Sky", description: "Deep rebirths pay vastly more.", currency: "suns", baseCost: 8, growth: 1.6, max: 100, kind: "mulLinear", stat: "starGain", per: 1 },
-  { id: "d_drops", name: "It Rains", description: "Every last rebirth pays more.", currency: "suns", baseCost: 12, growth: 1.7, max: 60, kind: "mulLinear", stat: "sunGain", per: 0.5 },
-  { id: "d_deepen", name: "No Bottom", description: "Deepening pays far more.", currency: "suns", baseCost: 10, growth: 1.65, max: 60, kind: "mulLinear", stat: "ribbonGain", per: 1 },
+  { id: "d_stars", name: "Whole Sky", description: "Ascensions pay vastly more.", currency: "suns", baseCost: 8, growth: 1.6, max: 100, kind: "mulLinear", stat: "starGain", per: 1 },
+  { id: "d_drops", name: "It Rains", description: "Every forever pays far more suns.", currency: "suns", baseCost: 12, growth: 1.7, max: 60, kind: "mulLinear", stat: "sunGain", per: 0.5 },
+  { id: "d_ribbons", name: "No End Of Ribbon", description: "Sealing pays vastly more ribbons.", currency: "suns", baseCost: 10, growth: 1.65, max: 60, kind: "mulLinear", stat: "ribbonGain", per: 1 },
   { id: "d_offline", name: "It Keeps Going", description: "Far more time away counts, and it counts for more.", currency: "suns", baseCost: 5, growth: 1.5, max: 80, kind: "add", stat: "offlineHours", per: 12 },
 
   // The four that lengthen the chain. This is what the layer is for.
-  { id: "d_depth_1", name: "One More Tier", description: "The chain gets one rung longer.", currency: "suns", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1 },
-  { id: "d_depth_2", name: "Another Tier", description: "And another rung below that.", currency: "suns", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1, requires: ["d_depth_1", 1] },
-  { id: "d_depth_3", name: "Deeper Still", description: "One more again.", currency: "suns", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1, requires: ["d_depth_2", 1] },
+  { id: "d_depth_1", name: "One More Chair", description: "One more pet can sit at the table.", currency: "suns", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1 },
+  { id: "d_depth_2", name: "Another Chair", description: "And another one beside it.", currency: "suns", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1, requires: ["d_depth_1", 1] },
+  { id: "d_depth_3", name: "Pull One Up", description: "One more again.", currency: "suns", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 1, requires: ["d_depth_2", 1] },
   // Two, not one.
   //
   // The chain has eight tiers and three are reachable without the drop tree, so
   // four rungs of one each stopped at seven. Towns, the deepest thing in the
   // game, could not be opened by any combination of purchases: not expensive,
   // not hidden, simply absent from the arithmetic.
-  { id: "d_depth_4", name: "The Last Tier", description: "The last two rungs there are.", currency: "suns", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 2, requires: ["d_depth_3", 1] },
+  { id: "d_depth_4", name: "The Whole Table", description: "The last two chairs there are.", currency: "suns", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "creatureSlots", per: 2, requires: ["d_depth_3", 1] },
 
-  { id: "d_auto_deepen", name: "It Deepens Itself", description: "The jar goes deeper on its own the moment it can.", currency: "suns", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "auto_deepen" },
+  { id: "d_auto_seal", name: "It Seals Itself", description: "A full jar seals itself, the moment it fills.", currency: "suns", baseCost: 40, growth: 1, max: 1, kind: "add", stat: "autoSeal", per: 1 },
   { id: "d_auto_tide", name: "It Turns Itself", description: "Rebirth happens on its own.", currency: "suns", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },
-  { id: "d_keep_depths", name: "What The Water Remembers", description: "Deepenings survive a deep rebirth.", currency: "suns", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_deepens" },
+  { id: "d_keep_shelf", name: "What The Shelf Remembers", description: "The shelf survives the forever. Nothing else does.", currency: "suns", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_shelf" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -313,12 +313,13 @@ const RESET_TREE_SHAPE: Record<string, string[]> = {
   s_offline_rate: ["s_offline_cap"],
   s_ribbons: ["s_crack", "s_collect"],
   s_keepsakes: ["s_all"],
-  s_cooldown: ["s_tide"],
+  s_capacity: ["s_all"],
+  s_cooldown: ["s_keepsakes"],
   s_auto_upgrade: ["s_keep"],
   s_auto_tap: ["s_auto_upgrade"],
   s_autobuyer: ["s_auto_upgrade"],
   s_depth: ["s_all"],
-  s_deepen: ["s_depth"],
+  s_deep_pockets: ["s_depth"],
   s_ocean: ["s_depth", "s_stars"],
 
   // Suns. The jars lengthen down one side and the automation down the other,
@@ -335,10 +336,10 @@ const RESET_TREE_SHAPE: Record<string, string[]> = {
   d_stars: ["d_moons"],
   d_drops: ["d_stars"],
   d_offline: ["d_moons"],
-  d_deepen: ["d_depth"],
-  d_auto_deepen: ["d_deepen", "d_autobuyer"],
+  d_ribbons: ["d_depth"],
+  d_auto_seal: ["d_ribbons", "d_autobuyer"],
   d_auto_tide: ["d_tide", "d_autobuyer"],
-  d_keep_depths: ["d_depth_4", "d_auto_deepen"],
+  d_keep_shelf: ["d_depth_4", "d_auto_seal"],
 };
 
 function shaped(list: ResetUpgradeDef[]): ResetUpgradeDef[] {
@@ -363,34 +364,35 @@ export const RESET_LAYERS: ResetLayerDef[] = [
     requirement: TIDE_REQUIREMENT,
     gain: moonGain,
     resets: [
-      "Hearts in the jar, and this life's total",
-      "The whole chain, and every deepening",
-      "Everything you bought with hearts, including speed",
-      "Every upgrade in your tree, minus what Muscle Memory keeps",
-      "Your combo, and the vessel",
+      "The hearts in the jar, and this life's total",
+      "The shelf. Every jar you sealed comes back off it",
+      "The shelf tree, and the jar you are holding, back to the jam jar",
+      "Every upgrade you bought, minus what Muscle Memory keeps",
+      "Your combo",
     ],
     keeps: [
+      "Your ribbons, so you can buy the jars and the shelf tree straight back",
       "Moons, and everything you spend them on",
-      "Every creature, their levels, names and what they carry",
+      "Every pet, their levels, names and what they carry",
+      "Keepsakes, and everything in the Us tree",
       "The codex, collections and cosmetics",
-      "Tide, and everything in the Us tree",
       "Everything in the rest of the app",
     ],
   },
   {
     id: "water",
-    name: "Deep Rebirth",
-    verb: "Go deeper",
+    name: "Ascension",
+    verb: "Ascend",
     currency: "stars",
-    blurb: "A rebirth of the rebirths. Rare, and worth it.",
+    blurb: "A rebirth of the rebirths. It takes the moons too, and pays in stars. Rare, and worth it.",
     requirement: WATER_REQUIREMENT,
     gain: starGain,
     resets: [
-      "Everything an ordinary rebirth takes",
+      "Everything an ordinary rebirth takes, shelf included",
       "Moons and every moon upgrade",
       "Your rebirth count, back to nothing",
-      "Creature levels, unless you own They Stay",
-      "Rocks and shells, unless you own Keepsakes",
+      "Pet levels, unless you own They Stay",
+      "The rocks and shells they carry, unless you own What They Carry",
     ],
     keeps: [
       "Stars and star upgrades",
@@ -402,20 +404,21 @@ export const RESET_LAYERS: ResetLayerDef[] = [
   },
   {
     id: "sea",
-    name: "Last Rebirth",
+    name: "Forever",
     verb: "Let it all go",
     currency: "suns",
     blurb: "There was never a jar. There was only ever this.",
     requirement: SEA_REQUIREMENT,
     gain: sunGain,
     resets: [
-      "Everything a deep rebirth takes",
+      "Everything a ascension takes",
       "Moons, stars, and both of their trees",
       "Every rebirth, deep or otherwise, that you have done",
+      "The shelf, unless you own What The Shelf Remembers",
     ],
     keeps: [
-      "Drops and the drop tree",
-      "Creatures, the codex, collections and cosmetics",
+      "Suns and the sun tree",
+      "Pets, the codex, collections and cosmetics",
       "Memories, and everything the two of you did together",
       "Achievements, statistics and the old jar",
     ],

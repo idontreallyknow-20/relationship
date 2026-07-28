@@ -61,7 +61,7 @@ describe("dilating", () => {
 });
 
 describe("the switch", () => {
-  it("waits for the last rebirth", () => {
+  it("waits for the forever", () => {
     const early = createGameState(0);
     expect(dilationUnlocked(early)).toBe(false);
     expect(enterDilation(early, 0).ok).toBe(false);

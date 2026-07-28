@@ -315,6 +315,16 @@ export function sealJar(state: GameState, derived: Derived, now: number): SealRe
   const ribbons = ribbonGain(hearts, derived.jarCapacity, derived.mods.mul.ribbonGain);
 
   state.sealed = [...state.sealed.slice(-199), { jarId: state.jar, hearts: banked, at: now }];
+
+  // Keepsakes come from playing, and the rest of the app is a bonus on top.
+  //
+  // They used to come *only* from the two of you using chat, moods, letters and
+  // the daily question, which made the shared tree unreachable for anybody
+  // playing on their own and made the whole currency read as a tax on using
+  // other screens. Sealing is the natural place for them: a filled jar is a
+  // keepsake, which is what the word means.
+  const keepsakes = Math.max(1, Math.floor(Math.log10(Math.max(10, banked)) * derived.mods.mul.keepsakeGain));
+  addCurrency(state, "keepsakes", keepsakes);
   state.shelfHearts = safe(state.shelfHearts + banked);
   state.wallet.hearts = kept;
 

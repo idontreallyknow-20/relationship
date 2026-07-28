@@ -25,7 +25,7 @@ import { UpgradeList, type UpgradeRow } from "./upgrade-list";
 /** Why a node is not buyable yet, in words rather than a padlock. */
 function lockReason(rule: { lifetimeHearts?: number; tideChanges?: number; newWaters?: number } | undefined): string {
   if (!rule) return "Not yet";
-  if (rule.newWaters) return `${rule.newWaters} deep rebirths`;
+  if (rule.newWaters) return `${rule.newWaters} ascensions`;
   if (rule.tideChanges) return `${rule.tideChanges} rebirths`;
   if (rule.lifetimeHearts) return "Further in";
   return "Not yet";

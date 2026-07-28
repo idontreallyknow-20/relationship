@@ -274,7 +274,7 @@ export interface GameState {
   wallet: Record<CurrencyId, number>;
   lifetime: Record<CurrencyId, number>;
 
-  /** Hearts this life, and since the last deep rebirth. */
+  /** Hearts this life, and since the last ascension. */
   runHearts: number;
   eraHearts: number;
   runStartedAt: number;

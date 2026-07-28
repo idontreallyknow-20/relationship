@@ -452,7 +452,7 @@ describe("rocks and shells", () => {
     expect(b.itemId).toBe(made.item!.id);
   });
 
-  it("salvages back into sea glass and takes the item off the creature", () => {
+  it("salvages back into ribbons and takes the item off the creature", () => {
     const state = rich("cami");
     state.moonUpgrades["m_items"] = 1;
     const made = craftItem(state, "rock", "plain");
@@ -812,7 +812,7 @@ describe("new water", () => {
 
 describe("the daily bonus", () => {
   // The first open is not a welcome back. This used to hand a brand new save a
-  // thousand hearts, three pearls and twenty-three shells before a single tap,
+  // thousand hearts, three ribbons and twenty-three shells before a single tap,
   // which cleared the first three rungs of the reveal ladder on its own and was
   // the single largest reason the opening felt like being given everything at
   // once.

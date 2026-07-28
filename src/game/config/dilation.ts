@@ -125,7 +125,7 @@ export const DILATION_UPGRADES: DilationUpgradeDef[] = [
   {
     id: "t_moons",
     name: "Every Life Counts",
-    description: "Rebirths and deep rebirths both pay far more.",
+    description: "Rebirths and ascensions both pay far more.",
     baseCost: 8, growth: 1.9, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.8,
   },
   {

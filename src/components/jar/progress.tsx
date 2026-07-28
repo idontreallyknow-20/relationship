@@ -150,9 +150,15 @@ export function AbilitiesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Abilities" hint={`${formatNumber(state.wallet.ribbons, format)} pearls`}>
-        <p className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-berry-soft">
-          Pearls come out of shells the otters crack.
+      <Section
+        title="Abilities"
+        explain="abilities"
+        hint={`${formatNumber(state.wallet.ribbons, format)} ribbons to spend`}
+      >
+        <p className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm leading-relaxed text-berry-soft">
+          Bought with the ribbons you get for sealing a full jar. Each one is
+          fired by hand and then rests for a while. Half apply an effect for a
+          few seconds, half go off once and are done.
         </p>
       </Section>
 
@@ -168,7 +174,7 @@ export function AbilitiesTab() {
                       ? `At ${formatNumber(def.unlock.lifetimeHearts, format)} lifetime hearts`
                       : def.unlock.tideChanges
                         ? `After ${def.unlock.tideChanges} rebirths`
-                        : `After ${def.unlock.newWaters} deep rebirths`
+                        : `After ${def.unlock.newWaters} ascensions`
                   }
                 />
               </li>
@@ -207,7 +213,7 @@ export function AbilitiesTab() {
                   }`}
                 >
                   <span className="block text-xs font-bold">{skill.level >= def.maxLevel ? "Max" : cost}</span>
-                  {skill.level < def.maxLevel && <span className="block text-[0.6rem] opacity-80">pearls</span>}
+                  {skill.level < def.maxLevel && <span className="block text-[0.6rem] opacity-80">ribbons</span>}
                 </button>
               </div>
 

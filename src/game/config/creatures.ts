@@ -84,7 +84,7 @@ export const CREATURES: CreatureDef[] = [
   otter(
     "sea_otter", "Sea Otter", 3,
     "Bigger, and knows which shells are worth opening.",
-    "Cracks are worth more, and sometimes there is a pearl inside.",
+    "Carries a bigger heart over, and sometimes two at once.",
     "#8a6a52", 5.5, 2.4,
     { cost: { currency: "ribbons", amount: 10 }, unlockLifetime: 2e6 },
   ),
@@ -147,7 +147,7 @@ export const CREATURES: CreatureDef[] = [
   crab(
     "sand_crab", "Sand Crab", 4,
     "Disappears into the floor and reappears somewhere else.",
-    "Sifts settled hearts into sea glass while you are away.",
+    "Sifts settled hearts into ribbons while you are away.",
     "#c0a880", 6, 2.2,
     {
       cost: { currency: "ribbons", amount: 35 }, unlockLifetime: 5e7,
@@ -171,7 +171,7 @@ export const CREATURES: CreatureDef[] = [
   crab(
     "sapphire_crab", "Sapphire Crab", 7,
     "Found at the bottom, where it is dark and the pressure is unkind.",
-    "Everything it picks up turns into pearls.",
+    "Everything it picks up turns into ribbons.",
     "#4a6ac0", 5, 11,
     { cost: { currency: "stars", amount: 12 }, unlockLifetime: 1e17 },
   ),

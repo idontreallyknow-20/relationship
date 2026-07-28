@@ -5,7 +5,7 @@
 // what is happening inside the glass.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, Zap } from "lucide-react";
+import { HelpCircle, Sparkles, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
   currentJar, performClick, activateSkill,
@@ -16,6 +16,7 @@ import {
 } from "@/game/formulas";
 import { formatDurationShort, formatNumber, formatPercent } from "@/game/numbers";
 import { NEWS_INTERVAL_MS, newsLine } from "@/game/config/news";
+import { SHELF_RATE } from "@/game/config/shelf";
 import { TheJar, HeartLadder } from "./the-jar";
 import { play, release as releaseAudio, type Cue } from "@/game/sound";
 import { SKILLS } from "@/game/config/skills";
@@ -25,7 +26,8 @@ import { TIDE_REQUIREMENT } from "@/game/config/resets";
 import type { Feature } from "@/game/config/stages";
 import { useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
-import { Bar, CreatureGlyph, EmptyRow, Section, Stat } from "./bits";
+import { Bar, CreatureGlyph, EmptyRow, Section } from "./bits";
+import { ExplainedStat, InfoDot, Term, useGlossary } from "./glossary";
 
 interface Popup {
   id: number;
@@ -40,6 +42,7 @@ const MAX_POPUPS = 14;
 export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const { state, derived, mutate, version, now, notify } = useGame();
   const toast = useToast();
+  const { open: openTerm } = useGlossary();
   const jar = currentJar(state);
   /** Nothing is on screen until it is yours. */
   const has = (feature: Feature) => derived.features.has(feature);
@@ -281,17 +284,26 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           </span>
         ))}
 
-        {/* What it is, and how close it is to full. */}
-        <p className="absolute left-3 top-2 text-[0.65rem] font-semibold text-berry-soft">
+        {/* What it is, and how close it is to full. Both halves open their own
+            explanation, because "1.2K / 4K" beside a jar name is the single
+            most looked-at and least self-explaining thing on the screen. */}
+        <button
+          onClick={() => openTerm("jar")}
+          className="pressable absolute left-3 top-2 flex items-center gap-1 text-[0.65rem] font-semibold text-berry-soft"
+        >
           {jar.name} · {formatNumber(state.wallet.hearts, format)}
           {derived.jarCapacity === Infinity
             ? ""
             : ` / ${formatNumber(derived.jarCapacity, format)}`}
-        </p>
+          <HelpCircle className="h-2.5 w-2.5" aria-hidden="true" />
+        </button>
         {readyToSeal && (
-          <span className="absolute right-3 top-2 rounded-full bg-rose-dark px-2 py-0.5 text-[0.6rem] font-bold text-white">
+          <button
+            onClick={() => openTerm("full")}
+            className="pressable absolute right-3 top-2 rounded-full bg-rose-dark px-2 py-0.5 text-[0.6rem] font-bold text-white"
+          >
             Full
-          </span>
+          </button>
         )}
       </div>
 
@@ -353,29 +365,29 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           save and five cards and one empty cell in the middle of a run. The
           row never balanced at any point in the game. */}
       {(() => {
-        const stats: { label: string; value: string; tone?: "accent" }[] = [
-          { label: "Per tap", value: formatNumber(derived.heartsPerClick, format), tone: "accent" },
+        const stats: { id: string; label: string; value: string; tone?: "accent" }[] = [
+          { id: "tap", label: "Per tap", value: formatNumber(derived.heartsPerClick, format), tone: "accent" },
         ];
         if (derived.heartsPerSecond > 0) {
-          stats.push({ label: "Per second", value: formatNumber(derived.heartsPerSecond, format) });
+          stats.push({ id: "perSecond", label: "Per second", value: formatNumber(derived.heartsPerSecond, format) });
         }
         if (state.combo > 0) {
-          stats.push({ label: "Combo", value: `${state.combo} / ${derived.comboCap}` });
+          stats.push({ id: "combo", label: "Combo", value: `${state.combo} / ${derived.comboCap}` });
         }
         if (has("upgrades")) {
-          stats.push({ label: "Critical", value: formatPercent(derived.critChance, 1) });
+          stats.push({ id: "critical", label: "Critical", value: formatPercent(derived.critChance, 1) });
         }
         if (has("shelf")) {
-          stats.push({ label: "On the shelf", value: formatNumber(state.shelfHearts, format) });
+          stats.push({ id: "shelf", label: "On the shelf", value: formatNumber(state.shelfHearts, format) });
         }
         if (has("seal")) {
-          stats.push({ label: "Jars sealed", value: `${state.stats.jarsSealed}` });
+          stats.push({ id: "seal", label: "Jars sealed", value: `${state.stats.jarsSealed}` });
         }
         const columns = Math.min(3, stats.length);
         return (
           <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {stats.map((stat) => (
-              <Stat key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} />
+              <ExplainedStat key={stat.id} id={stat.id} label={stat.label} value={stat.value} tone={stat.tone} />
             ))}
           </div>
         );
@@ -385,7 +397,10 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {has("us") && state.tideLevel > 0 && (
         <div className="rounded-card border border-line bg-white p-3">
           <div className="mb-1 flex items-baseline justify-between text-xs">
-            <span className="font-semibold text-plum">Warmth</span>
+            <span className="flex items-center gap-1 font-semibold text-plum">
+              Warmth
+              <InfoDot id="warmth" />
+            </span>
             <span className="text-berry-soft">
               +{Math.round(Math.min(1, state.tideLevel / 100) * 60)}% to everything
             </span>
@@ -394,20 +409,69 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         </div>
       )}
 
-      {/* Sealing, which is the loop the whole game runs on. */}
+      {/* Sealing, which is the loop the whole game runs on.
+          Reported as "full jars are very confusing", and the card gave almost
+          nothing away: a bar, a percentage, and a button whose consequences
+          were not written down anywhere on the screen you press it from. It
+          now says what you get, what you give up, and what happens next,
+          before you press it rather than after. */}
       {has("seal") && (
         <div className="rounded-card border border-line bg-white p-3.5">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <span className="font-display text-lg text-plum">
-              {readyToSeal ? "The jar is full" : "Filling"}
+          <div className="mb-1 flex items-baseline justify-between gap-2">
+            <span className="flex items-center gap-1.5 font-display text-lg text-plum">
+              {readyToSeal ? "The jar is full" : "Filling the jar"}
+              <InfoDot id="seal" />
             </span>
-            <span className="text-xs text-berry-soft">
-              {readyToSeal
-                ? `${derived.ribbonsIfSealed} ribbon${derived.ribbonsIfSealed === 1 ? "" : "s"}`
-                : `${Math.floor(full * 100)}%`}
+            <span className="text-xs font-semibold text-berry-soft">
+              {Math.floor(full * 100)}%
             </span>
           </div>
+
+          <p className="mb-2 text-xs leading-relaxed text-berry-soft">
+            A <Term id="full">full jar</Term> can be <Term id="seal">sealed</Term>{" "}
+            and put on <Term id="shelf">the shelf</Term>, where it keeps paying a
+            little of what is in it for good. The hearts are not spent, they
+            move, and you start a fresh jar.
+          </p>
+
           <Bar value={full * 100} max={100} color={jar.glass} label="How full the jar is" />
+
+          {/* What sealing would actually do, in numbers, right now. */}
+          <dl className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-cream px-2 py-1.5">
+              <dt className="flex items-center justify-center gap-1 text-[0.55rem] font-bold uppercase tracking-wide text-berry-soft">
+                Onto the shelf
+                <InfoDot id="shelf" />
+              </dt>
+              <dd className="text-sm font-semibold text-berry">
+                {formatNumber(state.wallet.hearts * (1 - derived.sealKeep), format)}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-cream px-2 py-1.5">
+              <dt className="flex items-center justify-center gap-1 text-[0.55rem] font-bold uppercase tracking-wide text-berry-soft">
+                Pays you
+                <InfoDot id="ribbons" />
+              </dt>
+              <dd className="text-sm font-semibold text-berry">
+                {derived.ribbonsIfSealed} ribbon{derived.ribbonsIfSealed === 1 ? "" : "s"}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-cream px-2 py-1.5">
+              <dt className="flex items-center justify-center gap-1 text-[0.55rem] font-bold uppercase tracking-wide text-berry-soft">
+                Then pays
+                <InfoDot id="perSecond" />
+              </dt>
+              <dd className="text-sm font-semibold text-berry">
+                {formatNumber(
+                  derived.shelfIncome
+                    + (state.wallet.hearts * (1 - derived.sealKeep)) * derived.shelfRate * SHELF_RATE,
+                  format,
+                )}
+                <span className="text-[0.6rem] font-normal text-berry-soft"> /s</span>
+              </dd>
+            </div>
+          </dl>
+
           <button
             disabled={!readyToSeal}
             onClick={() =>
@@ -424,8 +488,20 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               readyToSeal ? "bg-rose-dark text-white" : "bg-cream text-berry-soft"
             }`}
           >
-            {readyToSeal ? "Seal it and put it on the shelf" : "Not full yet"}
+            {readyToSeal
+              ? "Seal it and put it on the shelf"
+              : `${formatNumber(Math.max(0, derived.jarCapacity - state.wallet.hearts), format)} more to fill it`}
           </button>
+
+          {/* Where the ribbons go, which was the other half of the confusion. */}
+          {state.wallet.ribbons > 0 && (
+            <button
+              onClick={() => onOpenTab("vessels")}
+              className="pressable mt-2 w-full rounded-full border border-line py-1.5 text-xs font-semibold text-berry-soft"
+            >
+              {formatNumber(state.wallet.ribbons, format)} ribbons to spend on the shelf
+            </button>
+          )}
         </div>
       )}
 
@@ -454,7 +530,10 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {has("tideChange") && state.runHearts < TIDE_REQUIREMENT && (
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold text-berry">Next rebirth</p>
+            <p className="flex items-center gap-1 text-sm font-semibold text-berry">
+              Next rebirth
+              <InfoDot id="rebirth" />
+            </p>
             <p className="text-xs text-berry-soft">
               {formatNumber(state.runHearts, format)} / {formatNumber(TIDE_REQUIREMENT, format)}
             </p>

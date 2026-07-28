@@ -59,11 +59,11 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       startedAt: state.eraStartedAt,
       count: state.newWaters,
       fastest: state.stats.fastestNewWaterMs,
-      countLabel: "Deep rebirths",
+      countLabel: "Ascensions",
       progressLabel: "Since the last deep one",
       locked: hasFlag(state, "new_water")
         ? null
-        : "Deep Rebirth is a moon upgrade near the bottom of that tree.",
+        : "Ascension is a moon upgrade near the bottom of that tree.",
       run: (draft: typeof state, at: number) => changeWater(draft, at),
     },
     sea: {
@@ -76,11 +76,11 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       startedAt: state.seaStartedAt,
       count: state.seas,
       fastest: null,
-      countLabel: "Last rebirths",
+      countLabel: "Forevers",
       progressLabel: "Since the last one",
       locked: state.newWaters >= 3
         ? null
-        : `Do three deep rebirths first. You have done ${state.newWaters}.`,
+        : `Do three ascensions first. You have done ${state.newWaters}.`,
       run: (draft: typeof state, at: number) => letGo(draft, at),
     },
   }[layer];

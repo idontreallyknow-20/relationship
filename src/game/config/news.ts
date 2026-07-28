@@ -57,7 +57,7 @@ export const NEWS: NewsLine[] = [
   { from: 9, text: "Otter has opinions about the rock it is carrying." },
 
   { from: 11, text: "Jar replaced with bigger jar. Old jar retired with honours." },
-  { from: 14, text: "Deep rebirth performed. Stars issued. Nobody asked where from." },
+  { from: 14, text: "Ascension performed. Stars issued. Nobody asked where from." },
   { from: 16, text: "Time reported slower than usual. Jar insists this is fine." },
 ];
 

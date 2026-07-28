@@ -1,7 +1,7 @@
 import type { Mods } from "../types";
 import type { UnlockRule } from "./upgrades";
 
-// Fourteen abilities, bought and levelled with Pearls. Half apply a timed
+// Fourteen abilities, bought and levelled with ribbons. Half apply a timed
 // effect, half fire once.
 
 export type InstantEffect =
@@ -106,7 +106,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: "something_drifts_in",
-    name: "Something Drifts In",
+    name: "Lid On",
     description: "Calls in whatever is passing.",
     effect: { kind: "instant", instant: "seal_it", power: (l) => 1 + Math.floor(l / 6) },
     cooldownMs: 300_000, durationMs: 0, maxLevel: 15, costBase: 4, costGrowth: 1.5,
@@ -114,8 +114,8 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: "spring_tide",
-    name: "Spring Tide",
-    description: "Tide rises for both of you, fast.",
+    name: "Kept Moment",
+    description: "Keepsakes for both of you, at once.",
     effect: { kind: "buff", mods: (l) => ({ mul: { keepsakeGain: 3 + 0.3 * l, all: 1.5 } }) },
     cooldownMs: 420_000, durationMs: 45_000, maxLevel: 20, costBase: 6, costGrowth: 1.55,
     unlock: { lifetimeHearts: 1e8 }, flourish: "swell", autoLevel: 12,

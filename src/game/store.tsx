@@ -221,7 +221,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         notify({
           kind: "reward",
           title: `Daily bonus, day ${bonus.streak}`,
-          detail: "Hearts, pearls and shells added.",
+          detail: "Hearts and ribbons added.",
         });
       }
       dayCounters.current = { hearts: 0, clicks: 0, combo: 0 };

@@ -208,7 +208,7 @@ function CreatureSheet({ creature, onClose }: { creature: CreatureInstance; onCl
         )}
 
         {/* Food */}
-        <Section title="Feed" hint={`${Math.round(live.fed)}% full`}>
+        <Section title="Feed" explain="feeding" hint={`${Math.round(live.fed)}% full`}>
           <div className="grid grid-cols-2 gap-2">
             {FOODS.map((food) => {
               const liked = food.favouredBy === def.line;
@@ -270,7 +270,7 @@ function CreatureSheet({ creature, onClose }: { creature: CreatureInstance; onCl
                 </Button>
               </div>
             ) : available.length === 0 ? (
-              <EmptyRow>Nothing to give them yet. Make one from sea glass.</EmptyRow>
+              <EmptyRow>Nothing to give them yet. Make one from ribbons.</EmptyRow>
             ) : (
               <ul className="space-y-1.5">
                 {available.map((option) => (
@@ -300,7 +300,7 @@ function CreatureSheet({ creature, onClose }: { creature: CreatureInstance; onCl
               {def.line === "crab" ? "Molts into" : "Grows into"} {target.name}
             </p>
             <p className="text-xs text-berry-soft">
-              Level {def.evolveAt.level} and {def.evolveAt.glass} sea glass. Keeps most of its level.
+              Level {def.evolveAt.level} and {def.evolveAt.glass} ribbons. Keeps most of its level.
             </p>
             <Button
               size="sm"
@@ -403,7 +403,7 @@ function ItemsView() {
         options={[{ value: "rock", label: "Rocks" }, { value: "shell", label: "Shells" }]}
       />
 
-      <Section title="Make one" hint={`${formatNumber(state.wallet.ribbons, format)} sea glass`}>
+      <Section title="Make one" explain="items" hint={`${formatNumber(state.wallet.ribbons, format)} ribbons`}>
         <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
           {RARITIES.map((r) => (
             <button
@@ -427,7 +427,7 @@ function ItemsView() {
             })
           }
         >
-          {RARITY_META[rarity].label} {kind} for {CRAFT_COST[rarity]} sea glass
+          {RARITY_META[rarity].label} {kind} for {CRAFT_COST[rarity]} ribbons
         </Button>
       </Section>
 
