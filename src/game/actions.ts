@@ -456,7 +456,7 @@ export function buyNextJar(state: GameState): ActionResult {
 }
 
 /** Go back to a jar already unlocked, which is only ever cosmetic. */
-export function useJar(state: GameState, id: string): ActionResult {
+export function switchToJar(state: GameState, id: string): ActionResult {
   if (!state.jarsUnlocked.includes(id)) return fail("Not unlocked yet");
   state.jar = id;
   return done(`Filling the ${JAR_BY_ID[id]?.name ?? "jar"}`);

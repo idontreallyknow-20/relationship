@@ -93,9 +93,14 @@ function useRolling(value: number, enabled: boolean): number {
 
   useEffect(() => {
     if (!enabled || value <= shown || !Number.isFinite(value)) {
-      setShown(value);
-      from.current = value;
-      return;
+      // Snap rather than roll: a decrease is a purchase, and watching your
+      // balance drain afterwards is not a reward. Deferred by a frame so this
+      // is not a synchronous setState inside an effect, which cascades.
+      const snap = requestAnimationFrame(() => {
+        setShown(value);
+        from.current = value;
+      });
+      return () => cancelAnimationFrame(snap);
     }
     from.current = shown;
     started.current = performance.now();

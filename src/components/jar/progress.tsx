@@ -3,23 +3,18 @@
 // Upgrades and abilities.
 
 import { useMemo, useState } from "react";
-import { Lock, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useGame } from "@/game/store";
-import {
-  TREES, UPGRADES, UPGRADE_BY_ID, nextEffectLabel, parentsOf, type Tree, type UpgradeDef,
-} from "@/game/config/upgrades";
+import { TREES, type Tree } from "@/game/config/upgrades";
 import { SKILLS, skillCost } from "@/game/config/skills";
-import { CURRENCY_BY_ID } from "@/game/config/currencies";
-import {
-  hasFlag, maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades,
-} from "@/game/formulas";
+import { hasFlag, meetsUnlock } from "@/game/formulas";
 import { buyCheapest, buyUpgrade, levelSkill, toggleSkillAuto } from "@/game/actions";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import type { GameSettings } from "@/game/types";
 import { Button, SegmentedControl, Sheet, useToast } from "@/components/ui";
-import { Bar, EmptyRow, LockedRow, Section } from "./bits";
+import { Bar, LockedRow, Section } from "./bits";
 import { Explain } from "./explain";
-import { TreeGraph } from "./tree";
+import { UpgradeRows } from "./upgrade-rows";
 
 const BUY_OPTIONS = [
   { value: "1", label: "x1" },
@@ -29,38 +24,13 @@ const BUY_OPTIONS = [
   { value: "max", label: "Max" },
 ];
 
-const VIEW_OPTIONS = [
-  { value: "tree", label: "Tree" },
-  { value: "list", label: "List" },
-];
-
 export function UpgradesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
   const [tree, setTree] = useState<Tree>(state.owner === "joseph" ? "joseph" : "cami");
   // Yours and the shared one. Theirs is theirs.
   const trees = TREES.filter((entry) => entry.id === state.owner || entry.id === "us");
-  const [detail, setDetail] = useState<UpgradeDef | null>(null);
-  const [view, setView] = useState<"tree" | "list">("tree");
-  const format = state.settings.numberFormat;
 
-  const rows = useMemo(
-    () =>
-      visibleUpgrades(state)
-        .filter((def) => def.tree === tree)
-        .map((def) => {
-          const owned = state.upgrades[def.id] ?? 0;
-          const unlocked = meetsUnlock(state, def.unlock);
-          const count = Math.max(1, resolveBuyCount(state, def, derived));
-          const cost = upgradeCost(state, def, count, derived);
-          return {
-            def, owned, unlocked, count, cost,
-            affordable: unlocked && state.wallet[def.currency] >= cost && count > 0,
-          };
-        }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, tree],
-  );
 
   const meta = TREES.find((t) => t.id === tree);
 
@@ -85,19 +55,18 @@ export function UpgradesTab() {
       {meta && (
         <div className="flex items-start gap-1.5">
           <p className="flex-1 text-sm text-berry-soft">{meta.blurb}</p>
-          <Explain title="Your tree">
+          <Explain title="Your upgrades">
             <p>
-              Every upgrade grows out of the one before it. The first one is the trunk,
-              and four branches come off it, each doing a different job.
+              They are listed in the order they grow out of each other, so anything
+              above a row is something that row builds on.
             </p>
             <p>
-              You can buy any of them in any order. The branches are there so you can see
-              what a line leads to before you start down it, not to make you buy the middle
-              of one.
+              You can still buy any of them in any order. Tap a row to see what it
+              grows out of and what it leads to.
             </p>
             <p>
-              This is your tree. {state.owner === "cami" ? "Joseph" : "Cami"} has their own,
-              and neither of you can spend into the other one.
+              These are yours. {state.owner === "cami" ? "Joseph" : "Cami"} has their
+              own, and neither of you can spend into the other one.
             </p>
           </Explain>
         </div>
@@ -136,142 +105,10 @@ export function UpgradesTab() {
         >
           Buy all
         </button>
-        <SegmentedControl
-          label="View"
-          value={view}
-          onChange={(value) => setView(value as "tree" | "list")}
-          options={VIEW_OPTIONS}
-        />
       </div>
 
-      {view === "tree" && <TreeGraph tree={tree} />}
-
-      {view === "list" && (rows.length === 0 ? (
-        <EmptyRow>Nothing here yet.</EmptyRow>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map(({ def, owned, unlocked, count, cost, affordable }) => {
-            const atMax = def.max !== Infinity && owned >= def.max;
-            const currency = CURRENCY_BY_ID[def.currency];
-            return (
-              <li
-                key={def.id}
-                className={`rounded-card border bg-white shadow-soft ${unlocked ? "border-line" : "border-line-soft opacity-70"}`}
-              >
-                <div className="flex items-start gap-2 p-3.5">
-                  <button className="min-w-0 flex-1 text-left" onClick={() => setDetail(def)}>
-                    <p className="flex items-center gap-1.5 text-sm font-semibold text-berry">
-                      {!unlocked && <Lock className="h-3.5 w-3.5 shrink-0 text-berry-soft" />}
-                      <span className="truncate">{def.name}</span>
-                      <span className="shrink-0 rounded-full bg-cream px-2 py-0.5 text-[0.6rem] font-bold text-berry-soft">
-                        {owned}{def.max !== Infinity ? `/${def.max}` : ""}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-berry-soft">{def.description}</p>
-                    <p className="mt-1 text-xs font-semibold" style={{ color: currency?.color }}>
-                      {atMax ? "Maxed" : nextEffectLabel(def)}
-                    </p>
-                  </button>
-
-                  {!atMax && (
-                    <button
-                      disabled={!affordable}
-                      onClick={() =>
-                        mutate((draft) => {
-                          const result = buyUpgrade(draft, def.id, count);
-                          if (!result.ok) toast(result.message ?? "Cannot buy that");
-                          else if (result.message) toast(result.message);
-                        })
-                      }
-                      className={`pressable shrink-0 rounded-xl px-3 py-2 text-center ${
-                        affordable ? "bg-rose-dark text-white" : "bg-cream text-berry-soft"
-                      }`}
-                    >
-                      <span className="block text-xs font-bold">{formatNumber(cost, format)}</span>
-                      <span className="block text-[0.6rem] opacity-80">
-                        {count > 1 ? `x${count}` : currency?.short.toLowerCase()}
-                      </span>
-                    </button>
-                  )}
-                </div>
-                {def.max !== Infinity && (
-                  <div className="px-3.5 pb-2.5">
-                    <Bar value={owned} max={def.max} height="0.25rem" />
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      ))}
-
-      {detail && <UpgradeDetail def={detail} onClose={() => setDetail(null)} />}
+      <UpgradeRows tree={tree} />
     </div>
-  );
-}
-
-function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void }) {
-  const { state, derived, mutate } = useGame();
-  const toast = useToast();
-  const owned = state.upgrades[def.id] ?? 0;
-  const format = state.settings.numberFormat;
-  const grownFrom = parentsOf(def).map((id) => UPGRADE_BY_ID[id]).filter(Boolean);
-  const leadsTo = UPGRADES.filter((u) => parentsOf(u).includes(def.id));
-
-  const atMax = def.max !== Infinity && owned >= def.max;
-  const count = Math.max(1, resolveBuyCount(state, def, derived));
-  const cost = upgradeCost(state, def, count, derived);
-  const affordable = !atMax && meetsUnlock(state, def.unlock) && state.wallet[def.currency] >= cost;
-
-  return (
-    <Sheet open onClose={onClose} title={def.name}>
-      <div className="space-y-4 pt-1">
-        <p className="text-sm text-berry">{def.description}</p>
-        <dl className="grid grid-cols-2 gap-2 text-sm">
-          <Row label="Tree" value={TREES.find((t) => t.id === def.tree)?.name ?? def.tree} />
-          <Row label="Level" value={`${owned}${def.max !== Infinity ? ` of ${def.max}` : ""}`} />
-          <Row label="Currency" value={CURRENCY_BY_ID[def.currency]?.name ?? def.currency} />
-          <Row label="Next" value={nextEffectLabel(def)} />
-          <Row label="Cost" value={formatNumber(upgradeCost(state, def, 1, derived), format)} />
-          <Row label="Affordable" value={`${maxAffordable(state, def, derived)}`} />
-        </dl>
-
-        {(grownFrom.length > 0 || leadsTo.length > 0) && (
-          <div className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-xs text-berry-soft">
-            {grownFrom.length > 0 && (
-              <p>Grows out of {grownFrom.map((u) => u.name).join(" and ")}.</p>
-            )}
-            {leadsTo.length > 0 && (
-              <p className={grownFrom.length > 0 ? "mt-1" : undefined}>
-                Leads to {leadsTo.map((u) => u.name).join(", ")}.
-              </p>
-            )}
-          </div>
-        )}
-
-        {def.milestones && (
-          <p className="rounded-xl bg-blush/50 px-3.5 py-2.5 text-sm text-berry">
-            Milestones at {def.milestones.join(", ")}, each an extra boost to everything.
-          </p>
-        )}
-
-        {!atMax && (
-          <Button
-            disabled={!affordable}
-            className="w-full"
-            onClick={() =>
-              mutate((draft) => {
-                const result = buyUpgrade(draft, def.id, count);
-                toast(result.ok ? (result.message ?? `${def.name} bought`) : (result.message ?? "Cannot buy that"));
-              })
-            }
-          >
-            Buy{count > 1 ? ` ${count}` : ""} for {formatNumber(cost, format)}{" "}
-            {CURRENCY_BY_ID[def.currency]?.short.toLowerCase()}
-          </Button>
-        )}
-      </div>
-    </Sheet>
   );
 }
 

@@ -1,17 +1,11 @@
 "use client";
 
-// The upgrade trees, on the shared canvas.
+// Every set of upgrades, turned into rows for one shared list.
 //
-// This file is now only the translation from a config entry into something the
-// canvas can draw: costs, affordability, colour and the one line of text that
-// says what buying it does. Everything about panning, zooming, laying out and
-// drawing lives in `tree/`.
-//
-// Six trees go through here. Cami's, Joseph's and the shared one were drawn as
-// a strip of rectangles; the moon, star and drop trees were flat scrolling
-// lists of twenty-eight, twenty-one and eighteen entries with no shape at all.
-// They are all the same kind of object and there was never a reason for them
-// to be three different screens.
+// This file is only the translation from a config entry into something the list
+// can draw: costs, affordability, colour and the one line that says what buying
+// it does. Eight sets go through it, and there was never a reason for them to
+// be eight different screens.
 
 import { useMemo } from "react";
 import { useGame } from "@/game/store";
@@ -26,7 +20,7 @@ import { buyResetUpgrade, buyShelfUpgrade, buyUpgrade } from "@/game/actions";
 import { SHELF_UPGRADES, shelfUpgradeCost } from "@/game/config/shelf";
 import { STAT_LABEL } from "@/game/config/upgrades";
 import { useToast } from "@/components/ui";
-import { TreeCanvas, type TreeNodeView } from "./tree/canvas";
+import { UpgradeList, type UpgradeRow } from "./upgrade-list";
 
 /** Why a node is not buyable yet, in words rather than a padlock. */
 function lockReason(rule: { lifetimeHearts?: number; tideChanges?: number; newWaters?: number } | undefined): string {
@@ -37,11 +31,11 @@ function lockReason(rule: { lifetimeHearts?: number; tideChanges?: number; newWa
   return "Not yet";
 }
 
-export function TreeGraph({ tree }: { tree: Tree }) {
+export function UpgradeRows({ tree }: { tree: Tree }) {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
 
-  const nodes = useMemo<TreeNodeView[]>(() => {
+  const nodes = useMemo<UpgradeRow[]>(() => {
     const defs = UPGRADES.filter((u) => u.tree === tree && buyableTree(state, u));
     const present = new Set(defs.map((d) => d.id));
 
@@ -72,11 +66,9 @@ export function TreeGraph({ tree }: { tree: Tree }) {
   }, [tree, version]);
 
   return (
-    <TreeCanvas
-      nodes={nodes}
-      label={`${tree} upgrade tree`}
+    <UpgradeList
+      rows={nodes}
       format={state.settings.numberFormat}
-      reducedMotion={state.settings.reducedMotion}
       onBuy={(id) =>
         mutate((draft) => {
           const def = UPGRADES.find((u) => u.id === id);
@@ -106,7 +98,7 @@ function resetEffect(def: ResetUpgradeDef): string {
   return `${sign}${pct.toFixed(pct < 1 ? 2 : 0)}% ${stat}${def.kind === "mulCompound" ? ", compounding" : ""}`;
 }
 
-export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "suns" }) {
+export function ResetUpgradeRows({ currency }: { currency: "moons" | "stars" | "suns" }) {
   const { state, mutate, version } = useGame();
   const toast = useToast();
   const defs = RESET_TREES[currency] ?? [];
@@ -117,7 +109,7 @@ export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "su
       ? state.starUpgrades
       : state.sunUpgrades;
 
-  const nodes = useMemo<TreeNodeView[]>(() => {
+  const nodes = useMemo<UpgradeRow[]>(() => {
     const present = new Set(defs.map((d) => d.id));
     return defs.map((def) => {
       const level = levels[def.id] ?? 0;
@@ -147,12 +139,9 @@ export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "su
   }, [currency, version]);
 
   return (
-    <TreeCanvas
-      nodes={nodes}
-      label={`${currency} tree`}
+    <UpgradeList
+      rows={nodes}
       format={state.settings.numberFormat}
-      reducedMotion={state.settings.reducedMotion}
-      height={360}
       onBuy={(id) =>
         mutate((draft) => {
           const result = buyResetUpgrade(draft, id);
@@ -173,11 +162,11 @@ export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "su
  * sooner; a tree whose nodes could have gone in any other tree is a tree with
  * no reason to exist.
  */
-export function ShelfTreeGraph() {
+export function ShelfUpgradeRows() {
   const { state, mutate, version } = useGame();
   const toast = useToast();
 
-  const nodes = useMemo<TreeNodeView[]>(() => {
+  const nodes = useMemo<UpgradeRow[]>(() => {
     const present = new Set(SHELF_UPGRADES.map((d) => d.id));
     return SHELF_UPGRADES.map((def) => {
       const level = state.shelfUpgrades[def.id] ?? 0;
@@ -203,12 +192,9 @@ export function ShelfTreeGraph() {
   }, [version]);
 
   return (
-    <TreeCanvas
-      nodes={nodes}
-      label="shelf tree"
+    <UpgradeList
+      rows={nodes}
       format={state.settings.numberFormat}
-      reducedMotion={state.settings.reducedMotion}
-      height={360}
       onBuy={(id) =>
         mutate((draft) => {
           const result = buyShelfUpgrade(draft, id);

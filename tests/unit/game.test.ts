@@ -14,7 +14,7 @@ import {
   addCreature, applyLegacy, availableCreatures, buyMemory, buyResetUpgrade, buyUpgrade,
   canChangeTide, canChangeWater, changeTide, changeWater, claimMission, collectGift,
   craftItem, feedCreature, finishChallenge, giveItem, grantTogether, growCreature,
-  buyAll, buyNextJar, useJar, sealCurrentJar, buyShelfUpgrade, leaveGift, levelSkill,
+  buyAll, buyNextJar, switchToJar, sealCurrentJar, buyShelfUpgrade, leaveGift, levelSkill,
   placeCreature, receiveGift, recordSameEvening, refreshMissions, respec,
   runAutobuyers, salvageItem, startChallenge, startTrip,
   GIFT_WINDOW_MS,
@@ -277,9 +277,9 @@ describe("the jar", () => {
   it("goes back to a jar already unlocked, and not to one that is not", () => {
     const state = rich();
     buyNextJar(state);
-    expect(useJar(state, JARS[0].id).ok).toBe(true);
+    expect(switchToJar(state, JARS[0].id).ok).toBe(true);
     expect(state.jar).toBe(JARS[0].id);
-    expect(useJar(state, JARS[5].id).ok).toBe(false);
+    expect(switchToJar(state, JARS[5].id).ok).toBe(false);
   });
 });
 
