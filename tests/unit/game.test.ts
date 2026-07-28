@@ -1051,6 +1051,7 @@ describe("the depth chain", () => {
   it("cascades downward, each depth feeding the one above it", () => {
     const state = createGameState(0);
     state.wallet.hearts = 1e9;
+    state.depths[1].unlocked = true;
     state.depths[2].unlocked = true;
     expect(buyDepth(state, 2, 10).ok).toBe(true);
     expect(state.depths[2].owned).toBe(10);
@@ -1106,7 +1107,7 @@ describe("deepening", () => {
     state.wallet.hearts = 1e12;
     expect(canDeepen(state)).toBe(false);
 
-    buyDepth(state, 1, deepenRequirement(state.deepens));
+    buyDepth(state, 0, deepenRequirement(state.deepens));
     expect(canDeepen(state)).toBe(true);
 
     const before = derive(state, 0).depthPower;
@@ -1114,12 +1115,12 @@ describe("deepening", () => {
 
     expect(state.deepens).toBe(1);
     expect(state.depths[0].owned).toBe(0);
-    expect(state.depths[1].bought).toBe(0);
+    expect(state.depths[0].bought).toBe(0);
     // Hearts survive, so the chain can be rebuilt straight away.
     expect(state.wallet.hearts).toBeGreaterThan(0);
     expect(derive(state, 0).depthPower).toBeGreaterThan(before);
     // And it opened the next one down.
-    expect(state.depths[2].unlocked).toBe(true);
+    expect(state.depths[1].unlocked).toBe(true);
   });
 
   it("keeps everything that is not the chain", () => {
@@ -1127,7 +1128,7 @@ describe("deepening", () => {
     buyUpgrade(state, "otter_hands", 5);
     const creatures = Object.keys(state.creatures).length;
     const lifetime = state.lifetime.hearts;
-    buyDepth(state, 1, deepenRequirement(state.deepens));
+    buyDepth(state, 0, deepenRequirement(state.deepens));
     deepen(state);
     expect(state.upgrades["otter_hands"]).toBe(5);
     expect(Object.keys(state.creatures).length).toBe(creatures);
@@ -1181,7 +1182,7 @@ describe("automation", () => {
   it("runs an autobuyer on its own clock, within its own share", () => {
     const state = createGameState(0);
     state.wallet.hearts = 1e6;
-    state.autobuyers["otters"] = { on: true, max: true, threshold: 0.5, lastRunAt: 0 };
+    state.autobuyers["hearts"] = { on: true, max: true, threshold: 0.5, lastRunAt: 0 };
 
     runAutobuyers(state, 10_000);
     expect(state.depths[0].bought).toBeGreaterThan(0);
@@ -1214,6 +1215,7 @@ describe("time away", () => {
   it("grows the chain while the app is shut, not just the hearts", () => {
     const state = createGameState(0);
     state.wallet.hearts = 1e12;
+    state.depths[1].unlocked = true;
     state.depths[2].unlocked = true;
     buyDepth(state, 2, 20);
     state.lastSeenAt = 0;

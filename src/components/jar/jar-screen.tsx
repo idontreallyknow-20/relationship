@@ -22,6 +22,7 @@ import { DRIFTER_BY_ID } from "@/game/config/vessels";
 import { WATER_BY_ID } from "@/game/config/memories";
 import { TIDE_REQUIREMENT } from "@/game/config/resets";
 import type { Settled } from "@/game/types";
+import type { Feature } from "@/game/config/stages";
 import { useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { Bar, CreatureGlyph, EmptyRow, Section, Stat } from "./bits";
@@ -40,6 +41,8 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const { state, derived, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const vessel = currentVessel(state);
+  /** Nothing is on screen until it is yours. */
+  const has = (feature: Feature) => derived.features.has(feature);
 
   const [popups, setPopups] = useState<Popup[]>([]);
   const [shake, setShake] = useState(false);
@@ -390,18 +393,25 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         </p>
       </div>
 
-      {/* Numbers */}
+      {/* Numbers, which arrive as they start to mean something. Six of these on
+          a first run was six things to wonder about before the first upgrade. */}
       <div className="grid grid-cols-3 gap-2">
         <Stat label="Per tap" value={formatNumber(derived.heartsPerClick, format)} tone="accent" />
-        <Stat label="Per second" value={formatNumber(derived.heartsPerSecond, format)} />
-        <Stat label="Combo" value={`${state.combo} / ${derived.comboCap}`} />
-        <Stat label="Critical" value={formatPercent(derived.critChance, 1)} />
-        <Stat label="Lifetime" value={formatNumber(state.lifetime.hearts, format)} />
-        <Stat label="Tide" value={`${Math.round(state.tideLevel)}%`} />
+        {has("chain") && (
+          <Stat label="Per second" value={formatNumber(derived.heartsPerSecond, format)} />
+        )}
+        {state.combo > 0 && <Stat label="Combo" value={`${state.combo} / ${derived.comboCap}`} />}
+        {has("upgrades") && (
+          <Stat label="Critical" value={formatPercent(derived.critChance, 1)} />
+        )}
+        {has("chain") && (
+          <Stat label="Lifetime" value={formatNumber(state.lifetime.hearts, format)} />
+        )}
+        {has("tide") && <Stat label="Tide" value={`${Math.round(state.tideLevel)}%`} />}
       </div>
 
       {/* Tide, which is the shared one */}
-      {state.tideLevel > 0 && (
+      {has("tide") && state.tideLevel > 0 && (
         <div className="rounded-card border border-line bg-white p-3">
           <div className="mb-1 flex items-baseline justify-between text-xs">
             <span className="font-semibold text-plum">Tide</span>
@@ -430,7 +440,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       )}
 
       {/* Next thing */}
-      {state.runHearts < TIDE_REQUIREMENT && (
+      {has("tideChange") && state.runHearts < TIDE_REQUIREMENT && (
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-berry">Next tide change</p>
@@ -487,6 +497,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       )}
 
       {/* Quick upgrades */}
+      {has("upgrades") && (
       <Section title="Upgrades" action={
         <button className="text-xs font-semibold text-rose-dark underline" onClick={() => onOpenTab("upgrades")}>
           All
@@ -536,6 +547,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           </ul>
         )}
       </Section>
+      )}
 
       {/* Recently */}
       {state.log.length > 0 && (

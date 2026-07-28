@@ -5,7 +5,7 @@
 // only ever adds optional bonuses on top.
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Settings2, X } from "lucide-react";
 import { GameProvider, useGame } from "@/game/store";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import { Button, TopBar, useToast } from "@/components/ui";
@@ -23,6 +23,8 @@ import {
   CodexTab, MinigamesTab, SettingsTab, StatsTab, UsTab, WalletStrip,
 } from "@/components/jar/extras";
 import { Tour } from "@/components/jar/tour";
+import { StageAnnounce } from "@/components/jar/explain";
+import type { Feature } from "@/game/config/stages";
 
 /**
  * Five groups, not nineteen tabs.
@@ -38,42 +40,41 @@ const GROUPS = [
     id: "grow",
     label: "Grow",
     tabs: [
-      { id: "depths", label: "Depths" },
-      { id: "upgrades", label: "Upgrades" },
-      { id: "automation", label: "Automation" },
-      { id: "abilities", label: "Abilities" },
+      { id: "depths", label: "The chain", needs: "chain" },
+      { id: "upgrades", label: "Upgrades", needs: "upgrades" },
+      { id: "automation", label: "Automation", needs: "automation" },
+      { id: "abilities", label: "Abilities", needs: "abilities" },
     ],
   },
   {
     id: "jarful",
     label: "The jar",
     tabs: [
-      { id: "creatures", label: "Creatures" },
-      { id: "vessels", label: "Vessels" },
-      { id: "collections", label: "Collections" },
-      { id: "codex", label: "Codex" },
+      { id: "creatures", label: "Creatures", needs: "pets" },
+      { id: "vessels", label: "Vessels", needs: "vessels" },
+      { id: "collections", label: "Collections", needs: "pets" },
+      { id: "codex", label: "Codex", needs: "pets" },
     ],
   },
   {
     id: "us",
     label: "Us",
     tabs: [
-      { id: "us", label: "Together" },
-      { id: "missions", label: "Missions" },
-      { id: "challenges", label: "Challenges" },
-      { id: "achievements", label: "Achievements" },
-      { id: "minigames", label: "Mini-games" },
+      { id: "us", label: "Together", needs: "us" },
+      { id: "missions", label: "Missions", needs: "missions" },
+      { id: "challenges", label: "Challenges", needs: "challenges" },
+      { id: "achievements", label: "Achievements", needs: "missions" },
+      { id: "minigames", label: "Mini-games", needs: "pets" },
     ],
   },
   {
     id: "deeper",
     label: "Deeper",
     tabs: [
-      { id: "tide", label: "Tide" },
-      { id: "water", label: "New Water" },
-      { id: "sea", label: "The Sea" },
-      { id: "stats", label: "Statistics" },
-      { id: "settings", label: "Settings" },
+      { id: "tide", label: "Tide change", needs: "tideChange" },
+      { id: "water", label: "New water", needs: "newWater" },
+      { id: "sea", label: "The Sea", needs: "sea" },
+      { id: "stats", label: "Statistics", needs: "tideChange" },
     ],
   },
 ] as const;
@@ -81,6 +82,20 @@ const GROUPS = [
 const GROUP_FOR_TAB: Record<string, string> = Object.fromEntries(
   GROUPS.flatMap((group) => group.tabs.map((tab) => [tab.id, group.id])),
 );
+
+/**
+ * The groups and tabs that exist yet.
+ *
+ * A tab with no `needs` is always there; the rest appear as the stages open.
+ * A group with nothing in it does not render at all, so the first run shows
+ * exactly one word: Jar.
+ */
+function visibleGroups(features: Set<Feature>) {
+  return GROUPS.map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tab) => !("needs" in tab) || features.has(tab.needs as Feature)),
+  })).filter((group) => group.id === "jar" || group.tabs.length > 0);
+}
 
 export default function Page() {
   return (
@@ -91,7 +106,7 @@ export default function Page() {
 }
 
 function JarApp() {
-  const { ready, loadError, state } = useGame();
+  const { ready, loadError, state, derived } = useGame();
   // Remember where you were between visits, without a mount-time render pass.
   const [tab, setTab] = useState<string>(() => {
     if (typeof sessionStorage === "undefined") return "jar";
@@ -130,15 +145,36 @@ function JarApp() {
     );
   }
 
+  const groups = visibleGroups(derived.features);
+  // A tab remembered from last visit can have been hidden since, either by a
+  // reset dropping the stage or by this being a fresh save on the same device.
+  const visible = tab === "jar" || tab === "settings"
+    || groups.some((g) => g.tabs.some((x) => x.id === tab));
+  const current = visible ? tab : "jar";
+
   return (
     <>
-      <TopBar title="Love Jar" action={<SyncBadge />} />
+      <TopBar
+        title="Love Jar"
+        action={
+          <span className="flex items-center gap-1.5">
+            <SyncBadge />
+            <button
+              aria-label="Settings"
+              onClick={() => setTab("settings")}
+              className="pressable text-berry-soft"
+            >
+              <Settings2 className="h-5 w-5" />
+            </button>
+          </span>
+        }
+      />
 
       <div className="sticky top-0 z-20 border-b border-line-soft bg-cream/95 px-4 pb-1.5 pt-1 backdrop-blur-sm">
         <WalletStrip />
         <div data-tour="tabs" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
-          {GROUPS.map((entry) => {
-            const active = entry.id === "jar" ? tab === "jar" : GROUP_FOR_TAB[tab] === entry.id;
+          {groups.map((entry) => {
+            const active = entry.id === "jar" ? current === "jar" : GROUP_FOR_TAB[current] === entry.id;
             return (
               <button
                 key={entry.id}
@@ -155,15 +191,15 @@ function JarApp() {
         </div>
 
         {/* The second row only appears once you are inside a group. */}
-        {GROUP_FOR_TAB[tab] && (
+        {GROUP_FOR_TAB[current] && groups.some((g) => g.id === GROUP_FOR_TAB[current]) && (
           <div className="no-scrollbar -mx-4 mt-1.5 flex gap-1.5 overflow-x-auto px-4">
-            {GROUPS.find((g) => g.id === GROUP_FOR_TAB[tab])?.tabs.map((entry) => (
+            {groups.find((g) => g.id === GROUP_FOR_TAB[current])?.tabs.map((entry) => (
               <button
                 key={entry.id}
                 onClick={() => setTab(entry.id)}
-                aria-current={tab === entry.id ? "page" : undefined}
+                aria-current={current === entry.id ? "page" : undefined}
                 className={`pressable shrink-0 rounded-full px-3 py-1 text-[0.7rem] font-semibold ${
-                  tab === entry.id ? "bg-blush text-rose-dark" : "bg-white/70 text-berry-soft"
+                  current === entry.id ? "bg-blush text-rose-dark" : "bg-white/70 text-berry-soft"
                 }`}
               >
                 {entry.label}
@@ -174,31 +210,32 @@ function JarApp() {
       </div>
 
       <main className="flex flex-col gap-3 px-4 py-3">
-        {tab === "jar" && <JarScreen onOpenTab={setTab} />}
-        {tab === "depths" && <DepthsTab />}
-        {tab === "automation" && <AutomationTab />}
-        {tab === "upgrades" && <UpgradesTab />}
-        {tab === "abilities" && <AbilitiesTab />}
-        {tab === "creatures" && <CreaturesTab />}
-        {tab === "vessels" && <VesselsTab />}
-        {tab === "tide" && <ResetsTab layer="tide" />}
-        {tab === "water" && <ResetsTab layer="water" />}
-        {tab === "sea" && <ResetsTab layer="sea" />}
-        {tab === "us" && <UsTab />}
-        {tab === "missions" && <MissionsTab />}
-        {tab === "challenges" && <ChallengesTab />}
-        {tab === "achievements" && <AchievementsTab />}
-        {tab === "collections" && <CollectionsTab />}
-        {tab === "minigames" && <MinigamesTab />}
-        {tab === "stats" && <StatsTab />}
-        {tab === "codex" && <CodexTab />}
-        {tab === "settings" && <SettingsTab />}
+        {current === "jar" && <JarScreen onOpenTab={setTab} />}
+        {current === "depths" && <DepthsTab />}
+        {current === "automation" && <AutomationTab />}
+        {current === "upgrades" && <UpgradesTab />}
+        {current === "abilities" && <AbilitiesTab />}
+        {current === "creatures" && <CreaturesTab />}
+        {current === "vessels" && <VesselsTab />}
+        {current === "tide" && <ResetsTab layer="tide" />}
+        {current === "water" && <ResetsTab layer="water" />}
+        {current === "sea" && <ResetsTab layer="sea" />}
+        {current === "us" && <UsTab />}
+        {current === "missions" && <MissionsTab />}
+        {current === "challenges" && <ChallengesTab />}
+        {current === "achievements" && <AchievementsTab />}
+        {current === "collections" && <CollectionsTab />}
+        {current === "minigames" && <MinigamesTab />}
+        {current === "stats" && <StatsTab />}
+        {current === "codex" && <CodexTab />}
+        {current === "settings" && <SettingsTab />}
       </main>
 
       <OfflineDialog />
       <LegacyDialog />
       <NoticeStack />
       <Tour onOpenTab={setTab} />
+      <StageAnnounce />
 
       <p className="px-4 pb-6 text-center text-[0.65rem] text-berry-soft">
         Save {state.version}. Stored on this device, synced when there is a connection.

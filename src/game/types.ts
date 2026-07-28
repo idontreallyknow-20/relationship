@@ -3,6 +3,8 @@
 // Content lives in `src/game/config`. Nothing in here knows about a specific
 // upgrade or creature.
 
+import type { Feature } from "./config/stages";
+
 export type Person = "cami" | "joseph";
 
 export type CurrencyId =
@@ -350,6 +352,9 @@ export interface GameState {
   collections: Record<string, string[]>;
 
   /** Love meters, by id, 0 to 100. They fill from the rest of the app. */
+  /** The highest stage whose arrival has been shown to the player. */
+  stageSeen: number;
+
   meters: Record<string, number>;
   /** When each meter was last brought up to date, for decay. */
   metersAt: number;
@@ -410,6 +415,10 @@ export interface Derived {
   /** Water depth and floor width of the current vessel. */
   depth: number;
   floor: number;
+
+  /** How far the game has been revealed, and what that means is on screen. */
+  stage: number;
+  features: Set<Feature>;
 
   /** How many depths are playable right now. */
   depthCount: number;

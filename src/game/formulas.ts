@@ -9,6 +9,7 @@ import {
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
+import { featuresAt, stageFor } from "./config/stages";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
 import { CHALLENGE_BY_ID } from "./config/objectives";
@@ -300,6 +301,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   // The chain. Depth one turns into hearts; every depth below turns into the
   // one above it. `depthPower` and the tide speed apply at every rung, which
   // is why a multiplier bought once is felt eight times over.
+  const stage = stageFor(state.lifetime.hearts);
   const tideMul = tideSpeed(state.tideBought) * bags.mul.tideSpeed;
   const depthPower = bags.mul.depthPower;
   const surface = state.depths[0]?.owned ?? 0;
@@ -336,6 +338,9 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     driftChance: bags.add.driftChance,
     depth: vessel.depth,
     floor: vessel.floor,
+
+    stage,
+    features: featuresAt(stage),
 
     depthCount: maxDepthCount(Math.floor(bags.add.extraDepths)),
     tideSpeedMultiplier: safe(tideMul),

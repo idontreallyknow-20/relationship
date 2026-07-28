@@ -8,7 +8,7 @@ import { STARTER } from "./config/creatures";
 import { LEGACY_WORLD_MAP, VESSELS } from "./config/vessels";
 import { DEPTHS } from "./config/depths";
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   sound: true,
@@ -63,12 +63,12 @@ function starterCreature(person: Person, now: number): CreatureInstance {
 }
 
 /**
- * The chain at the start of a run. The first two depths are open because they
- * are the otters and the crabs, which the player already has; everything below
- * is earned by deepening.
+ * The chain at the start of a run. Only the first tier is open: everything
+ * below it is earned by deepening, which is what makes the opening one button
+ * rather than a wall of things you have not been told about.
  */
 function freshDepths(): DepthState[] {
-  return DEPTHS.map((_, i) => ({ bought: 0, owned: 0, unlocked: i < 2 }));
+  return DEPTHS.map((_, i) => ({ bought: 0, owned: 0, unlocked: i === 0 }));
 }
 
 /** Every autobuyer exists from the start, off, and cheap to switch on. */
@@ -139,6 +139,8 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
 
     achievements: {},
     collections: JSON.parse(JSON.stringify(STARTING_COLLECTIBLES)),
+
+    stageSeen: 0,
 
     meters: {},
     metersAt: now,
@@ -280,16 +282,17 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     if (stored && Number.isFinite(stored.bought) && Number.isFinite(stored.owned)) {
       return { bought: stored.bought, owned: stored.owned, unlocked: Boolean(stored.unlocked) };
     }
-    return { bought: 0, owned: 0, unlocked: i < 2 };
+    return { bought: 0, owned: 0, unlocked: i === 0 };
   });
-  if (version < 5) {
-    const inJar = Object.values(merged.creatures).length;
-    merged.depths[0].owned = Math.max(merged.depths[0].owned, inJar);
-    merged.depths[1].owned = Math.max(merged.depths[1].owned, 0);
-    // Somewhere to go on the very first tick after updating.
-    merged.depths[2].unlocked = true;
+  if (version < 6) {
+    // The chain was renamed off the pets and the tiers no longer mean what
+    // they did, so an old save keeps its counts positionally and is given the
+    // second tier open so there is somewhere to go on the first tick.
+    merged.depths[0].unlocked = true;
+    merged.depths[1].unlocked = true;
   }
 
+  merged.stageSeen = Number(old.stageSeen) || 0;
   merged.meters = { ...((old.meters as Record<string, number>) ?? {}) };
   merged.metersAt = Number(old.metersAt) || Date.now();
 
@@ -305,7 +308,14 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     tap: storedAuto?.tap ?? true,
     tapCredit: 0,
   };
-  merged.autobuyers = { ...fresh.autobuyers, ...((old.autobuyers as Record<string, AutobuyerState>) ?? {}) };
+  // Autobuyers are keyed by tier id, and those ids changed when the chain
+  // stopped being named after the pets. Keep the settings for keys that still
+  // exist and drop the rest, rather than leaving dead entries in the save.
+  const storedBuyers = (old.autobuyers as Record<string, AutobuyerState>) ?? {};
+  merged.autobuyers = { ...fresh.autobuyers };
+  for (const [key, buyer] of Object.entries(storedBuyers)) {
+    if (key in merged.autobuyers) merged.autobuyers[key] = buyer;
+  }
 
   // A vessel that no longer exists would strand the player.
   if (!VESSELS.some((v) => v.id === merged.vessel)) merged.vessel = "jam_jar";
