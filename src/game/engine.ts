@@ -10,6 +10,7 @@ import { DRIFTERS, DRIFTER_BY_ID, VESSEL_BY_ID } from "./config/vessels";
 import { DEPTHS } from "./config/depths";
 import { EGG_BY_ID } from "./config/eggs";
 import { SKILL_BY_ID } from "./config/skills";
+import { advanceStage } from "./config/stages";
 
 /* ------------------------------------------------------------------ */
 /* Currency                                                            */
@@ -637,6 +638,11 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
 
   if (hasFlag(state, "auto_feed")) autoFeed(state);
 
+  // The reveal ladder, one rung at a time and no faster than the gap allows.
+  // Everything on screen is gated off `stageReached`, so this is the single
+  // place a feature can ever appear.
+  advanceStage(state, now);
+
   state.lastTickAt = now;
   state.updatedAt = now;
   return { cracked, collected, comboBroken, drifted, autoTaps, chainHearts };
@@ -1025,6 +1031,20 @@ export function pushLog(state: GameState, label: string, detail: string): void {
 
 export function claimDailyBonus(state: GameState, day: string): { hearts: number; pearls: number; streak: number } | null {
   if (state.dailyBonus.day === day) return null;
+
+  // The first open is not a welcome back.
+  //
+  // This paid `max(1000, hps * 900)` hearts the very first time the jar was
+  // ever opened, which on a fresh save is a thousand hearts and twenty-three
+  // shells handed over before a single tap. That alone cleared the first three
+  // rungs of the ladder, and it was the largest single reason the opening felt
+  // like being handed the whole game at once. Day one now only starts the
+  // streak; the reward is for coming back.
+  if (state.dailyBonus.day === null) {
+    state.dailyBonus = { day, streak: 1 };
+    return null;
+  }
+
   const yesterday = new Date(`${day}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const continued = state.dailyBonus.day === yesterday.toISOString().slice(0, 10);

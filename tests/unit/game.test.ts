@@ -821,20 +821,47 @@ describe("new water", () => {
 /* ------------------------------------------------------------------ */
 
 describe("the daily bonus", () => {
-  it("pays once a day and builds a streak", () => {
+  // The first open is not a welcome back. This used to hand a brand new save a
+  // thousand hearts, three pearls and twenty-three shells before a single tap,
+  // which cleared the first three rungs of the reveal ladder on its own and was
+  // the single largest reason the opening felt like being given everything at
+  // once.
+  it("pays nothing on the very first open, and only starts the streak", () => {
     const state = rich();
-    const first = claimDailyBonus(state, "2026-07-28");
-    expect(first).not.toBeNull();
-    expect(first!.streak).toBe(1);
+    const before = state.wallet.hearts;
+
     expect(claimDailyBonus(state, "2026-07-28")).toBeNull();
+    expect(state.wallet.hearts).toBe(before);
+    expect(state.dailyBonus).toEqual({ day: "2026-07-28", streak: 1 });
+  });
+
+  it("pays once a day from the second day, and builds a streak", () => {
+    const state = rich();
+    claimDailyBonus(state, "2026-07-28");
 
     const second = claimDailyBonus(state, "2026-07-29");
+    expect(second).not.toBeNull();
     expect(second!.streak).toBe(2);
+    expect(second!.hearts).toBeGreaterThan(0);
+
+    // Still only once per day.
+    expect(claimDailyBonus(state, "2026-07-29")).toBeNull();
+
+    const third = claimDailyBonus(state, "2026-07-30");
+    expect(third!.streak).toBe(3);
+  });
+
+  it("starts the streak over when a day is missed", () => {
+    const state = rich();
+    claimDailyBonus(state, "2026-07-28");
+    expect(claimDailyBonus(state, "2026-07-29")!.streak).toBe(2);
+    expect(claimDailyBonus(state, "2026-08-05")!.streak).toBe(1);
   });
 
   it("never overflows the jar it drops into", () => {
     const state = createGameState(0);
     claimDailyBonus(state, "2026-07-28");
+    claimDailyBonus(state, "2026-07-29");
     expect(state.wallet.hearts).toBeLessThanOrEqual(derive(state, 0).capacity);
   });
 });

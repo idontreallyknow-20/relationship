@@ -372,9 +372,17 @@ export interface GameState {
   achievements: Record<string, { tier: number; at: number }>;
   collections: Record<string, string[]>;
 
-  /** Love meters, by id, 0 to 100. They fill from the rest of the app. */
   /** The highest stage whose arrival has been shown to the player. */
   stageSeen: number;
+  /**
+   * The highest stage actually reached. A high-water mark rather than a
+   * function of the current state, because a rebirth wipes the chain and the
+   * deepenings that two of the rungs ask for, and a game that takes a feature
+   * back is worse than one that gave it too early.
+   */
+  stageReached: number;
+  /** When the mark last moved, so reveals cannot arrive on top of each other. */
+  stageAt: number;
 
   meters: Record<string, number>;
   /** When each meter was last brought up to date, for decay. */

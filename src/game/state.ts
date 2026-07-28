@@ -8,24 +8,26 @@ import { STARTER } from "./config/creatures";
 import { LEGACY_WORLD_MAP, VESSELS } from "./config/vessels";
 import { DEPTHS } from "./config/depths";
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /**
  * Saves older than this are not migrated, they are thrown away.
  *
- * Asked for directly, and the right call anyway. Version six and earlier were
- * played on a curve where a rebirth did not clear the chain, so those saves
- * carry counts that the current game could not have produced: hundreds of
- * deepenings, moon balances that took a broken feedback loop to earn, and in
- * the worst case a lifetime total sitting on the floating point ceiling.
- * Carrying that across would have meant the new balance never actually
- * applying to the two people it was rebalanced for.
+ * Asked for directly, twice, and the right call both times.
+ *
+ * Version six and earlier were played on a curve where a rebirth did not clear
+ * the chain, so those saves carried counts the game could not produce.
+ * Version seven is discarded for a different reason: this pass re-keys the
+ * whole reveal ladder onto a high-water mark that older saves do not have, and
+ * re-prices the opening. A seven save would arrive with sixteen features
+ * already open and its `stageReached` at zero, which is the worst of both
+ * readings, and every rung it had already passed would be re-announced.
  *
  * Everything outside the jar is untouched. Messages, memories, letters, moods,
  * plans, drawings and the question history live in their own tables and are
  * not part of a game save.
  */
-export const RESET_SAVES_BEFORE = 7;
+export const RESET_SAVES_BEFORE = 8;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   sound: true,
@@ -161,6 +163,8 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
     collections: JSON.parse(JSON.stringify(STARTING_COLLECTIBLES)),
 
     stageSeen: 0,
+    stageReached: 0,
+    stageAt: 0,
 
     meters: {},
     metersAt: now,
@@ -319,6 +323,8 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
   }
 
   merged.stageSeen = Number(old.stageSeen) || 0;
+  merged.stageReached = Number(old.stageReached) || 0;
+  merged.stageAt = Number(old.stageAt) || 0;
   merged.meters = { ...((old.meters as Record<string, number>) ?? {}) };
   merged.metersAt = Number(old.metersAt) || Date.now();
 

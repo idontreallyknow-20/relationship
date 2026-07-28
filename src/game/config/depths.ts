@@ -275,6 +275,37 @@ export function deepenRequirement(deepens: number): number {
  */
 export const DEEPEN_MULTIPLIER = 1.5;
 
+/** Where the multiplier stops compounding at full strength. */
+export const DEEPEN_SOFTCAP = 25;
+
+/** What each deepening past the softcap is worth instead. */
+export const DEEPEN_TAIL = 1.06;
+
+/**
+ * The multiplier a run's deepenings are actually worth.
+ *
+ * Not `1.5 ** deepens`, which is what it used to be, and which put the
+ * twenty-minute game back on the board by a route the rebirth fix did not
+ * cover. Rebirth was made to clear the chain precisely so a life would be
+ * bounded, but deepening survived that reasoning: the requirement is capped at
+ * four thousand purchases for sound arithmetic reasons, so once the chain is
+ * large enough to buy four thousand of anything, deepening is free and
+ * repeatable. Simulated, a jar that simply never rebirthed took a hundred and
+ * thirty-four deepenings and reached the floating point ceiling in the
+ * fifteenth minute, which is the original bug wearing a different hat.
+ *
+ * So the first twenty-five compound at full strength, which is the whole of an
+ * ordinary life, and everything past that is worth six percent. The tail keeps
+ * deepening from becoming pointless without letting it carry a run forever,
+ * and it makes rebirth the better move at exactly the moment it is supposed
+ * to become the better move.
+ */
+export function deepenPower(deepens: number): number {
+  const n = Math.max(0, Math.floor(deepens));
+  const full = Math.min(n, DEEPEN_SOFTCAP);
+  return Math.pow(DEEPEN_MULTIPLIER, full) * Math.pow(DEEPEN_TAIL, n - full);
+}
+
 /**
  * How many depths an ordinary game reaches.
  *

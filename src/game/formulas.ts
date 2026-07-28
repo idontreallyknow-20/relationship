@@ -7,7 +7,7 @@ import {
   DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
 } from "./config/resets";
 import { CREATURE_BY_ID, TRAIT_BY_ID } from "./config/creatures";
-import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
+import { DEPTHS, deepenPower, maxDepthCount, tideSpeed } from "./config/depths";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
 import { combinedRebirths, jointReached } from "./config/together";
 import {
@@ -274,7 +274,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
 
   // Deepening pays a multiplier that survives everything below a rebirth.
   if (state.deepens > 0) {
-    apply(bags, { mul: { depthPower: Math.pow(DEEPEN_MULTIPLIER, state.deepens) } });
+    apply(bags, { mul: { depthPower: deepenPower(state.deepens) } });
   }
 
   if (state.activeChallenge) {
@@ -305,7 +305,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   // The chain. Depth one turns into hearts; every depth below turns into the
   // one above it. `depthPower` and the tide speed apply at every rung, which
   // is why a multiplier bought once is felt eight times over.
-  const stage = stageFor(state.lifetime.hearts);
+  const stage = stageFor(state);
   const tideMul = tideSpeed(state.tideBought) * bags.mul.tideSpeed;
   const depthPower = bags.mul.depthPower;
   const surface = state.depths[0]?.owned ?? 0;
