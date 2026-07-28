@@ -6,10 +6,13 @@ TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
 import {
   DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
 } from "./config/resets";
-import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
+import { CREATURE_BY_ID, TRAIT_BY_ID } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
 import { combinedRebirths, jointReached } from "./config/together";
+import {
+  DILATION_UPGRADE_BY_ID, dilate, dilationPower, dilationUpgradeMods,
+} from "./config/dilation";
 import { featuresAt, stageFor } from "./config/stages";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
@@ -37,7 +40,7 @@ const MUL_SET: Record<MulStat, true> = {
   tideGain: true, moonGain: true, starGain: true, offline: true, cost: true,
   skillDuration: true, skillCooldown: true, missionReward: true,
   driftReward: true, depthPower: true, tideSpeed: true, deepenGain: true,
-  dropGain: true,
+  dropGain: true, hourGain: true,
 };
 
 const ADD_KEYS = Object.keys(ADD_SET) as AddStat[];
@@ -207,6 +210,10 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     const def = RESET_UPGRADE_BY_ID[id];
     if (def) apply(bags, resetUpgradeMods(def, level));
   }
+  for (const [id, level] of Object.entries(state.dilationUpgrades ?? {})) {
+    const def = DILATION_UPGRADE_BY_ID[id];
+    if (def) apply(bags, dilationUpgradeMods(def, level));
+  }
 
   // Memories are permanent and personal.
   for (const id of state.collections["memories"] ?? []) {
@@ -289,20 +296,11 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   const global = bags.mul.all;
   const comboMultiplier = 1 + Math.min(state.combo, bags.add.comboCap) * 0.03 * bags.mul.comboPower;
 
-  // Passive output is the creatures plus whatever the trees add. Creatures
-  // are the larger share once the jar has anything in it.
-  const creatureOutput = creaturesInJar(state).reduce((sum, creature) => {
-    const def = CREATURE_BY_ID[creature.defId];
-    if (!def) return sum;
-    const per = def.power * creatureScale(creature.level, creature.stars) * fedFactor(creature);
-    const interval = actionInterval(
-      def,
-      creature.level,
-      def.line === "otter" ? bags.mul.crackSpeed : bags.mul.collectSpeed,
-    );
-    const value = def.line === "otter" ? bags.mul.crackValue : bags.mul.collectValue;
-    return sum + (per * value * bags.mul.creaturePower) / interval;
-  }, 0);
+  // Passive hearts are the chain and whatever the trees add flatly. Creatures
+  // are deliberately absent: they used to be the larger share of this number,
+  // which made the fastest route to hearts "own more otters" and left the jar
+  // as scenery. What they give now is the multipliers above, which apply to
+  // the jar's own output, and the shells and pearls they turn up.
 
   // The chain. Depth one turns into hearts; every depth below turns into the
   // one above it. `depthPower` and the tide speed apply at every rung, which
@@ -313,9 +311,22 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   const surface = state.depths[0]?.owned ?? 0;
   const chainOutput = surface * (DEPTHS[0]?.power ?? 1) * depthPower * tideMul;
 
+  // Time dilation, applied last of all.
+  //
+  // It has to be last, because it is an exponent rather than a factor: every
+  // multiplier above has to already be in the number before it is raised to a
+  // power, or dilating would penalise the base rate and leave the multipliers
+  // untouched, which is the opposite of what the layer is for.
+  const dilated = state.dilation?.active === true;
+  const power = dilationPower(state.dilationUpgrades ?? {});
+  const perClick = bags.add.clickFlat * bags.mul.click * global * comboMultiplier;
+  const perSecond = (bags.add.cpsFlat + chainOutput) * bags.mul.cps * global;
+
   return {
-    heartsPerClick: safe(bags.add.clickFlat * bags.mul.click * global * comboMultiplier),
-    heartsPerSecond: safe((bags.add.cpsFlat + creatureOutput + chainOutput) * bags.mul.cps * global),
+    heartsPerClick: safe(dilated ? dilate(perClick, power) : perClick),
+    heartsPerSecond: safe(dilated ? dilate(perSecond, power) : perSecond),
+    dilated,
+    dilationPower: power,
     critChance: bags.add.critChance,
     critMultiplier: safe(2 * bags.mul.crit),
     megaCritChance: bags.add.megaCritChance,

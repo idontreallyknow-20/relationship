@@ -50,6 +50,12 @@ export function earnHearts(state: GameState, amount: number, source: HeartSource
   state.runHearts = safe(state.runHearts + value);
   state.eraHearts = safe(state.eraHearts + value);
   state.seaHearts = safe(state.seaHearts + value);
+  // One more running total, and only while the switch is on. A dilated
+  // stretch is paid for what it earned dilated, so hearts banked before
+  // turning it on cannot be cashed in as if they had been.
+  if (state.dilation?.active) {
+    state.dilation.hearts = safe(state.dilation.hearts + value);
+  }
   state.stats.sessionHearts = safe(state.stats.sessionHearts + value);
 
   const key = STAT_FOR_SOURCE[source];
@@ -291,6 +297,52 @@ export interface CollectResult {
   amount: number;
 }
 
+/**
+ * Pay out the currency a settled thing is worth.
+ *
+ * Shared between cracking one open and picking one up, because both now pay
+ * currency and the rates have to stay in step. `share` is how much of it this
+ * particular event is worth.
+ */
+export function paySettled(
+  state: GameState,
+  derived: Derived,
+  kind: Settled["kind"],
+  value: number,
+  share: number,
+): { currency: CurrencyId | null; amount: number } {
+  switch (kind) {
+    case "shell": {
+      const amount = Math.max(1, Math.ceil(value * 0.02 * share * derived.mods.mul.shellGain));
+      addCurrency(state, "shells", amount);
+      return { currency: "shells", amount };
+    }
+    case "glass": {
+      const amount = Math.max(1, Math.ceil(value * 0.02 * share * derived.mods.mul.glassGain));
+      addCurrency(state, "glass", amount);
+      return { currency: "glass", amount };
+    }
+    case "pearl": {
+      const amount = Math.max(1, Math.round(share * derived.mods.mul.pearlGain));
+      if (amount > 0) addCurrency(state, "pearls", amount);
+      return { currency: "pearls", amount };
+    }
+    default:
+      return { currency: null, amount: 0 };
+  }
+}
+
+/**
+ * How much of a shell's worth comes off in the otter's hands.
+ *
+ * The rest is in the thing it drops, which somebody still has to pick up. That
+ * split is the whole relationship between the two lines: her otters open
+ * things, his crabs collect them, and a jar with both in it is worth more than
+ * either on its own. It is not nothing on its own, though, because a starter
+ * otter with no crab yet used to earn literally zero.
+ */
+export const CRACK_SHARE = 0.35;
+
 /** A crab picking something up, or you tapping it yourself. */
 export function collectSettled(
   state: GameState,
@@ -307,27 +359,14 @@ export function collectSettled(
   state.stats.collects += 1;
   recordMetric(state, "collects", 1);
 
-  const hearts = earnHearts(state, value, byCreature ? "creature" : "click");
+  // A crab picking something up pays no hearts; you reaching in and taking it
+  // yourself does, because that is a tap and taps are the game. Same item,
+  // same currency either way, so automating collection still costs you
+  // nothing except the hearts you would have got for doing it by hand.
+  const hearts = byCreature ? 0 : earnHearts(state, value, "click");
 
-  switch (item.kind) {
-    case "shell": {
-      const amount = Math.max(1, Math.ceil(value * 0.02 * derived.mods.mul.shellGain));
-      addCurrency(state, "shells", amount);
-      return { kind: item.kind, hearts, currency: "shells", amount };
-    }
-    case "glass": {
-      const amount = Math.max(1, Math.ceil(value * 0.02 * derived.mods.mul.glassGain));
-      addCurrency(state, "glass", amount);
-      return { kind: item.kind, hearts, currency: "glass", amount };
-    }
-    case "pearl": {
-      const amount = Math.max(1, Math.ceil(1 * derived.mods.mul.pearlGain));
-      addCurrency(state, "pearls", amount);
-      return { kind: item.kind, hearts, currency: "pearls", amount };
-    }
-    default:
-      return { kind: item.kind, hearts, currency: null, amount: 0 };
-  }
+  const paid = paySettled(state, derived, item.kind, value, 1 - CRACK_SHARE);
+  return { kind: item.kind, hearts, currency: paid.currency, amount: paid.amount };
 }
 
 /* ------------------------------------------------------------------ */
@@ -515,16 +554,27 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
       const pairBoost = paired.has(creature.id) ? 1.25 * derived.pairBonus : 1;
 
       if (def.line === "otter") {
-        // Crack: pay out, and drop what came out of the shell.
+        // Crack, and drop what came out of the shell.
+        //
+        // No hearts. Creatures used to be the largest single source of passive
+        // hearts in the game, which quietly made them the spine of it: the
+        // fastest way to more hearts was more otters, and the jar was
+        // something they happened to live in. They pay in shells, sea glass
+        // and pearls now, and in the permanent multipliers they carry. Hearts
+        // come from the jar, which is either you tapping it or the chain.
         const value = scale * derived.crackValue * derived.mods.mul.creaturePower
           * derived.globalMultiplier * pairBoost;
-        if (!noPassive) earnHearts(state, value * 8, "creature");
         state.stats.cracks += 1;
         recordMetric(state, "cracks", 1);
         cracked += 1;
 
         const roll = Math.random();
         const kind: Settled["kind"] = roll < 0.06 * (1 + derived.luck) ? "pearl" : roll < 0.35 ? "glass" : "shell";
+        // Some of it comes off in her hands and the rest falls to the floor
+        // for a crab, or for you, to pick up. Without this an otter with no
+        // crab beside it earned nothing at all, which is precisely the jar
+        // Cami starts the game with.
+        paySettled(state, derived, kind, value, CRACK_SHARE);
         dropSettled(state, kind, value, 10 + Math.random() * 80);
       } else {
         // Collect: take the nearest thing that has reached the floor.
@@ -806,9 +856,14 @@ export function computeOffline(state: GameState, now: number): OfflineReport {
     * derived.mods.mul.cps * derived.globalMultiplier;
   const other = Math.max(0, derived.heartsPerSecond - chainNow);
 
+  // Shells and sea glass are what the creatures pay, so they scale with how
+  // many of them are actually in the jar rather than being a flat trickle.
+  // Since creatures no longer make hearts, this is their offline earnings.
+  const working = creaturesInJar(state).length;
+  const creatureRate = (1 + working) * derived.mods.mul.creaturePower;
   const hearts = safe(chain.hearts + other * seconds * derived.offlineRate);
-  const shells = Math.floor(seconds / 240 * derived.mods.mul.shellGain);
-  const glass = Math.floor(seconds / 300 * derived.mods.mul.glassGain);
+  const shells = Math.floor((seconds / 240) * derived.mods.mul.shellGain * creatureRate);
+  const glass = Math.floor((seconds / 300) * derived.mods.mul.glassGain * creatureRate);
   return {
     awayMs, countedMs, hearts, shells, glass,
     cappedByWindow, clockSuspicious, depths: chain.depths,
