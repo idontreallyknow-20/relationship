@@ -382,6 +382,18 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               opacity: reduced ? 0.25 : 0.3 + ringPhase * 0.4,
             }}
           />
+          {/* A quiet ring keeping time with the taps the jar makes for you, so
+              automated play reads as play rather than as nothing happening. */}
+          {state.auto.tap && derived.autoTapsPerSecond > 0 && !reduced && (
+            <span
+              aria-hidden="true"
+              className="auto-pulse absolute h-28 w-28 rounded-full border-2"
+              style={{
+                borderColor: vessel.accent,
+                animationDuration: `${Math.max(160, 1000 / derived.autoTapsPerSecond)}ms`,
+              }}
+            />
+          )}
           <HeartIcon className="h-24 w-24 drop-shadow" style={{ transform: `scale(${1 + charge * 0.14})` }} />
           {charge > 0.05 && (
             <span aria-hidden="true" className="absolute bottom-0 h-1.5 w-24 overflow-hidden rounded-full bg-white/70">
@@ -396,13 +408,15 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           )}
         </button>
         <p className="text-xs font-semibold" style={{ color: vessel.accent }}>
-          {charge >= CHARGE_THRESHOLD
-            ? "Let go"
-            : charge > 0.05
-              ? "Keep holding"
-              : ringPhase > 0.8
-                ? "Perfect timing"
-                : "Tap, or hold to drop one to the floor"}
+          {state.auto.tap && charge <= 0.05
+            ? `Tapping for you, ${formatNumber(derived.autoTapsPerSecond, format)} a second`
+            : charge >= CHARGE_THRESHOLD
+              ? "Let go"
+              : charge > 0.05
+                ? "Keep holding"
+                : ringPhase > 0.8
+                  ? "Perfect timing"
+                  : "Tap, or hold to drop one to the floor"}
         </p>
       </div>
 

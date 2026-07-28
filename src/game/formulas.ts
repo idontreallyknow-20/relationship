@@ -7,23 +7,38 @@ import {
   MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
 } from "./config/resets";
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
+import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
 import { CHALLENGE_BY_ID } from "./config/objectives";
 import { affordableLevels, bulkCost, safe, scale } from "./numbers";
 
-const ADD_KEYS: AddStat[] = [
-  "clickFlat", "cpsFlat", "critChance", "megaCritChance", "comboCap", "comboDurationMs",
-  "comboStart", "comboShield", "critChainChance", "luck", "offlineHours", "capacity",
-  "creatureSlots", "abilitySlots", "startingUpgrades", "driftChance", "freeUpgradeChance",
-];
+// Written as exhaustive records rather than arrays so that adding a stat to
+// the union without listing it here is a compile error. As plain arrays a
+// forgotten entry left the stat permanently undefined, which reads as a
+// mysterious NaN several layers away.
+const ADD_SET: Record<AddStat, true> = {
+  clickFlat: true, cpsFlat: true, critChance: true, megaCritChance: true,
+  comboCap: true, comboDurationMs: true, comboStart: true, comboShield: true,
+  critChainChance: true, luck: true, offlineHours: true, capacity: true,
+  creatureSlots: true, abilitySlots: true, startingUpgrades: true,
+  driftChance: true, freeUpgradeChance: true, autoTapsPerSecond: true,
+  autoChargeRatio: true, extraDepths: true, autobuyerSpeed: true,
+};
 
-const MUL_KEYS: MulStat[] = [
-  "all", "click", "cps", "crit", "megaCrit", "comboGain", "comboPower", "chargePower",
-  "crackValue", "crackSpeed", "collectValue", "collectSpeed", "pairBonus", "creaturePower",
-  "creatureXp", "shellGain", "glassGain", "pearlGain", "tideGain", "moonGain", "starGain",
-  "offline", "cost", "skillDuration", "skillCooldown", "missionReward", "driftReward",
-];
+const MUL_SET: Record<MulStat, true> = {
+  all: true, click: true, cps: true, crit: true, megaCrit: true, comboGain: true,
+  comboPower: true, chargePower: true, crackValue: true, crackSpeed: true,
+  collectValue: true, collectSpeed: true, pairBonus: true, creaturePower: true,
+  creatureXp: true, shellGain: true, glassGain: true, pearlGain: true,
+  tideGain: true, moonGain: true, starGain: true, offline: true, cost: true,
+  skillDuration: true, skillCooldown: true, missionReward: true,
+  driftReward: true, depthPower: true, tideSpeed: true, deepenGain: true,
+  dropGain: true,
+};
+
+const ADD_KEYS = Object.keys(ADD_SET) as AddStat[];
+const MUL_KEYS = Object.keys(MUL_SET) as MulStat[];
 
 type Bags = { add: Record<AddStat, number>; mul: Record<MulStat, number> };
 
@@ -146,6 +161,12 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   bags.add.creatureSlots = vessel.slots;
   bags.add.abilitySlots = 3;
   bags.add.capacity = vessel.capacity === Infinity ? 1e300 : vessel.capacity;
+  // The jar taps for you from the very first run. Upgrades make it quicker
+  // and start turning those taps into charged holds.
+  bags.add.autoTapsPerSecond = 1;
+  bags.add.autoChargeRatio = 0;
+  bags.add.autobuyerSpeed = 1;
+  bags.add.extraDepths = 0;
 
   for (const [id, level] of Object.entries(state.upgrades)) {
     const def = UPGRADE_BY_ID[id];
@@ -202,6 +223,16 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     apply(bags, { mul: { all: 1 + Math.min(1, state.tideLevel / 100) * 0.6 } });
   }
 
+  // Every depth you own at least one of contributes its standing bonus.
+  for (let i = 0; i < state.depths.length && i < DEPTHS.length; i++) {
+    if (state.depths[i].owned > 0) apply(bags, DEPTHS[i].mods);
+  }
+
+  // Deepening pays a multiplier that survives everything below a tide change.
+  if (state.deepens > 0) {
+    apply(bags, { mul: { depthPower: Math.pow(DEEPEN_MULTIPLIER, state.deepens) } });
+  }
+
   if (state.activeChallenge) {
     const def = CHALLENGE_BY_ID[state.activeChallenge.defId];
     if (def) apply(bags, def.mods);
@@ -236,9 +267,17 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     return sum + (per * value * bags.mul.creaturePower) / interval;
   }, 0);
 
+  // The chain. Depth one turns into hearts; every depth below turns into the
+  // one above it. `depthPower` and the tide speed apply at every rung, which
+  // is why a multiplier bought once is felt eight times over.
+  const tideMul = tideSpeed(state.tideBought) * bags.mul.tideSpeed;
+  const depthPower = bags.mul.depthPower;
+  const surface = state.depths[0]?.owned ?? 0;
+  const chainOutput = surface * (DEPTHS[0]?.power ?? 1) * depthPower * tideMul;
+
   return {
     heartsPerClick: safe(bags.add.clickFlat * bags.mul.click * global * comboMultiplier),
-    heartsPerSecond: safe((bags.add.cpsFlat + creatureOutput) * bags.mul.cps * global),
+    heartsPerSecond: safe((bags.add.cpsFlat + creatureOutput + chainOutput) * bags.mul.cps * global),
     critChance: bags.add.critChance,
     critMultiplier: safe(2 * bags.mul.crit),
     megaCritChance: bags.add.megaCritChance,
@@ -268,6 +307,14 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     driftChance: bags.add.driftChance,
     depth: vessel.depth,
     floor: vessel.floor,
+
+    depthCount: maxDepthCount(Math.floor(bags.add.extraDepths)),
+    tideSpeedMultiplier: safe(tideMul),
+    depthPower: safe(depthPower),
+    autoTapsPerSecond: safe(bags.add.autoTapsPerSecond),
+    autoChargeRatio: Math.min(1, Math.max(0, bags.add.autoChargeRatio)),
+    autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
+
     mods: bags,
   };
 }

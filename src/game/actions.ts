@@ -1,5 +1,5 @@
 import type {
-  CreatureInstance, GameState, Gift, ItemInstance, ItemRarity, Person,
+  AutobuyerState, CreatureInstance, GameState, Gift, ItemInstance, ItemRarity, Person,
 } from "./types";
 import {
   addCurrency, addBuff, earnHearts, grantCollectible, grantReward, metricTotal,
@@ -23,6 +23,10 @@ import {
   affixValue, affixesFor, itemLevelScale, polishCost, rerollCost, salvageValue,
 } from "./config/items";
 import { VESSELS, VESSEL_BY_ID, vesselIndex } from "./config/vessels";
+import {
+  DEEPEN_MULTIPLIER, DEEPEN_REQUIREMENT, DEPTHS, depthAffordable, depthBulkCost,
+  tideAffordable, tideBulkCost,
+} from "./config/depths";
 import { FOOD_BY_ID, MEMORY_BY_ID, TRIP_BY_ID } from "./config/memories";
 import { CHALLENGE_BY_ID, MISSIONS, MISSION_BY_ID, type MetricId, type MissionPeriod } from "./config/objectives";
 import { createGameState } from "./state";
@@ -385,6 +389,210 @@ export function giveItem(state: GameState, creatureId: string, itemId: string | 
   }
   creature.itemId = itemId;
   return done();
+}
+
+/* ------------------------------------------------------------------ */
+/* The depth chain                                                     */
+/* ------------------------------------------------------------------ */
+
+/** How many of this depth you can buy right now, honouring the buy amount. */
+export function depthBuyCount(state: GameState, tier: number, want?: number | "max"): number {
+  const def = DEPTHS[tier];
+  const slot = state.depths[tier];
+  if (!def || !slot?.unlocked) return 0;
+  const derived = derive(state);
+  const budget = state.wallet.hearts / Math.max(0.01, derived.costMultiplier);
+  const affordable = depthAffordable(def, slot.bought, budget);
+  const amount = want ?? state.settings.depthBuyAmount;
+  if (amount === "max") return affordable;
+  return Math.min(affordable, Math.max(0, Math.floor(Number(amount) || 0)));
+}
+
+/**
+ * Buy into a depth.
+ *
+ * Buying raises both `bought` and `owned`: the price of the next one, and the
+ * number actually down there working. Production from below only ever raises
+ * `owned`, which is why a depth fed from beneath never gets more expensive.
+ */
+export function buyDepth(state: GameState, tier: number, want?: number | "max"): ActionResult {
+  const def = DEPTHS[tier];
+  const slot = state.depths[tier];
+  if (!def) return fail("No such depth");
+  if (!slot?.unlocked) return fail("The jar is not that deep yet");
+
+  const count = depthBuyCount(state, tier, want);
+  if (count <= 0) return fail("Not enough hearts");
+
+  const derived = derive(state);
+  const cost = depthBulkCost(def, slot.bought, count) * derived.costMultiplier;
+  if (!spendCurrency(state, "hearts", cost)) return fail("Not enough hearts");
+
+  slot.bought += count;
+  slot.owned = safe(slot.owned + count);
+  recordMetric(state, "depthsBought", count);
+  return done();
+}
+
+/** Deepest depth currently open, as an index. */
+export function deepestUnlocked(state: GameState): number {
+  let last = 0;
+  for (let i = 0; i < state.depths.length; i++) if (state.depths[i].unlocked) last = i;
+  return last;
+}
+
+export function canDeepen(state: GameState): boolean {
+  const tier = deepestUnlocked(state);
+  return state.depths[tier].bought >= DEEPEN_REQUIREMENT;
+}
+
+/**
+ * Go deeper.
+ *
+ * The fast inner loop: it costs you the whole chain and pays a permanent
+ * multiplier plus, if there is any left, the next depth down. Requires a
+ * count rather than a wait, so it is never something you sit and watch for.
+ */
+export function deepen(state: GameState): ActionResult {
+  if (!canDeepen(state)) {
+    return fail(`Buy ${DEEPEN_REQUIREMENT} of your deepest before going deeper`);
+  }
+  const derived = derive(state);
+  const tier = deepestUnlocked(state);
+  const room = Math.min(derived.depthCount, DEPTHS.length);
+
+  state.deepens += 1;
+  recordMetric(state, "deepens", 1);
+
+  const opened = tier + 1 < room;
+  if (opened) state.depths[tier + 1].unlocked = true;
+
+  for (const depth of state.depths) {
+    depth.bought = 0;
+    depth.owned = 0;
+  }
+  state.depths[0].unlocked = true;
+  state.depths[1].unlocked = true;
+  state.wallet.hearts = 0;
+
+  pushLog(state, "Deeper", opened ? DEPTHS[tier + 1].name : `x${DEEPEN_MULTIPLIER} again`);
+  return done(
+    opened
+      ? `The jar is deeper. ${DEPTHS[tier + 1].name} are down there.`
+      : `Everything is ${DEEPEN_MULTIPLIER} times stronger.`,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Tide, the speed of everything                                       */
+/* ------------------------------------------------------------------ */
+
+export function tideBuyCount(state: GameState, want?: number | "max"): number {
+  const derived = derive(state);
+  const budget = state.wallet.hearts / Math.max(0.01, derived.costMultiplier);
+  const affordable = tideAffordable(state.tideBought, budget);
+  const amount = want ?? state.settings.depthBuyAmount;
+  if (amount === "max") return affordable;
+  return Math.min(affordable, Math.max(0, Math.floor(Number(amount) || 0)));
+}
+
+/** Tide is the one dial that touches every depth at once. */
+export function buyTide(state: GameState, want?: number | "max"): ActionResult {
+  const count = tideBuyCount(state, want);
+  if (count <= 0) return fail("Not enough hearts");
+  const derived = derive(state);
+  const cost = tideBulkCost(state.tideBought, count) * derived.costMultiplier;
+  if (!spendCurrency(state, "hearts", cost)) return fail("Not enough hearts");
+  state.tideBought += count;
+  recordMetric(state, "tideBought", count);
+  return done();
+}
+
+/* ------------------------------------------------------------------ */
+/* Automation                                                          */
+/* ------------------------------------------------------------------ */
+
+export function setAuto(state: GameState, key: "tap" | "hold", on: boolean): ActionResult {
+  state.auto[key] = on;
+  return done();
+}
+
+export function setAutobuyer(
+  state: GameState,
+  target: string,
+  patch: Partial<Omit<AutobuyerState, "lastRunAt">>,
+): ActionResult {
+  const existing = state.autobuyers[target] ?? { on: false, max: true, threshold: 1, lastRunAt: 0 };
+  state.autobuyers[target] = { ...existing, ...patch };
+  return done();
+}
+
+/**
+ * Everything affordable, cheapest first.
+ *
+ * Deliberately greedy and deliberately bounded: it loops until nothing more is
+ * affordable or it hits the pass limit, so one press after a reset rebuilds a
+ * run rather than needing twenty. The pass limit exists because with enough
+ * income "affordable" never stops being true.
+ */
+export function buyAll(state: GameState, passes = 40): ActionResult {
+  let bought = 0;
+  for (let pass = 0; pass < passes; pass++) {
+    let didSomething = false;
+
+    // Depths, deepest first: reaching down is worth more per heart.
+    for (let tier = state.depths.length - 1; tier >= 0; tier--) {
+      if (!state.depths[tier]?.unlocked) continue;
+      if (buyDepth(state, tier, "max").ok) {
+        didSomething = true;
+        bought += 1;
+      }
+    }
+    if (buyTide(state, "max").ok) {
+      didSomething = true;
+      bought += 1;
+    }
+    if (buyCheapest(state).ok) {
+      didSomething = true;
+      bought += 1;
+    }
+    if (!didSomething) break;
+  }
+  return bought > 0 ? done(`Bought ${bought}`) : fail("Nothing affordable");
+}
+
+/**
+ * The autobuyers, run once per tick.
+ *
+ * Each one keeps its own clock so a slow autobuyer does not get dragged along
+ * by a fast one, and each spends at most its share of the balance so switching
+ * them all on does not mean the first in the list eats everything.
+ */
+export function runAutobuyers(state: GameState, now: number): void {
+  const derived = derive(state);
+  const interval = derived.autobuyerIntervalMs;
+
+  for (const [target, buyer] of Object.entries(state.autobuyers)) {
+    if (!buyer.on) continue;
+    if (buyer.lastRunAt > now) buyer.lastRunAt = 0;
+    if (now - buyer.lastRunAt < interval) continue;
+    buyer.lastRunAt = now;
+
+    // Spend only this autobuyer's slice, then put the rest back, so the
+    // threshold means what it says regardless of what else is switched on.
+    const held = state.wallet.hearts;
+    const allowance = held * Math.min(1, Math.max(0, buyer.threshold));
+    state.wallet.hearts = allowance;
+
+    const want = buyer.max ? "max" : 1;
+    if (target === "tide") buyTide(state, want);
+    else {
+      const tier = DEPTHS.findIndex((d) => d.id === target);
+      if (tier >= 0) buyDepth(state, tier, want);
+    }
+
+    state.wallet.hearts = safe(state.wallet.hearts + (held - allowance));
+  }
 }
 
 /* ------------------------------------------------------------------ */

@@ -13,6 +13,7 @@ import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { SyncBadge } from "@/components/sync-status";
 import { JarScreen } from "@/components/jar/jar-screen";
 import { AbilitiesTab, UpgradesTab } from "@/components/jar/progress";
+import { AutomationTab, DepthsTab } from "@/components/jar/depths";
 import { CreaturesTab } from "@/components/jar/creatures";
 import { ResetsTab, VesselsTab } from "@/components/jar/resets";
 import {
@@ -25,6 +26,8 @@ import { Tour } from "@/components/jar/tour";
 
 const TABS = [
   { id: "jar", label: "Jar" },
+  { id: "depths", label: "Depths" },
+  { id: "automation", label: "Automation" },
   { id: "upgrades", label: "Upgrades" },
   { id: "abilities", label: "Abilities" },
   { id: "creatures", label: "Creatures" },
@@ -114,6 +117,8 @@ function JarApp() {
 
       <main className="flex flex-col gap-4 px-4 py-4">
         {tab === "jar" && <JarScreen onOpenTab={setTab} />}
+        {tab === "depths" && <DepthsTab />}
+        {tab === "automation" && <AutomationTab />}
         {tab === "upgrades" && <UpgradesTab />}
         {tab === "abilities" && <AbilitiesTab />}
         {tab === "creatures" && <CreaturesTab />}

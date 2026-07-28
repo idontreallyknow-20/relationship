@@ -13,10 +13,12 @@ import {
   addCreature, applyLegacy, availableCreatures, buyMemory, buyResetUpgrade, buyUpgrade,
   canChangeTide, canChangeWater, changeTide, changeWater, claimMission, collectGift,
   craftItem, feedCreature, finishChallenge, giveItem, grantTogether, growCreature,
-  leaveGift, levelSkill, moveTo, placeCreature, receiveGift, recordSameEvening,
-  refreshMissions, respec, salvageItem, setWater, startChallenge, startTrip,
-  unlockVessel, GIFT_WINDOW_MS,
+  buyAll, buyDepth, buyTide, canDeepen, deepen, leaveGift, levelSkill, moveTo,
+  placeCreature, receiveGift, recordSameEvening, refreshMissions, respec,
+  runAutobuyers, salvageItem, setWater, startChallenge, startTrip, unlockVessel,
+  GIFT_WINDOW_MS,
 } from "@/game/actions";
+import { DEEPEN_REQUIREMENT, DEPTHS, depthCost, tideCost } from "@/game/config/depths";
 import { UPGRADE_BY_ID } from "@/game/config/upgrades";
 import { TIDE_REQUIREMENT, WATER_REQUIREMENT } from "@/game/config/resets";
 import { CREATURE_BY_ID, STARTER } from "@/game/config/creatures";
@@ -1049,5 +1051,199 @@ describe("water", () => {
   it("gives an old save the plain water rather than undefined", () => {
     const state = migrateSave({ version: 3 }, "cami");
     expect(state.water).toBe("default");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The depth chain                                                     */
+/* ------------------------------------------------------------------ */
+
+describe("the depth chain", () => {
+  it("cascades downward, each depth feeding the one above it", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e9;
+    state.depths[2].unlocked = true;
+    expect(buyDepth(state, 2, 10).ok).toBe(true);
+    expect(state.depths[2].owned).toBe(10);
+    expect(state.depths[1].owned).toBe(0);
+
+    for (let i = 1; i <= 100; i++) tick(state, 100, i * 100);
+
+    // Kelp made crabs, crabs made otters, otters made hearts.
+    expect(state.depths[1].owned).toBeGreaterThan(0);
+    expect(state.depths[0].owned).toBeGreaterThan(0);
+    expect(state.stats.heartsFromPassive).toBeGreaterThan(0);
+    // Nothing bought itself: only production moved.
+    expect(state.depths[1].bought).toBe(0);
+  });
+
+  it("charges more for each one bought and nothing for what is produced", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e9;
+    const first = depthCost(DEPTHS[0], 0);
+    buyDepth(state, 0, 1);
+    expect(depthCost(DEPTHS[0], state.depths[0].bought)).toBeGreaterThan(first);
+
+    // Production raises `owned` without touching the price.
+    const priced = depthCost(DEPTHS[0], state.depths[0].bought);
+    state.depths[1].owned = 100;
+    for (let i = 1; i <= 50; i++) tick(state, 100, i * 100);
+    expect(state.depths[0].owned).toBeGreaterThan(1);
+    expect(depthCost(DEPTHS[0], state.depths[0].bought)).toBe(priced);
+  });
+
+  it("refuses a depth the jar has not reached", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e30;
+    expect(state.depths[4].unlocked).toBe(false);
+    expect(buyDepth(state, 4, 1).ok).toBe(false);
+    expect(state.depths[4].owned).toBe(0);
+  });
+
+  it("never spends more than it has", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 25;
+    buyDepth(state, 0, "max");
+    expect(state.wallet.hearts).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("deepening", () => {
+  it("needs a count rather than a wait, then resets the chain and pays forever", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e12;
+    expect(canDeepen(state)).toBe(false);
+
+    buyDepth(state, 1, DEEPEN_REQUIREMENT);
+    expect(canDeepen(state)).toBe(true);
+
+    const before = derive(state, 0).depthPower;
+    expect(deepen(state).ok).toBe(true);
+
+    expect(state.deepens).toBe(1);
+    expect(state.depths[0].owned).toBe(0);
+    expect(state.depths[1].bought).toBe(0);
+    expect(state.wallet.hearts).toBe(0);
+    expect(derive(state, 0).depthPower).toBeGreaterThan(before);
+    // And it opened the next one down.
+    expect(state.depths[2].unlocked).toBe(true);
+  });
+
+  it("keeps everything that is not the chain", () => {
+    const state = rich();
+    buyUpgrade(state, "otter_hands", 5);
+    const creatures = Object.keys(state.creatures).length;
+    const lifetime = state.lifetime.hearts;
+    buyDepth(state, 1, DEEPEN_REQUIREMENT);
+    deepen(state);
+    expect(state.upgrades["otter_hands"]).toBe(5);
+    expect(Object.keys(state.creatures).length).toBe(creatures);
+    expect(state.lifetime.hearts).toBe(lifetime);
+  });
+});
+
+describe("tide as speed", () => {
+  it("makes every depth faster and costs more each time", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e12;
+    buyDepth(state, 0, 10);
+    const before = derive(state, 0).heartsPerSecond;
+
+    const firstCost = tideCost(0);
+    buyTide(state, 50);
+    expect(tideCost(state.tideBought)).toBeGreaterThan(firstCost);
+    expect(derive(state, 0).heartsPerSecond).toBeGreaterThan(before);
+    expect(derive(state, 0).tideSpeedMultiplier).toBeGreaterThan(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The jar playing itself                                              */
+/* ------------------------------------------------------------------ */
+
+describe("automation", () => {
+  it("taps for you from the very first run", () => {
+    const state = createGameState(0);
+    expect(state.auto.tap).toBe(true);
+    for (let i = 1; i <= 60; i++) tick(state, 100, i * 100);
+    expect(state.stats.totalClicks).toBeGreaterThan(0);
+    expect(state.wallet.hearts).toBeGreaterThan(0);
+  });
+
+  it("stops when you switch it off", () => {
+    const state = createGameState(0);
+    state.auto.tap = false;
+    for (let i = 1; i <= 60; i++) tick(state, 100, i * 100);
+    expect(state.stats.totalClicks).toBe(0);
+  });
+
+  it("only charges once something has taught it to", () => {
+    const state = createGameState(0);
+    state.auto.hold = true;
+    for (let i = 1; i <= 60; i++) tick(state, 100, i * 100);
+    // Base charge ratio is zero, so no charged taps yet.
+    expect(state.stats.chargedClicks).toBe(0);
+
+    const taught = createGameState(0);
+    taught.auto.hold = true;
+    taught.moonUpgrades["m_auto_hold"] = 10;
+    for (let i = 1; i <= 200; i++) tick(taught, 100, i * 100);
+    expect(derive(taught, 0).autoChargeRatio).toBeGreaterThan(0);
+  });
+
+  it("carries fractional taps rather than rounding them away", () => {
+    const state = createGameState(0);
+    // Ten ticks of 100ms at one tap a second is exactly one tap.
+    for (let i = 1; i <= 10; i++) tick(state, 100, i * 100);
+    expect(state.stats.totalClicks).toBe(1);
+  });
+
+  it("runs an autobuyer on its own clock, within its own share", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e6;
+    state.autobuyers["otters"] = { on: true, max: true, threshold: 0.5, lastRunAt: 0 };
+
+    runAutobuyers(state, 10_000);
+    expect(state.depths[0].bought).toBeGreaterThan(0);
+    // It was only ever allowed half, so at least half is still there.
+    expect(state.wallet.hearts).toBeGreaterThan(4e5);
+  });
+
+  it("leaves a switched-off autobuyer alone", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e6;
+    runAutobuyers(state, 10_000);
+    expect(state.depths[0].bought).toBe(0);
+    expect(state.wallet.hearts).toBe(1e6);
+  });
+
+  it("buys everything affordable and then stops", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e7;
+    expect(buyAll(state).ok).toBe(true);
+    expect(state.wallet.hearts).toBeGreaterThanOrEqual(0);
+    expect(state.depths[0].bought).toBeGreaterThan(0);
+
+    // Nothing left to buy is a refusal, not a crash.
+    state.wallet.hearts = 0;
+    expect(buyAll(state).ok).toBe(false);
+  });
+});
+
+describe("time away", () => {
+  it("grows the chain while the app is shut, not just the hearts", () => {
+    const state = createGameState(0);
+    state.wallet.hearts = 1e12;
+    state.depths[2].unlocked = true;
+    buyDepth(state, 2, 20);
+    state.lastSeenAt = 0;
+
+    const report = computeOffline(state, 3_600_000);
+    expect(report.depths[1]).toBeGreaterThan(0);
+    expect(report.depths[0]).toBeGreaterThan(0);
+    expect(report.hearts).toBeGreaterThan(0);
+
+    claimOffline(state, report, 3_600_000);
+    expect(state.depths[0].owned).toBeGreaterThan(0);
   });
 });

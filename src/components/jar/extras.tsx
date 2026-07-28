@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Heart, Plane } from "lucide-react";
 import { useCouple, useWho } from "@/lib/couple-context";
+import { setFocusMode, useFocusMode } from "@/lib/focus";
 import { useCachedQuery } from "@/lib/offline/cache";
 import { displayName } from "@/lib/types";
 import { useGame } from "@/game/store";
@@ -371,6 +372,26 @@ function Entry({ title, body, color }: { title: string; body: string; color?: st
 /* Settings                                                            */
 /* ------------------------------------------------------------------ */
 
+function FocusToggle() {
+  const focus = useFocusMode();
+  return (
+    <button
+      role="switch"
+      aria-checked={focus}
+      onClick={() => setFocusMode(!focus)}
+      className="pressable flex min-h-12 w-full items-center justify-between rounded-xl border border-line bg-white px-4 py-2.5"
+    >
+      <span className="text-sm font-semibold text-berry">Focus mode</span>
+      <span
+        aria-hidden="true"
+        className={`relative h-7 w-12 shrink-0 rounded-full ${focus ? "bg-rose-dark" : "bg-line"}`}
+      >
+        <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-soft ${focus ? "left-6" : "left-1"}`} />
+      </span>
+    </button>
+  );
+}
+
 export function SettingsTab() {
   const { state, mutate, flush } = useGame();
   const toast = useToast();
@@ -402,6 +423,10 @@ export function SettingsTab() {
           {toggle("screenShake", "Screen shake")}
           {toggle("drifters", "Things drifting in")}
         </div>
+      </Section>
+
+      <Section title="Just the game" hint="Hides the rest of the app until you want it back.">
+        <FocusToggle />
       </Section>
 
       <Section title="Performance">

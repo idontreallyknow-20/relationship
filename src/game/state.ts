@@ -1,11 +1,14 @@
-import type { CreatureInstance, GameSettings, GameState, GameStats, Person } from "./types";
+import type {
+  AutobuyerState, CreatureInstance, DepthState, GameSettings, GameState, GameStats, Person,
+} from "./types";
 import { LEGACY_CURRENCY_MAP, ZERO_WALLET } from "./config/currencies";
 import { STARTING_COLLECTIBLES } from "./config/awards";
 import { SKILLS } from "./config/skills";
 import { STARTER } from "./config/creatures";
 import { LEGACY_WORLD_MAP, VESSELS } from "./config/vessels";
+import { DEPTHS } from "./config/depths";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   sound: true,
@@ -18,6 +21,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   numberFormat: "short",
   confirmRareSpends: true,
   buyAmount: 1,
+  depthBuyAmount: "max",
   drifters: true,
   autoSkills: false,
   tutorialDone: false,
@@ -58,6 +62,24 @@ function starterCreature(person: Person, now: number): CreatureInstance {
   };
 }
 
+/**
+ * The chain at the start of a run. The first two depths are open because they
+ * are the otters and the crabs, which the player already has; everything below
+ * is earned by deepening.
+ */
+function freshDepths(): DepthState[] {
+  return DEPTHS.map((_, i) => ({ bought: 0, owned: 0, unlocked: i < 2 }));
+}
+
+/** Every autobuyer exists from the start, off, and cheap to switch on. */
+function freshAutobuyers(): Record<string, AutobuyerState> {
+  const out: Record<string, AutobuyerState> = {};
+  for (const target of [...DEPTHS.map((d) => d.id), "tide"]) {
+    out[target] = { on: false, max: true, threshold: 1, lastRunAt: 0 };
+  }
+  return out;
+}
+
 export function createGameState(now: number = Date.now(), person: Person = "cami"): GameState {
   const starter = starterCreature(person, now);
   return {
@@ -89,6 +111,18 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
     items: {},
     slots: [starter.id, null],
     codex: [starter.defId],
+
+    depths: freshDepths(),
+    deepens: 0,
+    tideBought: 0,
+
+    seas: 0,
+    seaHearts: 0,
+    seaStartedAt: now,
+    dropUpgrades: {},
+
+    auto: { tap: true, hold: false, tapCredit: 0 },
+    autobuyers: freshAutobuyers(),
 
     vessel: "jam_jar",
     vesselsUnlocked: ["jam_jar"],
@@ -133,7 +167,8 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
  *
  * Version 4 is the re-theme: pets became otters and crabs, charms became one
  * rock or shell per creature, worlds became vessels, and fourteen currencies
- * became seven. Nothing is thrown away without being converted.
+ * became seven. Version 5 adds the depth chain underneath all of it.
+ * Nothing is thrown away without being converted.
  */
 export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
   const fresh = createGameState(Date.now(), person);
@@ -234,6 +269,41 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     if (!merged.codex.includes(starter.defId)) merged.codex.push(starter.defId);
   }
 
+  // Version 5 adds the depth chain. An existing save keeps everything it had
+  // and is given the first two depths seeded from the creatures it already
+  // owns, so the jar it comes back to is the jar it left, only now with
+  // somewhere to go.
+  const storedDepths = Array.isArray(old.depths) ? (old.depths as DepthState[]) : null;
+  merged.depths = DEPTHS.map((_, i) => {
+    const stored = storedDepths?.[i];
+    if (stored && Number.isFinite(stored.bought) && Number.isFinite(stored.owned)) {
+      return { bought: stored.bought, owned: stored.owned, unlocked: Boolean(stored.unlocked) };
+    }
+    return { bought: 0, owned: 0, unlocked: i < 2 };
+  });
+  if (version < 5) {
+    const inJar = Object.values(merged.creatures).length;
+    merged.depths[0].owned = Math.max(merged.depths[0].owned, inJar);
+    merged.depths[1].owned = Math.max(merged.depths[1].owned, 0);
+    // Somewhere to go on the very first tick after updating.
+    merged.depths[2].unlocked = true;
+  }
+
+  merged.deepens = Number(old.deepens) || 0;
+  merged.tideBought = Number(old.tideBought) || 0;
+  merged.seas = Number(old.seas) || 0;
+  merged.seaHearts = Number(old.seaHearts) || 0;
+  merged.seaStartedAt = Number(old.seaStartedAt) || Date.now();
+  merged.dropUpgrades = { ...((old.dropUpgrades as Record<string, number>) ?? {}) };
+
+  const storedAuto = old.auto as GameState["auto"] | undefined;
+  merged.auto = {
+    tap: storedAuto?.tap ?? true,
+    hold: storedAuto?.hold ?? false,
+    tapCredit: 0,
+  };
+  merged.autobuyers = { ...fresh.autobuyers, ...((old.autobuyers as Record<string, AutobuyerState>) ?? {}) };
+
   // A vessel that no longer exists would strand the player.
   if (!VESSELS.some((v) => v.id === merged.vessel)) merged.vessel = "jam_jar";
 
@@ -244,7 +314,12 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
   }
   if (!Number.isFinite(merged.runHearts)) merged.runHearts = 0;
   if (!Number.isFinite(merged.eraHearts)) merged.eraHearts = 0;
+  if (!Number.isFinite(merged.seaHearts)) merged.seaHearts = 0;
   if (!Number.isFinite(merged.tideLevel)) merged.tideLevel = 0;
+  for (const depth of merged.depths) {
+    if (!Number.isFinite(depth.bought) || depth.bought < 0) depth.bought = 0;
+    if (!Number.isFinite(depth.owned) || depth.owned < 0) depth.owned = 0;
+  }
 
   return merged;
 }

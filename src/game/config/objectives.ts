@@ -33,7 +33,11 @@ export type MetricId =
   | "offlineClaims"
   | "questionAnswered"
   | "togetherActions"
-  | "sameEvening";
+  | "sameEvening"
+  | "depthsBought"
+  | "deepens"
+  | "tideBought"
+  | "seas";
 
 export const METRIC_LABEL: Record<MetricId, string> = {
   clicks: "taps",
@@ -66,6 +70,10 @@ export const METRIC_LABEL: Record<MetricId, string> = {
   questionAnswered: "daily questions",
   togetherActions: "shared moments",
   sameEvening: "evenings together",
+  depthsBought: "creatures bought down the chain",
+  deepens: "deepenings",
+  tideBought: "tide raised",
+  seas: "seas",
 };
 
 export type Reward = Partial<Record<CurrencyId, number>> & {

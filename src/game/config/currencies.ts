@@ -69,6 +69,14 @@ export const CURRENCIES: CurrencyDef[] = [
     purpose: "The last vessels and the deepest upgrades.",
     color: "#4f7bd0",
   },
+  {
+    id: "drops",
+    name: "Drops",
+    short: "Drops",
+    source: "Letting the whole sea go, once you have one.",
+    purpose: "The deepest tree. It changes what the jar is.",
+    color: "#3b6ea5",
+  },
 ];
 
 export const CURRENCY_BY_ID: Record<CurrencyId, CurrencyDef> = Object.fromEntries(

@@ -32,6 +32,7 @@ import {
 } from "./engine";
 import {
   buyCheapest, collectGift, grantTogether, receiveGift, recordSameEvening, refreshMissions,
+  runAutobuyers,
 } from "./actions";
 import { drainRewards } from "./rewards-inbox";
 import {
@@ -346,7 +347,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       dayCounters.current.clicks += state.stats.totalClicks - beforeClicks;
       dayCounters.current.combo = Math.max(dayCounters.current.combo, state.combo);
 
-      // Automation unlocked deep in the ascension tree.
+      // The autobuyers, which are free and on by choice, then the deeper
+      // automation that the star tree unlocks.
+      runAutobuyers(state, now);
       if (hasFlag(state, "auto_upgrade")) buyCheapest(state);
 
       const unlocked = checkAchievements(state, now);

@@ -7,6 +7,7 @@ import { CHALLENGE_BY_ID, MISSION_BY_ID, type MetricId } from "./config/objectiv
 import { ACHIEVEMENTS } from "./config/awards";
 import { CREATURE_BY_ID, actionInterval, creatureScale, xpFor } from "./config/creatures";
 import { DRIFTERS, DRIFTER_BY_ID, VESSEL_BY_ID } from "./config/vessels";
+import { DEPTHS } from "./config/depths";
 import { SKILL_BY_ID } from "./config/skills";
 
 /* ------------------------------------------------------------------ */
@@ -123,6 +124,10 @@ export function metricTotal(state: GameState, metric: MetricId): number {
     case "questionAnswered": return state.storyProgress["questions"] ?? 0;
     case "togetherActions": return state.storyProgress["together"] ?? 0;
     case "sameEvening": return state.storyProgress["evenings"] ?? 0;
+    case "depthsBought": return state.depths.reduce((sum, d) => sum + d.bought, 0);
+    case "deepens": return state.deepens;
+    case "tideBought": return state.tideBought;
+    case "seas": return state.seas;
     default: return 0;
   }
 }
@@ -425,6 +430,71 @@ export interface TickResult {
   collected: number;
   comboBroken: boolean;
   drifted: boolean;
+  /** Taps the jar made on your behalf this tick. */
+  autoTaps: number;
+  /** Hearts the depth chain produced this tick. */
+  chainHearts: number;
+}
+
+/**
+ * Run the chain for `dt` seconds.
+ *
+ * Deepest first, so within a single tick a purchase at the bottom does not
+ * instantly appear at the top: each depth is paid from what the one below it
+ * held at the *start* of the tick. That one-tick lag is what makes a deep
+ * purchase feel like it is travelling up through the water, and it keeps the
+ * maths honest at any tick rate.
+ */
+export function runChain(state: GameState, derived: Derived, dt: number): number {
+  const count = Math.min(state.depths.length, derived.depthCount, DEPTHS.length);
+  const speed = derived.depthPower * derived.tideSpeedMultiplier * dt;
+
+  const before = state.depths.map((d) => d.owned);
+  for (let i = count - 1; i >= 1; i--) {
+    const producing = before[i];
+    if (producing <= 0) continue;
+    const made = producing * DEPTHS[i].power * speed;
+    if (made > 0) state.depths[i - 1].owned = safe(state.depths[i - 1].owned + made);
+  }
+
+  // The surface turns into hearts rather than into another depth.
+  const surface = before[0];
+  if (surface <= 0) return 0;
+  const hearts = surface * DEPTHS[0].power * speed
+    * derived.mods.mul.cps * derived.globalMultiplier;
+  return earnHearts(state, hearts, "passive");
+}
+
+/**
+ * Taps the jar makes for you.
+ *
+ * Fractional taps carry over in `tapCredit` rather than being rounded away,
+ * so half a tap a second really is half a tap a second and not nothing. The
+ * same function runs during offline catch-up, which is why it takes `dt`
+ * rather than reading the clock.
+ */
+export function runAutoTaps(state: GameState, derived: Derived, dt: number, now: number): number {
+  if (!state.auto.tap || derived.autoTapsPerSecond <= 0) return 0;
+
+  state.auto.tapCredit += derived.autoTapsPerSecond * dt;
+  // The epsilon matters: ten ticks of 0.1 sum to 0.9999999999999999, so a
+  // plain floor would drop one tap in every whole second, forever.
+  const taps = Math.min(Math.floor(state.auto.tapCredit + 1e-9), 200);
+  if (taps <= 0) return 0;
+  state.auto.tapCredit -= taps;
+
+  const chargeShare = state.auto.hold ? derived.autoChargeRatio : 0;
+  for (let i = 0; i < taps; i++) {
+    // Auto-taps land dead centre. That is the point of automating them.
+    performClick(state, derived, {
+      precision: 1,
+      charge: chargeShare > 0 && Math.random() < chargeShare ? 1 : 0,
+      now,
+      x: 50,
+      y: 50,
+    });
+  }
+  return taps;
 }
 
 const SINK_PER_SECOND = 0.28;
@@ -441,6 +511,10 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
   for (const item of state.settled) {
     item.y = Math.min(1, item.y + SINK_PER_SECOND * dt);
   }
+
+  // The chain, then the taps it pays for.
+  const chainHearts = challenge?.rule === "no_passive" ? 0 : runChain(state, derived, dt);
+  const autoTaps = runAutoTaps(state, derived, dt, now);
 
   let cracked = 0;
   let collected = 0;
@@ -538,7 +612,7 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
 
   state.lastTickAt = now;
   state.updatedAt = now;
-  return { cracked, collected, comboBroken, drifted };
+  return { cracked, collected, comboBroken, drifted, autoTaps, chainHearts };
 }
 
 /** Experience without the level-up message; the tick calls this constantly. */
@@ -682,6 +756,43 @@ export interface OfflineReport {
   glass: number;
   cappedByWindow: boolean;
   clockSuspicious: boolean;
+  /** What each depth grew to while you were away. */
+  depths: number[];
+}
+
+/** Coarse steps used to advance the chain over an offline window. */
+const OFFLINE_STEPS = 240;
+
+/**
+ * Run the chain forward over a long stretch without ticking it ten times a
+ * second for every one of those seconds.
+ *
+ * Two hundred and forty steps over any window is close enough: the chain is
+ * polynomial in time, and the error from coarse stepping is a fraction of a
+ * percent against a number that is about to be multiplied by a hundred anyway.
+ * Returns the depth counts and the hearts the surface produced.
+ */
+function simulateChain(
+  state: GameState,
+  derived: Derived,
+  seconds: number,
+): { depths: number[]; hearts: number } {
+  const count = Math.min(state.depths.length, derived.depthCount, DEPTHS.length);
+  const owned = state.depths.map((d) => d.owned);
+  const step = seconds / OFFLINE_STEPS;
+  const speed = derived.depthPower * derived.tideSpeedMultiplier * step;
+  let hearts = 0;
+
+  for (let s = 0; s < OFFLINE_STEPS; s++) {
+    const before = owned.slice();
+    for (let i = count - 1; i >= 1; i--) {
+      if (before[i] <= 0) continue;
+      owned[i - 1] = safe(owned[i - 1] + before[i] * DEPTHS[i].power * speed);
+    }
+    if (before[0] > 0) hearts = safe(hearts + before[0] * DEPTHS[0].power * speed);
+  }
+
+  return { depths: owned, hearts: safe(hearts * derived.mods.mul.cps * derived.globalMultiplier) };
 }
 
 /**
@@ -701,17 +812,38 @@ export function computeOffline(state: GameState, now: number): OfflineReport {
   const cappedByWindow = awayMs > windowMs;
 
   if (countedMs < 60_000 || clockSuspicious) {
-    return { awayMs, countedMs: 0, hearts: 0, shells: 0, glass: 0, cappedByWindow, clockSuspicious };
+    return {
+      awayMs, countedMs: 0, hearts: 0, shells: 0, glass: 0,
+      cappedByWindow, clockSuspicious, depths: state.depths.map((d) => d.owned),
+    };
   }
 
   const seconds = countedMs / 1000;
-  const hearts = safe(derived.heartsPerSecond * seconds * derived.offlineRate);
+
+  // The chain keeps running while the app is shut, so time away compounds
+  // rather than merely accruing. Everything else that is not the chain is
+  // paid at the offline rate as before.
+  const chain = simulateChain(state, derived, seconds);
+  const chainNow = (state.depths[0]?.owned ?? 0) * (DEPTHS[0]?.power ?? 1)
+    * derived.depthPower * derived.tideSpeedMultiplier
+    * derived.mods.mul.cps * derived.globalMultiplier;
+  const other = Math.max(0, derived.heartsPerSecond - chainNow);
+
+  const hearts = safe(chain.hearts + other * seconds * derived.offlineRate);
   const shells = Math.floor(seconds / 240 * derived.mods.mul.shellGain);
   const glass = Math.floor(seconds / 300 * derived.mods.mul.glassGain);
-  return { awayMs, countedMs, hearts, shells, glass, cappedByWindow, clockSuspicious };
+  return {
+    awayMs, countedMs, hearts, shells, glass,
+    cappedByWindow, clockSuspicious, depths: chain.depths,
+  };
 }
 
 export function claimOffline(state: GameState, report: OfflineReport, now: number): void {
+  // Whatever the chain grew into while the app was shut.
+  for (let i = 0; i < state.depths.length; i++) {
+    const grown = report.depths[i];
+    if (Number.isFinite(grown) && grown > state.depths[i].owned) state.depths[i].owned = grown;
+  }
   if (report.hearts > 0) earnHearts(state, report.hearts, "offline");
   if (report.shells > 0) addCurrency(state, "shells", report.shells);
   if (report.glass > 0) addCurrency(state, "glass", report.glass);

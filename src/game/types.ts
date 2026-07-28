@@ -12,7 +12,8 @@ export type CurrencyId =
   | "glass"
   | "tide"
   | "moons"
-  | "stars";
+  | "stars"
+  | "drops";
 
 /** Stats that contributors add to. Sums across every source. */
 export type AddStat =
@@ -32,7 +33,12 @@ export type AddStat =
   | "abilitySlots"
   | "startingUpgrades"
   | "driftChance"
-  | "freeUpgradeChance";
+  | "freeUpgradeChance"
+  // Automation and the depth chain.
+  | "autoTapsPerSecond"
+  | "autoChargeRatio"
+  | "extraDepths"
+  | "autobuyerSpeed";
 
 /** Stats that contributors multiply. Products across every source. */
 export type MulStat =
@@ -65,7 +71,12 @@ export type MulStat =
   | "skillDuration"
   | "skillCooldown"
   | "missionReward"
-  | "driftReward";
+  | "driftReward"
+  // The depth chain.
+  | "depthPower"
+  | "tideSpeed"
+  | "deepenGain"
+  | "dropGain";
 
 export interface Mods {
   add?: Partial<Record<AddStat, number>>;
@@ -171,6 +182,40 @@ export interface RewardLogEntry {
   detail: string;
 }
 
+/**
+ * One rung of the chain.
+ *
+ * `bought` is what you paid for and drives the price of the next one.
+ * `owned` is what is actually down there producing, and includes everything
+ * the depth below has made for you. They diverge on purpose: production is
+ * free, and only buying makes the next one dearer.
+ */
+export interface DepthState {
+  bought: number;
+  owned: number;
+  unlocked: boolean;
+}
+
+/** The jar playing itself. */
+export interface AutoState {
+  /** Tap on your behalf. */
+  tap: boolean;
+  /** Make some of those taps charged holds. */
+  hold: boolean;
+  /** Carries the fractional part of a tap between ticks. */
+  tapCredit: number;
+}
+
+/** One autobuyer. `target` is a depth id, "tide", or a reset rung id. */
+export interface AutobuyerState {
+  on: boolean;
+  /** Buy as many as affordable rather than one at a time. */
+  max: boolean;
+  /** Spend at most this share of the balance, 0 to 1. */
+  threshold: number;
+  lastRunAt: number;
+}
+
 /** Left behind by a tide change for the other person to find. */
 export interface Gift {
   from: Person;
@@ -234,6 +279,8 @@ export interface GameSettings {
   numberFormat: "short" | "scientific" | "engineering" | "full";
   confirmRareSpends: boolean;
   buyAmount: 1 | 10 | 25 | 100 | "max";
+  /** Kept apart from `buyAmount`: the chain wants max, upgrade lists rarely do. */
+  depthBuyAmount: 1 | 10 | 100 | "max";
   drifters: boolean;
   autoSkills: boolean;
   tutorialDone: boolean;
@@ -273,6 +320,22 @@ export interface GameState {
   /** Creature ids by jar slot. Adjacency is what makes otters hold hands. */
   slots: (string | null)[];
   codex: string[];
+
+  /** The chain, surface first. Grows as the drop tree extends it. */
+  depths: DepthState[];
+  /** How many times the jar has been deepened, and the multiplier it bought. */
+  deepens: number;
+  /** Purchases of Tide, which is the speed of every depth at once. */
+  tideBought: number;
+
+  /** Resets of the fourth rung, and the tree it pays for. */
+  seas: number;
+  seaHearts: number;
+  seaStartedAt: number;
+  dropUpgrades: Record<string, number>;
+
+  auto: AutoState;
+  autobuyers: Record<string, AutobuyerState>;
 
   vessel: string;
   vesselsUnlocked: string[];
@@ -349,5 +412,17 @@ export interface Derived {
   /** Water depth and floor width of the current vessel. */
   depth: number;
   floor: number;
+
+  /** How many depths are playable right now. */
+  depthCount: number;
+  /** Speed multiplier every depth is running at. */
+  tideSpeedMultiplier: number;
+  /** Output multiplier from deepenings, the drop tree and everything else. */
+  depthPower: number;
+  /** Taps a second the jar makes for you, and how many of those are charged. */
+  autoTapsPerSecond: number;
+  autoChargeRatio: number;
+  /** How often an autobuyer may fire, in milliseconds. */
+  autobuyerIntervalMs: number;
   mods: { add: Record<AddStat, number>; mul: Record<MulStat, number> };
 }

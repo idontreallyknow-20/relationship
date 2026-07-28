@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { House, Images, MessageCircle, Pencil, Smile, Camera, Mail, CalendarHeart, ListChecks } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useWho } from "@/lib/couple-context";
+import { useFocusMode, setFocusMode } from "@/lib/focus";
 import { HeartIcon } from "./hearts";
 import { Sheet } from "./ui";
 
@@ -112,6 +113,32 @@ export function BottomNav() {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const unread = useUnreadCount();
+  const focus = useFocusMode();
+
+  // Focus mode: the jar and nothing else. The way back is deliberately here
+  // rather than buried in the game's settings, so it can never strand anyone
+  // who turned it on without meaning to.
+  if (focus) {
+    return (
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur-sm"
+        style={{ paddingBottom: "var(--safe-bottom)" }}
+      >
+        <div className="mx-auto flex h-16 max-w-lg items-center justify-center gap-3 px-4">
+          <NavLink href="/jar" label="Jar" active={pathname.startsWith("/jar")}>
+            <JarIcon className="h-5 w-5" />
+          </NavLink>
+          <button
+            onClick={() => setFocusMode(false)}
+            className="pressable rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-berry-soft"
+          >
+            Show everything
+          </button>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <>

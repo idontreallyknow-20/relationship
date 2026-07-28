@@ -80,6 +80,14 @@ export const MOON_UPGRADES: ResetUpgradeDef[] = [
   { id: "m_auto_buy", name: "Steady Hand", description: "Buys the cheapest affordable upgrade on its own.", currency: "moons", baseCost: 25, growth: 1, max: 1, kind: "flag", flag: "auto_buy" },
   { id: "m_auto_feed", name: "Full Bowls", description: "Creatures feed themselves from your shells.", currency: "moons", baseCost: 18, growth: 1, max: 1, kind: "flag", flag: "auto_feed" },
   { id: "m_auto_skill", name: "Second Nature", description: "Abilities can fire themselves once maxed.", currency: "moons", baseCost: 30, growth: 1, max: 1, kind: "flag", flag: "auto_skill" },
+
+  // The jar plays itself harder. These are the line the player keeps feeding,
+  // because every level of them is time they no longer have to spend tapping.
+  { id: "m_auto_tap", name: "Quick Hands", description: "The jar taps for you more often.", currency: "moons", baseCost: 2, growth: 1.28, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 1 },
+  { id: "m_auto_hold", name: "Learns To Hold", description: "Some of those taps become charged holds.", currency: "moons", baseCost: 6, growth: 1.4, max: 20, kind: "add", stat: "autoChargeRatio", per: 0.05 },
+  { id: "m_autobuyer", name: "Steady Machinery", description: "Every autobuyer runs faster.", currency: "moons", baseCost: 5, growth: 1.35, max: 100, kind: "add", stat: "autobuyerSpeed", per: 1 },
+  { id: "m_depth", name: "Weight Of Water", description: "Every depth produces more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "depthPower", per: 0.3 },
+  { id: "m_tide_speed", name: "Running Tide", description: "Everything in the jar moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "tideSpeed", per: 0.2 },
   { id: "m_new_water", name: "New Water", description: "Unlocks the second reset layer. This is what the tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
 ];
 
@@ -100,6 +108,10 @@ export const STAR_UPGRADES: ResetUpgradeDef[] = [
   { id: "s_item_keep", name: "Keepsakes", description: "Rocks and shells survive new water.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "item_retention" },
   { id: "s_auto_upgrade", name: "It Runs Itself", description: "Buys upgrades continuously.", currency: "stars", baseCost: 20, growth: 1, max: 1, kind: "flag", flag: "auto_upgrade" },
   { id: "s_ocean", name: "The Ocean", description: "Unlocks the last vessel.", currency: "stars", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "ocean" },
+  { id: "s_auto_tap", name: "Never Stops", description: "The jar taps far, far more often.", currency: "stars", baseCost: 3, growth: 1.45, max: 100, kind: "add", stat: "autoTapsPerSecond", per: 25 },
+  { id: "s_depth", name: "Pressure", description: "Every depth, far stronger.", currency: "stars", baseCost: 3, growth: 1.5, max: 100, kind: "mulLinear", stat: "depthPower", per: 1 },
+  { id: "s_autobuyer", name: "It Never Sleeps", description: "Autobuyers run many times faster.", currency: "stars", baseCost: 6, growth: 1.5, max: 100, kind: "add", stat: "autobuyerSpeed", per: 20 },
+  { id: "s_deepen", name: "Further Down", description: "Deepening pays much more.", currency: "stars", baseCost: 10, growth: 1.7, max: 40, kind: "mulLinear", stat: "deepenGain", per: 0.25 },
   { id: "s_stars", name: "More Stars", description: "Every new water pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
 ];
 

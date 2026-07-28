@@ -155,10 +155,32 @@ body {
   animation: jar-shake 220ms ease-in-out;
 }
 
+/* A depth whose count just jumped lights up, so a purchase deep in the chain
+   is visible travelling upward rather than only showing as a bigger number. */
+@keyframes depth-surge {
+  0% { opacity: 0.32; transform: translateY(40%); }
+  100% { opacity: 0; transform: translateY(-100%); }
+}
+.depth-surge {
+  animation: depth-surge 420ms ease-out forwards;
+  pointer-events: none;
+}
+
+/* The heart pulses in time with the taps the jar makes for you. */
+@keyframes auto-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.45; }
+  50% { transform: scale(1.14); opacity: 0.9; }
+}
+.auto-pulse {
+  animation: auto-pulse 900ms ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .heart-popup { animation-duration: 400ms; }
   .float-bob { animation: none; transform: translate(-50%, -50%); }
   .jar-shake { animation: none; }
+  .depth-surge { animation: none; opacity: 0; }
+  .auto-pulse { animation: none; }
 }
 
 /* Drawing canvas: stop the page from scrolling under a finger. */
