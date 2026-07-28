@@ -297,16 +297,6 @@ export function AutomationTab() {
             on={state.auto.tap}
             onChange={(next) => mutate((draft) => void (draft.auto.tap = next))}
           />
-          <Toggle
-            label="Hold for me"
-            detail={
-              derived.autoChargeRatio > 0
-                ? `${Math.round(derived.autoChargeRatio * 100)}% of taps become charged holds`
-                : "Needs an upgrade before any tap can charge"
-            }
-            on={state.auto.hold}
-            onChange={(next) => mutate((draft) => void (draft.auto.hold = next))}
-          />
         </div>
       </Section>
 

@@ -7,7 +7,7 @@ import { derive, hasFlag, heldHands, maxAffordable, upgradeCost } from "@/game/f
 import {
   activateSkill, addCurrency, checkAchievements, claimDailyBonus, claimOffline,
   collectSettled, computeOffline, dropSettled, earnHearts, metricTotal, performClick,
-  skillReady, spawnDrifter, tapDrifter, tick, CHARGE_THRESHOLD,
+  skillReady, spawnDrifter, tapDrifter, tick,
 } from "@/game/engine";
 import {
   addCreature, applyLegacy, availableCreatures, buyMemory, buyResetUpgrade, buyUpgrade,
@@ -104,13 +104,13 @@ describe("a new save", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Clicking, criticals, combos, charge                                 */
+/* Clicking, criticals and combos                                      */
 /* ------------------------------------------------------------------ */
 
 describe("clicking", () => {
   const tap = (state: GameState, opts: Partial<Parameters<typeof performClick>[2]> = {}) =>
     performClick(state, derive(state, 1_000), {
-      precision: 0, charge: 0, now: 1_000, x: 50, y: 50, ...opts,
+      precision: 0, now: 1_000, x: 50, y: 50, ...opts,
     });
 
   it("pays hearts and records the tap", () => {
@@ -149,7 +149,7 @@ describe("clicking", () => {
     let last = 0;
     for (let i = 0; i < 20; i++) {
       last = performClick(state, derive(state, 1_000 + i * 50), {
-        precision: 0, charge: 0, now: 1_000 + i * 50, x: 0, y: 0,
+        precision: 0, now: 1_000 + i * 50, x: 0, y: 0,
       }).hearts;
     }
     expect(state.combo).toBeGreaterThan(1);
@@ -157,31 +157,12 @@ describe("clicking", () => {
 
     // Long enough away and the combo is gone.
     const broken = performClick(state, derive(state, 900_000), {
-      precision: 0, charge: 0, now: 900_000, x: 0, y: 0,
+      precision: 0, now: 900_000, x: 0, y: 0,
     });
     expect(broken.comboBroken).toBe(true);
   });
 
-  it("turns a charged tap into a shell on the floor worth five combo steps", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.99);
-    const quick = createGameState(0);
-    const held = createGameState(0);
-    tap(quick, { charge: 0 });
-    const charged = tap(held, { charge: 1 });
 
-    expect(charged.charged).toBe(true);
-    expect(charged.dropped).not.toBeNull();
-    expect(held.settled.length).toBe(1);
-    expect(held.combo).toBeGreaterThan(quick.combo);
-    expect(held.stats.chargedClicks).toBe(1);
-  });
-
-  it("treats anything below the threshold as an ordinary tap", () => {
-    const state = createGameState(0);
-    const outcome = tap(state, { charge: CHARGE_THRESHOLD - 0.01 });
-    expect(outcome.charged).toBe(false);
-    expect(state.settled.length).toBe(0);
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -203,7 +184,7 @@ describe("the jar", () => {
     const level = createGameState(0);
     const over = createGameState(0);
     over.wallet.hearts = derive(over, 0).capacity * 2;
-    const opts = { precision: 0, charge: 0, now: 1_000, x: 0, y: 0 };
+    const opts = { precision: 0, now: 1_000, x: 0, y: 0 };
     expect(performClick(over, derive(over, 1_000), opts).hearts)
       .toBeGreaterThan(performClick(level, derive(level, 1_000), opts).hearts);
   });
@@ -596,11 +577,11 @@ describe("challenges", () => {
   it("needs the moon upgrade, strips the run, and restores it afterwards", () => {
     const state = rich();
     buyUpgrade(state, "otter_hands", 20);
-    expect(startChallenge(state, "charge_only", 0).ok).toBe(false);
+    expect(startChallenge(state, "perfect_only", 0).ok).toBe(false);
 
     state.moonUpgrades["m_challenges"] = 1;
     const upgradesBefore = { ...state.upgrades };
-    expect(startChallenge(state, "charge_only", 0).ok).toBe(true);
+    expect(startChallenge(state, "perfect_only", 0).ok).toBe(true);
     expect(state.upgrades).toEqual({});
     expect(state.wallet.hearts).toBe(0);
 
@@ -612,12 +593,12 @@ describe("challenges", () => {
   it("pays out and records a best when the goal is met", () => {
     const state = rich();
     state.moonUpgrades["m_challenges"] = 1;
-    startChallenge(state, "charge_only", 0);
+    startChallenge(state, "perfect_only", 0);
     state.activeChallenge!.score = Number.MAX_SAFE_INTEGER;
     const outcome = finishChallenge(state, 1_000);
     expect(outcome.cleared).toBe(true);
     expect(outcome.first).toBe(true);
-    expect(state.challenges["charge_only"].completed).toBe(1);
+    expect(state.challenges["perfect_only"].completed).toBe(1);
     expect(state.stats.challengesCompleted).toBe(1);
   });
 });
@@ -669,7 +650,7 @@ describe("together", () => {
     // No partner, no gift, no shared evening: the jar still earns.
     for (let i = 0; i < 100; i++) {
       performClick(state, derive(state, i * 100), {
-        precision: 0.5, charge: 0, now: i * 100, x: 0, y: 0,
+        precision: 0.5, now: i * 100, x: 0, y: 0,
       });
     }
     expect(state.wallet.hearts).toBeGreaterThan(0);
@@ -840,7 +821,7 @@ describe("metrics", () => {
   it("adds up across a run and feeds missions and achievements alike", () => {
     const state = rich();
     const before = metricTotal(state, "clicks");
-    performClick(state, derive(state, 0), { precision: 0, charge: 0, now: 0, x: 0, y: 0 });
+    performClick(state, derive(state, 0), { precision: 0, now: 0, x: 0, y: 0 });
     expect(metricTotal(state, "clicks")).toBeGreaterThan(before);
   });
 });
@@ -1181,19 +1162,6 @@ describe("automation", () => {
     expect(state.stats.totalClicks).toBe(0);
   });
 
-  it("only charges once something has taught it to", () => {
-    const state = createGameState(0);
-    state.auto.hold = true;
-    for (let i = 1; i <= 60; i++) tick(state, 100, i * 100);
-    // Base charge ratio is zero, so no charged taps yet.
-    expect(state.stats.chargedClicks).toBe(0);
-
-    const taught = createGameState(0);
-    taught.auto.hold = true;
-    taught.moonUpgrades["m_auto_hold"] = 10;
-    for (let i = 1; i <= 200; i++) tick(taught, 100, i * 100);
-    expect(derive(taught, 0).autoChargeRatio).toBeGreaterThan(0);
-  });
 
   it("carries fractional taps rather than rounding them away", () => {
     const state = createGameState(0);

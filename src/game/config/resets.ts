@@ -124,7 +124,7 @@ export const MOON_UPGRADES: ResetUpgradeDef[] = [
   // The jar plays itself harder. These are the line the player keeps feeding,
   // because every level of them is time they no longer have to spend tapping.
   { id: "m_auto_tap", name: "Quick Hands", description: "The jar taps for you more often.", currency: "moons", baseCost: 2, growth: 1.28, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 1 },
-  { id: "m_auto_hold", name: "Learns To Hold", description: "Some of those taps become charged holds.", currency: "moons", baseCost: 6, growth: 1.4, max: 20, kind: "add", stat: "autoChargeRatio", per: 0.05 },
+  { id: "m_auto_crit", name: "Learns The Rhythm", description: "The taps it makes for you crit far more often.", currency: "moons", baseCost: 6, growth: 1.4, max: 20, kind: "add", stat: "critChance", per: 0.02 },
   { id: "m_autobuyer", name: "Steady Machinery", description: "Every autobuyer runs faster.", currency: "moons", baseCost: 5, growth: 1.35, max: 100, kind: "add", stat: "autobuyerSpeed", per: 1 },
   { id: "m_depth", name: "Weight Of Water", description: "Every depth produces more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "depthPower", per: 0.3 },
   { id: "m_tide_speed", name: "Running Tide", description: "Everything in the jar moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "tideSpeed", per: 0.2 },

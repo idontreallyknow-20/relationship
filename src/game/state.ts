@@ -30,7 +30,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
 function emptyStats(now: number): GameStats {
   return {
     totalClicks: 0, criticalClicks: 0, megaCriticalClicks: 0, perfectClicks: 0,
-    chargedClicks: 0, bestCombo: 0, comboFinishers: 0,
+    bestCombo: 0, comboFinishers: 0,
     heartsFromClicks: 0, heartsFromPassive: 0, heartsFromCrits: 0, heartsFromSkills: 0,
     heartsFromCreatures: 0, heartsFromOffline: 0, heartsFromTogether: 0, heartsFromDrifters: 0,
     cracks: 0, collects: 0, driftersOpened: 0,
@@ -121,7 +121,7 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
     seaStartedAt: now,
     dropUpgrades: {},
 
-    auto: { tap: true, hold: false, tapCredit: 0 },
+    auto: { tap: true, tapCredit: 0 },
     autobuyers: freshAutobuyers(),
 
     vessel: "jam_jar",
@@ -149,7 +149,6 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
 
     combo: 0,
     comboExpiresAt: 0,
-    charge: 0,
     buffs: [],
 
     dailyBonus: { day: null, streak: 0 },
@@ -207,7 +206,6 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     log: Array.isArray(old.log) ? (old.log as GameState["log"]).slice(-40) : [],
     combo: 0,
     comboExpiresAt: 0,
-    charge: 0,
   };
 
   // Currencies: fourteen names collapse onto seven.
@@ -305,7 +303,6 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
   const storedAuto = old.auto as GameState["auto"] | undefined;
   merged.auto = {
     tap: storedAuto?.tap ?? true,
-    hold: storedAuto?.hold ?? false,
     tapCredit: 0,
   };
   merged.autobuyers = { ...fresh.autobuyers, ...((old.autobuyers as Record<string, AutobuyerState>) ?? {}) };

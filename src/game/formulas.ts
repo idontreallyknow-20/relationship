@@ -24,12 +24,12 @@ const ADD_SET: Record<AddStat, true> = {
   critChainChance: true, luck: true, offlineHours: true, capacity: true,
   creatureSlots: true, abilitySlots: true, startingUpgrades: true,
   driftChance: true, freeUpgradeChance: true, autoTapsPerSecond: true,
-  autoChargeRatio: true, extraDepths: true, autobuyerSpeed: true,
+  extraDepths: true, autobuyerSpeed: true,
 };
 
 const MUL_SET: Record<MulStat, true> = {
   all: true, click: true, cps: true, crit: true, megaCrit: true, comboGain: true,
-  comboPower: true, chargePower: true, crackValue: true, crackSpeed: true,
+  comboPower: true, crackValue: true, crackSpeed: true,
   collectValue: true, collectSpeed: true, pairBonus: true, creaturePower: true,
   creatureXp: true, shellGain: true, glassGain: true, pearlGain: true,
   tideGain: true, moonGain: true, starGain: true, offline: true, cost: true,
@@ -166,9 +166,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   bags.add.abilitySlots = 3;
   bags.add.capacity = vessel.capacity === Infinity ? 1e300 : vessel.capacity;
   // The jar taps for you from the very first run. Upgrades make it quicker
-  // and start turning those taps into charged holds.
   bags.add.autoTapsPerSecond = 1;
-  bags.add.autoChargeRatio = 0;
   bags.add.autobuyerSpeed = 1;
   bags.add.extraDepths = 0;
 
@@ -306,8 +304,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     comboMultiplier,
     comboShield: bags.add.comboShield,
     critChainChance: bags.add.critChainChance,
-    chargePower: bags.mul.chargePower,
-    luck: bags.add.luck,
+      luck: bags.add.luck,
     offlineHours: Math.min(96, bags.add.offlineHours),
     offlineRate: Math.min(1, 0.35 * bags.mul.offline),
     costMultiplier: bags.mul.cost,
@@ -331,8 +328,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     tideSpeedMultiplier: safe(tideMul),
     depthPower: safe(depthPower),
     autoTapsPerSecond: safe(bags.add.autoTapsPerSecond),
-    autoChargeRatio: Math.min(1, Math.max(0, bags.add.autoChargeRatio)),
-    autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
+      autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
 
     mods: bags,
   };

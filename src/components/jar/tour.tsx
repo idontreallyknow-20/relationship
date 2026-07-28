@@ -28,7 +28,7 @@ const STEPS: Step[] = [
     anchor: "tap",
     tab: "jar",
     title: "Tap",
-    body: "Tap for hearts. Hold until the ring turns gold to drop a shell to the floor.",
+    body: "Tap it. That is the whole game. Tap on the beat and it pays more.",
   },
   {
     anchor: "vessel",

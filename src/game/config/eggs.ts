@@ -60,9 +60,9 @@ export const EGGS: EggDef[] = [
   },
   {
     id: "patient",
-    line: "You held it for a very long time.",
+    line: "A thousand taps. You really did sit there.",
     pearls: 50,
-    mods: { mul: { chargePower: 2 } },
+    mods: { mul: { click: 2 } },
     durationMs: 60 * 60_000,
   },
   {

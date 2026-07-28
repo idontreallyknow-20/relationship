@@ -58,7 +58,7 @@ function play(seconds: number, tapsPerSecond = 0, spendMoons = true): Marks {
 
     for (let i = 0; i < tapsPerSecond; i++) {
       performClick(state, derive(state, now), {
-        precision: 1, charge: 0, now, x: 50, y: 50,
+        precision: 1, now, x: 50, y: 50,
       });
     }
 

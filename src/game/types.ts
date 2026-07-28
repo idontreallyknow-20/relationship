@@ -36,7 +36,6 @@ export type AddStat =
   | "freeUpgradeChance"
   // Automation and the depth chain.
   | "autoTapsPerSecond"
-  | "autoChargeRatio"
   | "extraDepths"
   | "autobuyerSpeed";
 
@@ -49,7 +48,6 @@ export type MulStat =
   | "megaCrit"
   | "comboGain"
   | "comboPower"
-  | "chargePower"
   // The two creature lines.
   | "crackValue"
   | "crackSpeed"
@@ -200,8 +198,6 @@ export interface DepthState {
 export interface AutoState {
   /** Tap on your behalf. */
   tap: boolean;
-  /** Make some of those taps charged holds. */
-  hold: boolean;
   /** Carries the fractional part of a tap between ticks. */
   tapCredit: number;
 }
@@ -235,7 +231,6 @@ export interface GameStats {
   criticalClicks: number;
   megaCriticalClicks: number;
   perfectClicks: number;
-  chargedClicks: number;
   bestCombo: number;
   comboFinishers: number;
   heartsFromClicks: number;
@@ -367,7 +362,6 @@ export interface GameState {
   /** Live run state, not persisted across a tide change. */
   combo: number;
   comboExpiresAt: number;
-  charge: number;
   buffs: Buff[];
 
   dailyBonus: { day: string | null; streak: number };
@@ -396,7 +390,6 @@ export interface Derived {
   comboMultiplier: number;
   comboShield: number;
   critChainChance: number;
-  chargePower: number;
   luck: number;
   offlineHours: number;
   offlineRate: number;
@@ -424,9 +417,8 @@ export interface Derived {
   tideSpeedMultiplier: number;
   /** Output multiplier from deepenings, the drop tree and everything else. */
   depthPower: number;
-  /** Taps a second the jar makes for you, and how many of those are charged. */
+  /** Taps a second the jar makes for you. */
   autoTapsPerSecond: number;
-  autoChargeRatio: number;
   /** How often an autobuyer may fire, in milliseconds. */
   autobuyerIntervalMs: number;
   mods: { add: Record<AddStat, number>; mul: Record<MulStat, number> };

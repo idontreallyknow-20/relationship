@@ -16,12 +16,11 @@ import { SKILL_BY_ID } from "./config/skills";
 /* ------------------------------------------------------------------ */
 
 export type HeartSource =
-  | "click" | "charge" | "crit" | "passive" | "creature" | "skill"
+  | "click" | "crit" | "passive" | "creature" | "skill"
   | "offline" | "together" | "drifter";
 
 const STAT_FOR_SOURCE: Partial<Record<HeartSource, keyof GameState["stats"]>> = {
   click: "heartsFromClicks",
-  charge: "heartsFromClicks",
   crit: "heartsFromCrits",
   passive: "heartsFromPassive",
   creature: "heartsFromCreatures",
@@ -61,7 +60,7 @@ export function earnHearts(state: GameState, amount: number, source: HeartSource
   }
 
   recordMetric(state, "hearts", value);
-  if (source === "click" || source === "charge" || source === "crit") {
+  if (source === "click" || source === "crit") {
     recordMetric(state, "heartsFromClicks", value);
   }
   if (source === "passive" || source === "creature") recordMetric(state, "heartsFromPassive", value);
@@ -100,7 +99,6 @@ export function metricTotal(state: GameState, metric: MetricId): number {
     case "criticals": return s.criticalClicks;
     case "megaCriticals": return s.megaCriticalClicks;
     case "perfectClicks": return s.perfectClicks;
-    case "chargedClicks": return s.chargedClicks;
     case "hearts": return state.lifetime.hearts;
     case "heartsFromClicks": return s.heartsFromClicks;
     case "heartsFromPassive": return s.heartsFromPassive;
@@ -156,8 +154,6 @@ export function addBuff(state: GameState, buff: Omit<Buff, "id">): void {
 export interface ClickOptions {
   /** 0..1 inside the timing ring; 1 is dead centre. */
   precision: number;
-  /** 0..1 held before release. At 1 the tap becomes a charged drop. */
-  charge: number;
   now: number;
   x: number;
   y: number;
@@ -168,30 +164,22 @@ export interface ClickOutcome {
   crit: boolean;
   mega: boolean;
   perfect: boolean;
-  charged: boolean;
   chained: number;
   combo: number;
   comboBroken: boolean;
-  dropped: Settled | null;
 }
 
-/** A charged tap counts as this many combo steps instead of one. */
-export const CHARGE_COMBO_STEPS = 5;
-/** Held at least this far counts as charged. */
-export const CHARGE_THRESHOLD = 0.85;
 
 /**
  * One tap.
  *
- * Tapping is rate: many small hits, fast combo growth. Charging is feeding:
- * one heavy hit that counts as five combo steps and drops a shell to the
- * floor for the crabs. Both are correct, at different moments, which is what
- * makes holding a decision rather than a trap.
+ * A tap is a tap. There used to be a hold gesture that charged up for a
+ * heavier hit, and it was the single most confusing thing in the game: two
+ * ways to press the same button, with no way to tell which you wanted.
  */
 export function performClick(state: GameState, derived: Derived, opts: ClickOptions): ClickOutcome {
   const { now } = opts;
   const challenge = state.activeChallenge ? CHALLENGE_BY_ID[state.activeChallenge.defId] : null;
-  const charged = opts.charge >= CHARGE_THRESHOLD;
 
   let comboBroken = false;
   if (state.comboExpiresAt > 0 && now > state.comboExpiresAt) {
@@ -205,7 +193,7 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
   }
 
   const decay = challenge?.rule === "fast_decay" ? 0.25 : 1;
-  const steps = charged ? CHARGE_COMBO_STEPS : 1;
+  const steps = 1;
   const gain = Math.max(1, Math.round(derived.mods.mul.comboGain)) * steps;
   state.combo = Math.min(derived.comboCap, state.combo + gain);
   state.comboExpiresAt = now + derived.comboDurationMs * decay;
@@ -222,15 +210,10 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
     state.stats.perfectClicks += 1;
     recordMetric(state, "perfectClicks", 1);
   }
-  if (charged) {
-    state.stats.chargedClicks += 1;
-    recordMetric(state, "chargedClicks", 1);
-  }
 
   const comboMultiplier = 1 + Math.min(state.combo, derived.comboCap) * 0.03 * derived.mods.mul.comboPower;
   let hearts = derived.mods.add.clickFlat * derived.mods.mul.click * derived.mods.mul.all * comboMultiplier;
   hearts *= 1 + opts.precision * 0.75;
-  if (charged) hearts *= 1.6 * derived.chargePower;
 
   const noCrit = challenge?.rule === "no_crit";
   let crit = false;
@@ -259,24 +242,18 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
     }
   }
 
+  if (challenge?.rule === "perfect_only" && !perfect) hearts = 0;
   if (challenge?.rule === "combo_only" && state.combo < 20) hearts = 0;
   if (challenge?.rule === "creatures_only") hearts = 0;
-  if (challenge?.rule === "charge_only" && !charged) hearts = 0;
 
   // Overflow is a bonus, not waste.
   if (state.wallet.hearts > derived.capacity) hearts *= 1.2;
 
-  const earned = earnHearts(state, hearts, crit ? "crit" : charged ? "charge" : "click");
-
-  // The charged drop: a shell for the crabs, straight to the floor.
-  let dropped: Settled | null = null;
-  if (charged) {
-    dropped = dropSettled(state, "shell", Math.max(1, earned * 0.15), opts.x, 0.15);
-  }
+  const earned = earnHearts(state, hearts, crit ? "crit" : "click");
 
   return {
-    hearts: earned, crit, mega, perfect, charged, chained,
-    combo: state.combo, comboBroken, dropped,
+    hearts: earned, crit, mega, perfect, chained,
+    combo: state.combo, comboBroken,
   };
 }
 
@@ -485,12 +462,10 @@ export function runAutoTaps(state: GameState, derived: Derived, dt: number, now:
   if (taps <= 0) return 0;
   state.auto.tapCredit -= taps;
 
-  const chargeShare = state.auto.hold ? derived.autoChargeRatio : 0;
   for (let i = 0; i < taps; i++) {
     // Auto-taps land dead centre. That is the point of automating them.
     performClick(state, derived, {
       precision: 1,
-      charge: chargeShare > 0 && Math.random() < chargeShare ? 1 : 0,
       now,
       x: 50,
       y: 50,
@@ -916,8 +891,8 @@ export function checkEggs(state: GameState, now: number, partnerHereMs: number |
   if (heldHands(state).size >= 5) push("otter_hands");
   // A thousand things carried up off the floor.
   if (state.stats.collects >= 1_000) push("crab_sideways");
-  // A hundred charged taps, which is a lot of holding on.
-  if (state.stats.chargedClicks >= 100) push("patient");
+  // A thousand taps by hand, which is a lot of sitting with it.
+  if (state.stats.totalClicks >= 1_000) push("patient");
   // Spending literally everything.
   if (state.lifetime.hearts > 1e6 && state.wallet.hearts < 1) push("empty");
   // Both of the first two memories.

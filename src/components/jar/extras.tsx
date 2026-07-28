@@ -275,8 +275,7 @@ export function StatsTab() {
       <Section title="Everything else">
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Taps" value={formatNumber(state.stats.totalClicks, format)} />
-          <Stat label="Charged" value={formatNumber(state.stats.chargedClicks, format)} />
-          <Stat label="Criticals" value={formatNumber(state.stats.criticalClicks, format)} />
+            <Stat label="Criticals" value={formatNumber(state.stats.criticalClicks, format)} />
           <Stat label="Best combo" value={`${state.stats.bestCombo}`} />
           <Stat label="Cracked" value={formatNumber(state.stats.cracks, format)} />
           <Stat label="Collected" value={formatNumber(state.stats.collects, format)} />

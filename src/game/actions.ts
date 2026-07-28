@@ -517,11 +517,6 @@ export function buyTide(state: GameState, want?: number | "max"): ActionResult {
 /* Automation                                                          */
 /* ------------------------------------------------------------------ */
 
-export function setAuto(state: GameState, key: "tap" | "hold", on: boolean): ActionResult {
-  state.auto[key] = on;
-  return done();
-}
-
 export function setAutobuyer(
   state: GameState,
   target: string,

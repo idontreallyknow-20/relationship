@@ -28,7 +28,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     [100, 1_000, 10_000, 50_000, 250_000, 1_000_000], { pearls: 3 }),
   t("a_perfect", "tapping", "Right On Time", "Land perfectly timed taps.", "perfectClicks",
     [50, 500, 5_000, 25_000, 100_000], { pearls: 4 }),
-  t("a_charged", "tapping", "Worth The Wait", "Charge a tap all the way and let go.", "chargedClicks",
+  t("a_perfect", "tapping", "Dead Centre", "Tap exactly on the beat.", "perfectClicks",
     [25, 250, 2_500, 20_000], { pearls: 4, shells: 60 }),
   t("a_hearts", "hearts", "Filling Up", "Earn hearts, in total.", "hearts",
     [1_000, 100_000, 1e7, 1e9, 1e12, 1e15, 1e18], { pearls: 6 }),

@@ -166,6 +166,48 @@ body {
   pointer-events: none;
 }
 
+/* Crabs walk. This class was referenced by the jar screen from the day the
+   crabs were drawn, but the keyframes were never written, so every crab in
+   the game has been standing perfectly still. */
+@keyframes scuttle {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(6px) rotate(3deg); }
+  50% { transform: translateX(0) rotate(0deg); }
+  75% { transform: translateX(-6px) rotate(-3deg); }
+}
+.scuttle {
+  animation: scuttle 3.6s ease-in-out infinite;
+}
+
+/* An otter cracking something open, or a crab picking it up. A short shrug
+   rather than a loop: it fires when the creature actually does something. */
+@keyframes creature-work {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-5px) scale(1.12); }
+}
+.creature-work {
+  animation: creature-work 460ms ease-out;
+}
+
+/* The whole jar answers a tap. */
+@keyframes jar-slosh {
+  0%, 100% { transform: scaleY(1) skewX(0deg); }
+  30% { transform: scaleY(1.04) skewX(1.2deg); }
+  65% { transform: scaleY(0.98) skewX(-0.8deg); }
+}
+.jar-slosh {
+  animation: jar-slosh 520ms ease-out;
+}
+
+/* Something newly unlocked arrives rather than simply being there. */
+@keyframes reveal {
+  0% { opacity: 0; transform: translateY(10px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reveal {
+  animation: reveal 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
 /* The heart pulses in time with the taps the jar makes for you. */
 @keyframes auto-pulse {
   0%, 100% { transform: scale(1); opacity: 0.45; }
@@ -181,6 +223,10 @@ body {
   .jar-shake { animation: none; }
   .depth-surge { animation: none; opacity: 0; }
   .auto-pulse { animation: none; }
+  .scuttle { animation: none; }
+  .creature-work { animation: none; }
+  .jar-slosh { animation: none; }
+  .reveal { animation: none; }
 }
 
 /* Drawing canvas: stop the page from scrolling under a finger. */
