@@ -46,6 +46,43 @@ export async function patchCache<T>(key: string, update: (current: T | null) => 
   await writeCache(key, update(current ? current.data : null));
 }
 
+/** Long enough not to trip a slow connection, short enough not to feel stuck. */
+export const DEFAULT_QUERY_TIMEOUT_MS = 8_000;
+
+/**
+ * Run a Supabase query without it throwing.
+ *
+ * A query that reaches the server resolves with `{ data, error }` even when
+ * the server says no. A query that cannot reach it at all rejects instead, so
+ * code that only checks `.error` sees neither branch and hangs on whatever it
+ * was showing. This flattens the two into the one shape.
+ */
+export async function settled<T extends { error: unknown }>(
+  query: PromiseLike<T>,
+  timeoutMs = DEFAULT_QUERY_TIMEOUT_MS,
+): Promise<T | { data: null; error: unknown; count: null }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // A dead socket, a captive portal, or a connection dropped mid-flight can
+    // leave a request neither resolving nor rejecting. Without a deadline the
+    // caller waits on it forever, which on a screen that gates its render is
+    // an app stuck on a spinner with no way out.
+    return await Promise.race([
+      query,
+      new Promise<{ data: null; error: unknown; count: null }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ data: null, error: new Error("timed out"), count: null }),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } catch (error) {
+    return { data: null, error, count: null };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export type QueryStatus = "loading" | "cached" | "fresh" | "empty" | "error";
 
 export interface QueryResult<T> {

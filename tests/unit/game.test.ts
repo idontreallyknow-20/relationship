@@ -13,8 +13,9 @@ import {
   addCreature, applyLegacy, availableCreatures, buyMemory, buyResetUpgrade, buyUpgrade,
   canChangeTide, canChangeWater, changeTide, changeWater, claimMission, collectGift,
   craftItem, feedCreature, finishChallenge, giveItem, grantTogether, growCreature,
-  leaveGift, levelSkill, moveTo, placeCreature, recordSameEvening, refreshMissions,
-  respec, salvageItem, startChallenge, startTrip, unlockVessel,
+  leaveGift, levelSkill, moveTo, placeCreature, receiveGift, recordSameEvening,
+  refreshMissions, respec, salvageItem, setWater, startChallenge, startTrip,
+  unlockVessel, GIFT_WINDOW_MS,
 } from "@/game/actions";
 import { UPGRADE_BY_ID } from "@/game/config/upgrades";
 import { TIDE_REQUIREMENT, WATER_REQUIREMENT } from "@/game/config/resets";
@@ -955,5 +956,98 @@ describe("stability", () => {
     addCurrency(state, "pearls", 5);
     expect(levelSkill(state, "the_whole_shore").ok).toBe(false);
     expect(state.wallet.pearls).toBe(5);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The gift, across two saves                                          */
+/* ------------------------------------------------------------------ */
+
+describe("the gift handover", () => {
+  it("moves from the giver's save to the receiver's, once", () => {
+    // She changes the tide, which leaves something behind on her own save.
+    const hers = rich("cami");
+    hers.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(hers, 1_000);
+    expect(hers.giftLeft).not.toBeNull();
+    expect(hers.giftLeft!.from).toBe("cami");
+
+    // He reads her save and picks it up.
+    const his = rich("joseph");
+    expect(his.giftWaiting).toBeNull();
+    expect(receiveGift(his, hers, 2_000).ok).toBe(true);
+    expect(his.giftWaiting).not.toBeNull();
+
+    // Polling again must not hand over the same one a second time.
+    collectGift(his, 2_000);
+    expect(receiveGift(his, hers, 3_000).ok).toBe(false);
+    expect(his.giftWaiting).toBeNull();
+  });
+
+  it("never hands you back your own gift", () => {
+    const hers = rich("cami");
+    hers.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(hers, 1_000);
+    expect(receiveGift(hers, hers, 2_000).ok).toBe(false);
+  });
+
+  it("takes the newer gift after the next tide change", () => {
+    const hers = rich("cami");
+    const his = rich("joseph");
+
+    hers.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(hers, 1_000);
+    expect(receiveGift(his, hers, 2_000).ok).toBe(true);
+    collectGift(his, 2_000);
+
+    hers.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(hers, 60_000);
+    expect(receiveGift(his, hers, 61_000).ok).toBe(true);
+  });
+
+  it("lets one go by if it was left too long ago", () => {
+    const hers = rich("cami");
+    hers.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(hers, 1_000);
+    const his = rich("joseph");
+    expect(receiveGift(his, hers, 1_000 + GIFT_WINDOW_MS + 1).ok).toBe(false);
+  });
+
+  it("shrugs at a partner who has never opened the jar", () => {
+    const his = rich("joseph");
+    expect(receiveGift(his, null, 0).ok).toBe(false);
+    expect(receiveGift(his, {}, 0).ok).toBe(false);
+    expect(his.giftWaiting).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Water                                                               */
+/* ------------------------------------------------------------------ */
+
+describe("water", () => {
+  it("can be changed to one you have and not to one you do not", () => {
+    const state = rich("cami");
+    expect(state.water).toBe("default");
+    expect(setWater(state, "her_purple").ok).toBe(true);
+    expect(state.water).toBe("her_purple");
+    expect(setWater(state, "moonstone").ok).toBe(false);
+    expect(state.water).toBe("her_purple");
+  });
+
+  it("survives a tide change and a save round trip", () => {
+    const state = rich("cami");
+    setWater(state, "her_pink");
+    state.runHearts = TIDE_REQUIREMENT * 100;
+    changeTide(state, 1_000);
+    expect(state.water).toBe("her_pink");
+
+    const reloaded = migrateSave(JSON.parse(JSON.stringify(state)), "cami");
+    expect(reloaded.water).toBe("her_pink");
+  });
+
+  it("gives an old save the plain water rather than undefined", () => {
+    const state = migrateSave({ version: 3 }, "cami");
+    expect(state.water).toBe("default");
   });
 });

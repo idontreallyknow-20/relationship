@@ -30,11 +30,33 @@ dropped response can never apply the same action twice. The sync state is
 visible in a single badge in the top bar; nothing appears at all while
 everything is synced.
 
-What works offline: the Love Jar in full, answering and editing the daily
-question, favourites, writing questions and packs, dropping a heart in the
-shared jar, sharing a mood, adding a memory or letter, and sending a text
-message. What needs a connection: uploading media, swapping the daily
-question (it changes shared state), and anything the server has to arbitrate.
+Who the two of you are is cached too. Every screen sits behind
+`CoupleProvider`, so without that the whole app waits on a spinner however
+well each screen caches its own data.
+
+A request that reaches the server resolves with an error; one that cannot
+reach it at all rejects, and one over a dead socket does neither. All three
+go through `settled()`, which flattens them into one shape and puts a
+deadline on the third, because a screen that gates its render on a request
+that never finishes has no way out.
+
+Works offline:
+
+| Screen | Reads | Writes |
+| --- | --- | --- |
+| Love Jar | yes | yes, in full |
+| Questions | yes | answer, edit, favourite, write questions and packs |
+| Chat | yes | send text, edit, delete, react |
+| Moods | yes | share a mood, clear it, send support or space |
+| Memories | yes | add a written memory, edit, delete, favourite |
+| Letters | yes | write and send, delete, add gratitude |
+| Plans | yes | events, bucket list, to-dos, votes, replies |
+| Home, Us | yes | signals |
+
+Needs a connection: uploading photos, videos and voice notes; swapping the
+daily question, because it changes shared state; and anything else the server
+has to arbitrate. A memory or message whose text is written offline is queued
+and sent later, but one carrying a photo waits for a connection.
 
 ## The Love Jar
 
@@ -44,9 +66,10 @@ rest of the app: the couples features drop notes into a small inbox
 them the next time it opens. Nothing in the game requires the other person to
 have played.
 
-- `config/` is data: currencies, eleven upgrade trees, abilities, thirty
-  pets, charms and set bonuses, worlds, bosses, challenges, missions,
-  achievements, collections, events and the shop.
+- `config/` is data: seven currencies, three upgrade trees, abilities, seven
+  otters and seven crabs, the rocks and shells they carry, ten vessels,
+  drifters, memories and trips, challenges, missions, achievements and
+  collections.
 - `formulas.ts` turns everything owned into one `Derived` stat block.
 - `engine.ts` and `actions.ts` are pure functions over a save.
 - `store.tsx` is the only React-aware file: it runs the tick loop, saves
@@ -125,7 +148,11 @@ The service role key is never used outside Supabase's own infrastructure.
 - Media uploads need a connection. Text, drawings-in-progress and game
   actions are queued offline; photos, videos and voice notes are not.
 - The Love Jar simulates on the client, because it has to in order to play
-  offline. The server validates and clamps rather than re-simulating, so it
-  catches implausible progress rather than proving every heart.
+  offline, and the server stores the result without checking it. There are
+  two accounts and no leaderboard, so the only person anyone could cheat is
+  themselves.
+- A request that hangs rather than failing is given eight seconds before the
+  cached copy is shown instead. On a genuinely slow connection that means a
+  screen can go stale for a moment before refreshing.
 - Numbers are IEEE doubles with a hard ceiling of 1e300. The progression is
   tuned so that is end-of-content rather than something you trip over.

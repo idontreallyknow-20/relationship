@@ -1,5 +1,5 @@
 import type {
-  CreatureInstance, GameState, ItemInstance, ItemRarity, Person,
+  CreatureInstance, GameState, Gift, ItemInstance, ItemRarity, Person,
 } from "./types";
 import {
   addCurrency, addBuff, earnHearts, grantCollectible, grantReward, metricTotal,
@@ -463,10 +463,8 @@ export function startTrip(state: GameState, id: string, now: number): ActionResu
 }
 
 export function setWater(state: GameState, id: string): ActionResult {
-  if (!(state.collections["waters"] ?? []).includes(id)) return fail("Not unlocked");
-  state.storyProgress["water"] = 0;
-  state.settings = { ...state.settings };
-  (state as GameState & { water?: string }).water = id;
+  if (!(state.collections["waters"] ?? []).includes(id)) return fail("Not yours yet");
+  state.water = id;
   return done();
 }
 
@@ -555,6 +553,29 @@ export function leaveGift(state: GameState, from: Person, now: number): void {
     durationMs: 2 * 3_600_000,
     collected: false,
   };
+}
+
+/** How long a gift stays there waiting to be noticed. */
+export const GIFT_WINDOW_MS = 48 * 3_600_000;
+
+/**
+ * Take whatever the other person left behind.
+ *
+ * `leaveGift` writes onto the giver's own save, which is all a tide change can
+ * reach. This is the other half: the receiver reads their partner's save and
+ * moves the gift across. Idempotent on the gift's timestamp, so polling for it
+ * every few minutes cannot hand the same one over twice.
+ */
+export function receiveGift(state: GameState, partner: unknown, now: number): ActionResult {
+  const theirs = (partner as { giftLeft?: Gift } | null)?.giftLeft;
+  if (!theirs || typeof theirs.at !== "number") return fail("Nothing left for you");
+  if (theirs.from === state.owner) return fail("That one is yours");
+  if (theirs.at <= (state.storyProgress["giftTakenAt"] ?? 0)) return fail("Already taken");
+  if (now - theirs.at > GIFT_WINDOW_MS) return fail("Too long ago");
+
+  state.storyProgress["giftTakenAt"] = theirs.at;
+  state.giftWaiting = { ...theirs, collected: false };
+  return done(theirs.label);
 }
 
 export function collectGift(state: GameState, now: number): ActionResult {

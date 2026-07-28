@@ -30,6 +30,11 @@ import { MessageBubble } from "@/components/chat/bubble";
 import { ImageViewer } from "@/components/chat/media";
 import { Composer } from "@/components/chat/composer";
 import { noteRewardable } from "@/game/rewards-inbox";
+import { settled } from "@/lib/offline/cache";
+import {
+  cacheMessages, cacheReactions, cachedMessages, cachedReactions, queueMessage,
+  queueMessageDelete, queueMessageEdit, queueReaction, queueReactionRemoval,
+} from "@/lib/chat";
 
 const PAGE_SIZE = 50;
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -174,6 +179,7 @@ export default function Page() {
       }
       return next;
     });
+    void cacheReactions(data as MessageReaction[]);
   }, []);
 
   /** Tell the sender their messages reached us, and were seen if visible. */
@@ -204,14 +210,30 @@ export default function Page() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const { data, error } = await supabase()
+      // Paint the last page we saw before going to the network, so opening
+      // chat with no signal shows the conversation rather than an error.
+      const [cachedRows, cachedReacts] = await Promise.all([cachedMessages(), cachedReactions()]);
+      if (!active) return;
+      if (cachedRows.length > 0) {
+        mutate(() => cachedRows);
+        setReactions(() => {
+          const next: Record<string, MessageReaction[]> = {};
+          for (const row of cachedReacts) {
+            next[row.message_id] = [...(next[row.message_id] ?? []), row];
+          }
+          return next;
+        });
+        setLoaded(true);
+      }
+
+      const { data, error } = await settled(supabase()
         .from("messages")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(PAGE_SIZE);
+        .limit(PAGE_SIZE));
       if (!active) return;
       if (error || !data) {
-        toast("Could not load messages.");
+        if (cachedRows.length === 0) toast("Could not load messages.");
         setLoaded(true);
         return;
       }
@@ -219,6 +241,7 @@ export default function Page() {
       mutate(() => rows);
       setHasMoreBoth(data.length === PAGE_SIZE);
       setLoaded(true);
+      void cacheMessages(rows);
       void fetchReactions(rows.map((r) => r.id));
       markIncoming(rows);
     })();
@@ -393,6 +416,16 @@ export default function Page() {
       void notifyPartner("messages", row.id, { body: kindPreview(row), url: "/chat" });
       void noteRewardable("message_sent", new Date().toISOString().slice(0, 10), `message:${row.id}`);
     } catch {
+      // Nothing left to upload means the whole message fits in the outbox, so
+      // it can survive the tab closing rather than dying with this page.
+      if (!entry.blob) {
+        pendingRef.current.delete(clientId);
+        await queueMessage(entry.insert, clientId);
+        setPending(clientId, "sending");
+        return;
+      }
+      // Media cannot be queued, so a failed upload stays a failed upload and
+      // keeps its retry button.
       setPending(clientId, "failed");
     }
   }, [meP, setPending, toast, upsertRow]);
@@ -524,59 +557,29 @@ export default function Page() {
     mutate((prev) =>
       prev.map((m) => (m.id === target.id ? { ...m, body, edited_at: now } : m)),
     );
-    const { error } = await supabase()
-      .from("messages")
-      .update({ body, edited_at: now })
-      .eq("id", target.id);
-    if (error) {
-      mutate((prev) =>
-        prev.map((m) =>
-          m.id === target.id ? { ...m, body: target.body, edited_at: target.edited_at } : m,
-        ),
-      );
-      toast("Could not save the edit.");
-    }
-  }, [editing, mutate, toast]);
+    await queueMessageEdit(target.id, body, now);
+  }, [editing, mutate]);
 
   const handleDelete = useCallback(async (target: ChatMessage) => {
     const now = new Date().toISOString();
     mutate((prev) =>
       prev.map((m) => (m.id === target.id ? { ...m, deleted_at: now } : m)),
     );
-    const { error } = await supabase()
-      .from("messages")
-      .update({ deleted_at: now })
-      .eq("id", target.id);
-    if (error) {
-      mutate((prev) =>
-        prev.map((m) => (m.id === target.id ? { ...m, deleted_at: null } : m)),
-      );
-      toast("Could not remove the message.");
-      return;
-    }
+    await queueMessageDelete(target.id, now);
     toast("Message removed", () => {
       mutate((prev) =>
         prev.map((m) => (m.id === target.id ? { ...m, deleted_at: null } : m)),
       );
-      void supabase().from("messages").update({ deleted_at: null }).eq("id", target.id);
+      void queueMessageDelete(target.id, null);
     });
   }, [mutate, toast]);
 
   const toggleReaction = useCallback(async (m: ChatMessage, reaction: Reaction) => {
     if (m.pending) return;
-    const sb = supabase();
     const mine = (reactions[m.id] ?? []).find((r) => r.person === meP);
     if (mine && mine.reaction === reaction) {
       removeReaction(m.id, meP);
-      const { error } = await sb
-        .from("message_reactions")
-        .delete()
-        .eq("message_id", m.id)
-        .eq("person", meP);
-      if (error) {
-        putReaction(mine);
-        toast("Could not remove the reaction.");
-      }
+      await queueReactionRemoval(m.id, meP);
     } else {
       putReaction({
         message_id: m.id,
@@ -584,19 +587,9 @@ export default function Page() {
         reaction,
         created_at: new Date().toISOString(),
       });
-      const { error } = await sb
-        .from("message_reactions")
-        .upsert(
-          { message_id: m.id, person: meP, reaction },
-          { onConflict: "message_id,person" },
-        );
-      if (error) {
-        if (mine) putReaction(mine);
-        else removeReaction(m.id, meP);
-        toast("Could not add the reaction.");
-      }
+      await queueReaction(m.id, meP, reaction);
     }
-  }, [reactions, meP, putReaction, removeReaction, toast]);
+  }, [reactions, meP, putReaction, removeReaction]);
 
   /* ---------------------------------------------------------------- */
   /* Pagination and scroll-to-message                                   */

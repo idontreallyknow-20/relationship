@@ -13,6 +13,10 @@ import {
 import { HeartSpinner } from "@/components/hearts";
 import { useWho } from "@/lib/couple-context";
 import { supabase } from "@/lib/supabase";
+import { readCache, settled, writeCache } from "@/lib/offline/cache";
+import {
+  queueDelete, queueInsert, queueKeyedDelete, queueKeyedInsert, queueKeyedUpsert, queueUpdate,
+} from "@/lib/offline/ops";
 import { notifyPartner } from "@/lib/notify";
 import type { CoupleEvent, EventRsvp, ListItem, ListStatus } from "@/lib/types";
 import { CalendarTab } from "@/components/plans/calendar";
@@ -46,21 +50,43 @@ function PlansInner() {
   const loadEvents = useCallback(async () => {
     const sb = supabase();
     const [evRes, rsvpRes] = await Promise.all([
-      sb.from("events").select("*").order("starts_at", { ascending: true }),
-      sb.from("event_rsvps").select("*"),
+      settled(sb.from("events").select("*").order("starts_at", { ascending: true })),
+      settled(sb.from("event_rsvps").select("*")),
     ]);
-    if (!evRes.error && evRes.data) setEvents(evRes.data as CoupleEvent[]);
-    if (!rsvpRes.error && rsvpRes.data) setRsvps(rsvpRes.data as EventRsvp[]);
+    if (evRes.error && rsvpRes.error) {
+      const cached = await readCache<{ events: CoupleEvent[]; rsvps: EventRsvp[] }>(EVENTS_KEY);
+      if (cached) {
+        setEvents(cached.data.events);
+        setRsvps(cached.data.rsvps);
+      }
+      return;
+    }
+    const nextEvents = (evRes.error ? [] : (evRes.data ?? [])) as CoupleEvent[];
+    const nextRsvps = (rsvpRes.error ? [] : (rsvpRes.data ?? [])) as EventRsvp[];
+    setEvents(nextEvents);
+    setRsvps(nextRsvps);
+    void writeCache(EVENTS_KEY, { events: nextEvents, rsvps: nextRsvps });
   }, []);
 
   const loadItems = useCallback(async () => {
     const sb = supabase();
     const [itemRes, voteRes] = await Promise.all([
-      sb.from("list_items").select("*").order("created_at", { ascending: false }),
-      sb.from("list_votes").select("*"),
+      settled(sb.from("list_items").select("*").order("created_at", { ascending: false })),
+      settled(sb.from("list_votes").select("*")),
     ]);
-    if (!itemRes.error && itemRes.data) setItems(itemRes.data as ListItem[]);
-    if (!voteRes.error && voteRes.data) setVotes(voteRes.data as ListVote[]);
+    if (itemRes.error && voteRes.error) {
+      const cached = await readCache<{ items: ListItem[]; votes: ListVote[] }>(ITEMS_KEY);
+      if (cached) {
+        setItems(cached.data.items);
+        setVotes(cached.data.votes);
+      }
+      return;
+    }
+    const nextItems = (itemRes.error ? [] : (itemRes.data ?? [])) as ListItem[];
+    const nextVotes = (voteRes.error ? [] : (voteRes.data ?? [])) as ListVote[];
+    setItems(nextItems);
+    setVotes(nextVotes);
+    void writeCache(ITEMS_KEY, { items: nextItems, votes: nextVotes });
   }, []);
 
   useEffect(() => {
@@ -110,10 +136,12 @@ function PlansInner() {
   const handleEventSaved = useCallback(
     async (event: CoupleEvent, isNew: boolean) => {
       if (isNew && linkItem) {
-        await supabase()
-          .from("list_items")
-          .update({ planned_event_id: event.id, status: "planned" })
-          .eq("id", linkItem.id);
+        await queueUpdate(
+          "list_items",
+          { id: linkItem.id },
+          { planned_event_id: event.id, status: "planned" },
+          "Link to plan",
+        );
         setLinkItem(null);
         setPrefillTitle(null);
         void loadItems();
@@ -129,29 +157,31 @@ function PlansInner() {
         const rest = prev.filter((r) => !(r.event_id === eventId && r.person === me));
         return [...rest, { event_id: eventId, person: me, status, created_at: new Date().toISOString() }];
       });
-      const { error } = await supabase()
-        .from("event_rsvps")
-        .upsert({ event_id: eventId, person: me, status }, { onConflict: "event_id,person" });
-      if (error) {
-        toast("Could not save your reply.");
-        void loadEvents();
-      }
+      await queueKeyedUpsert(
+        "event_rsvps",
+        { event_id: eventId, person: me, status },
+        "event_id,person",
+        `${eventId}:${me}`,
+        "Reply",
+      );
     },
-    [me, toast, loadEvents],
+    [me],
   );
 
   const addItem = useCallback(
     async (category: ListItem["category"], title: string, notes?: string) => {
-      const { data, error } = await supabase()
-        .from("list_items")
-        .insert({ category, title, notes: notes?.trim() || null, status: "idea", created_by: me })
-        .select()
-        .single();
-      if (error || !data) {
-        toast("Could not add that.");
-        return;
-      }
-      const item = data as ListItem;
+      const item = {
+        id: crypto.randomUUID(),
+        category,
+        title,
+        notes: notes?.trim() || null,
+        status: "idea" as ListStatus,
+        created_by: me,
+        created_at: new Date().toISOString(),
+        completed_at: null,
+        planned_event_id: null,
+      } as ListItem;
+      await queueInsert("list_items", { ...item }, "List item");
       setItems((prev) => [item, ...(prev ?? [])]);
       if (category !== "todo") {
         void notifyPartner("plans", item.id, {
@@ -170,46 +200,34 @@ function PlansInner() {
       setItems((prev) =>
         (prev ?? []).map((i) => (i.id === item.id ? { ...i, status, completed_at } : i)),
       );
-      const { error } = await supabase()
-        .from("list_items")
-        .update({ status, completed_at })
-        .eq("id", item.id);
-      if (error) {
-        toast("Could not update that.");
-        void loadItems();
-        return;
-      }
+      await queueUpdate("list_items", { id: item.id }, { status, completed_at }, "List item status");
       if (status === "completed") {
         // Celebrate and drop it into the shared timeline.
         toast(`Completed: ${item.title}`);
-        await supabase().from("memories").insert({
+        await queueInsert("memories", {
+          id: crypto.randomUUID(),
           kind: "plan",
           title: item.title,
           happened_on: format(new Date(), "yyyy-MM-dd"),
           created_by: me,
-        });
+        }, "Plan memory");
         void notifyPartner("plans", `${item.id}-completed`, {
           body: `Completed: ${item.title}`,
           url: "/plans",
         });
       }
     },
-    [me, toast, loadItems],
+    [me, toast],
   );
 
   const saveNotes = useCallback(
     async (item: ListItem, notes: string) => {
       const value = notes.trim() || null;
       setItems((prev) => (prev ?? []).map((i) => (i.id === item.id ? { ...i, notes: value } : i)));
-      const { error } = await supabase().from("list_items").update({ notes: value }).eq("id", item.id);
-      if (error) {
-        toast("Could not save the notes.");
-        void loadItems();
-      } else {
-        toast("Notes saved");
-      }
+      await queueUpdate("list_items", { id: item.id }, { notes: value }, "Notes");
+      toast("Notes saved");
     },
-    [toast, loadItems],
+    [toast],
   );
 
   const toggleVote = useCallback(
@@ -220,14 +238,12 @@ function PlansInner() {
           ? prev.filter((v) => !(v.item_id === item.id && v.person === me))
           : [...prev, { item_id: item.id, person: me }],
       );
-      const sb = supabase();
+      const key = `${item.id}:${me}`;
       if (mine) {
-        await sb.from("list_votes").delete().eq("item_id", item.id).eq("person", me);
+        await queueKeyedDelete("list_votes", { item_id: item.id, person: me }, key, "Remove vote");
       } else {
-        await sb.from("list_votes").insert({ item_id: item.id, person: me });
+        await queueKeyedInsert("list_votes", { item_id: item.id, person: me }, key, "Vote");
       }
-      const { data } = await sb.from("list_votes").select("*");
-      if (data) setVotes(data as ListVote[]);
     },
     [votes, me],
   );
@@ -235,30 +251,23 @@ function PlansInner() {
   const deleteItem = useCallback(
     async (item: ListItem) => {
       setItems((prev) => (prev ?? []).filter((i) => i.id !== item.id));
-      const { error } = await supabase().from("list_items").delete().eq("id", item.id);
-      if (error) {
-        toast("Could not delete that.");
-        void loadItems();
-        return;
-      }
+      await queueDelete("list_items", { id: item.id }, "Delete item");
       toast("Deleted", () => {
-        void (async () => {
-          await supabase().from("list_items").insert({
-            id: item.id,
-            category: item.category,
-            title: item.title,
-            notes: item.notes,
-            status: item.status,
-            planned_event_id: item.planned_event_id,
-            completed_at: item.completed_at,
-            created_by: item.created_by,
-            created_at: item.created_at,
-          });
-          void loadItems();
-        })();
+        setItems((prev) => [item, ...(prev ?? [])]);
+        void queueInsert("list_items", {
+          id: item.id,
+          category: item.category,
+          title: item.title,
+          notes: item.notes,
+          status: item.status,
+          planned_event_id: item.planned_event_id,
+          completed_at: item.completed_at,
+          created_by: item.created_by,
+          created_at: item.created_at,
+        }, "Restore item");
       });
     },
-    [toast, loadItems],
+    [toast],
   );
 
   const planIt = useCallback((item: ListItem) => {
@@ -275,7 +284,7 @@ function PlansInner() {
       setItems((prev) =>
         (prev ?? []).map((i) => (i.id === item.id ? { ...i, status: next, completed_at } : i)),
       );
-      void supabase().from("list_items").update({ status: next, completed_at }).eq("id", item.id);
+      void queueUpdate("list_items", { id: item.id }, { status: next, completed_at }, "To-do");
     },
     [],
   );
@@ -428,6 +437,9 @@ function PlansInner() {
     </>
   );
 }
+
+const EVENTS_KEY = "plans:events";
+const ITEMS_KEY = "plans:items";
 
 export default function Page() {
   return (

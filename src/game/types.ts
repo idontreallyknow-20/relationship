@@ -276,6 +276,8 @@ export interface GameState {
 
   vessel: string;
   vesselsUnlocked: string[];
+  /** Which of the unlocked water colours the jar is filled with. */
+  water: string;
 
   settled: Settled[];
   drifter: Drifter | null;

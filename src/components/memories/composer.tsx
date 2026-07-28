@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, Film, HeartHandshake, NotebookPen, CalendarHeart } from "lucide-react";
 import { Button, Input, Label, Sheet, Textarea, useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
-import { supabase } from "@/lib/supabase";
+import { queueInsert } from "@/lib/offline/ops";
 import { compressImage, uploadMedia, validateUpload } from "@/lib/media";
 import { notifyPartner } from "@/lib/notify";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
@@ -127,25 +127,24 @@ export function MemoryComposer({
         mediaPath = await uploadMedia("memories", me, file);
         mediaMeta = { mime: file.type };
       }
-      const { data, error } = await supabase()
-        .from("memories")
-        .insert({
-          kind,
-          title: title.trim() || null,
-          caption: caption.trim() || null,
-          media_path: mediaPath,
-          media_meta: mediaMeta,
-          happened_on: happenedOn || null,
-          location: location.trim() || null,
-          created_by: me,
-        })
-        .select()
-        .single();
-      if (error || !data) {
-        toast("Could not save that memory.");
-        return;
-      }
-      const saved = data as Memory;
+      // The upload above needs a connection; the row does not. Queueing it
+      // means a written memory survives being composed on a train.
+      const saved: Memory = {
+        id: crypto.randomUUID(),
+        kind,
+        title: title.trim() || null,
+        caption: caption.trim() || null,
+        media_path: mediaPath,
+        media_meta: mediaMeta,
+        drawing_id: null,
+        letter_id: null,
+        happened_on: happenedOn || null,
+        location: location.trim() || null,
+        created_by: me,
+        created_at: new Date().toISOString(),
+        edited_at: null,
+      };
+      await queueInsert("memories", { ...saved }, "Memory");
       void noteRewardable("memory_added", new Date().toISOString().slice(0, 10), `memory:${saved.id}`);
       void notifyPartner(kind === "milestone" ? "milestones" : "plans", saved.id, {
         body: "A new memory was added",

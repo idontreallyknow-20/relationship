@@ -54,7 +54,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const format = state.settings.numberFormat;
   const ringPhase = reduced ? 1 : ringValue;
 
-  const waterId = (state as { water?: string }).water ?? "default";
+  const waterId = state.water;
   const water = WATER_BY_ID[waterId]?.color || vessel.water;
 
   /* ---------------------------------------------------------------- */

@@ -7,6 +7,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { readCache, settled, writeCache } from "@/lib/offline/cache";
+import { queueInsert, queueUpdate } from "@/lib/offline/ops";
 import { useCouple, useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { Button, EmptyState, TopBar, useToast } from "@/components/ui";
@@ -18,6 +20,7 @@ import { MoodHistory } from "@/components/moods/history";
 
 const HISTORY_DAYS = 31;
 const SIGNAL_WINDOW_HOURS = 48;
+const CACHE_KEY = "moods:page";
 
 function isActive(entry: MoodEntry): boolean {
   if (entry.cleared_at) return false;
@@ -43,20 +46,33 @@ function MoodsScreen() {
       Date.now() - SIGNAL_WINDOW_HOURS * 3600_000,
     ).toISOString();
     const [moodsRes, signalsRes] = await Promise.all([
-      sb
+      settled(sb
         .from("moods")
         .select("*")
         .gte("created_at", since)
-        .order("created_at", { ascending: false }),
-      sb
+        .order("created_at", { ascending: false })),
+      settled(sb
         .from("signals")
         .select("*")
         .in("kind", ["send_support", "give_space"])
         .gte("created_at", signalsSince)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })),
     ]);
-    if (!moodsRes.error) setEntries((moodsRes.data ?? []) as MoodEntry[]);
-    if (!signalsRes.error) setSignals((signalsRes.data ?? []) as Signal[]);
+    if (moodsRes.error && signalsRes.error) {
+      // Both failed, so show the last thing we saw rather than an empty page.
+      const cached = await readCache<{ entries: MoodEntry[]; signals: Signal[] }>(CACHE_KEY);
+      if (cached) {
+        setEntries(cached.data.entries);
+        setSignals(cached.data.signals);
+      }
+      setLoading(false);
+      return;
+    }
+    const nextEntries = (moodsRes.error ? [] : (moodsRes.data ?? [])) as MoodEntry[];
+    const nextSignals = (signalsRes.error ? [] : (signalsRes.data ?? [])) as Signal[];
+    setEntries(nextEntries);
+    setSignals(nextSignals);
+    void writeCache(CACHE_KEY, { entries: nextEntries, signals: nextSignals });
     setLoading(false);
   }, []);
 
@@ -93,32 +109,17 @@ function MoodsScreen() {
     const id = myCurrent.id;
     const clearedAt = new Date().toISOString();
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, cleared_at: clearedAt } : e)));
-    const { error } = await supabase().from("moods").update({ cleared_at: clearedAt }).eq("id", id);
-    if (error) {
-      setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, cleared_at: null } : e)));
-      toast("Could not clear your mood");
-      return;
-    }
+    await queueUpdate("moods", { id }, { cleared_at: clearedAt }, "Clear mood");
     toast("Mood cleared", () => {
-      void supabase()
-        .from("moods")
-        .update({ cleared_at: null })
-        .eq("id", id)
-        .then(() => void load());
+      setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, cleared_at: null } : e)));
+      void queueUpdate("moods", { id }, { cleared_at: null }, "Undo clear mood");
     });
   };
 
   const respond = async (kind: "send_support" | "give_space") => {
-    const { data, error } = await supabase()
-      .from("signals")
-      .insert({ from_person: me, kind })
-      .select("id")
-      .single();
-    if (error || !data) {
-      toast("Could not send that, try again");
-      return;
-    }
-    void notifyPartner("moods", (data as { id: string }).id, { url: "/moods" });
+    const id = crypto.randomUUID();
+    await queueInsert("signals", { id, from_person: me, kind }, "Signal");
+    void notifyPartner("moods", id, { url: "/moods" });
     toast(kind === "send_support" ? "Support sent" : "Space given, gently");
   };
 
@@ -127,7 +128,7 @@ function MoodsScreen() {
     setSignals((prev) =>
       prev.map((s) => (s.id === signal.id ? { ...s, acknowledged_at: ackAt } : s)),
     );
-    await supabase().from("signals").update({ acknowledged_at: ackAt }).eq("id", signal.id);
+    await queueUpdate("signals", { id: signal.id }, { acknowledged_at: ackAt }, "Acknowledge");
   };
 
   const partnerName = partnerProfile?.display_name ?? "your partner";

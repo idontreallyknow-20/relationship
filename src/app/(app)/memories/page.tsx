@@ -13,6 +13,10 @@ import { Button, EmptyState, IconButton, Input, Select, TopBar, useToast } from 
 import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { useCouple, useWho } from "@/lib/couple-context";
 import { supabase } from "@/lib/supabase";
+import { readCache, settled, writeCache } from "@/lib/offline/cache";
+import {
+  queueDelete, queueInsert, queueKeyedDelete, queueKeyedInsert, queueUpdate,
+} from "@/lib/offline/ops";
 import { notifyPartner } from "@/lib/notify";
 import type { Memory, MemoryKind, Person } from "@/lib/types";
 import { MemoryCard, memoryDate } from "@/components/memories/card";
@@ -54,22 +58,34 @@ function MemoriesInner() {
   const loadAll = useCallback(async () => {
     const sb = supabase();
     const [memRes, favRes] = await Promise.all([
-      sb
+      settled(sb
         .from("memories")
         .select("*")
         .order("happened_on", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
-        .limit(500),
-      sb.from("memory_favorites").select("*"),
+        .limit(500)),
+      settled(sb.from("memory_favorites").select("*")),
     ]);
-    if (!memRes.error && memRes.data) setMemories(memRes.data as Memory[]);
+    if (memRes.error && favRes.error) {
+      const cached = await readCache<{ memories: Memory[]; favorites: FavoriteMap }>(CACHE_KEY);
+      if (cached) {
+        setMemories(cached.data.memories);
+        setFavorites(cached.data.favorites);
+      }
+      return;
+    }
+    const nextMemories = (memRes.error ? [] : (memRes.data ?? [])) as Memory[];
+    const map: FavoriteMap = {};
     if (!favRes.error && favRes.data) {
-      const map: FavoriteMap = {};
       for (const row of favRes.data as { memory_id: string; person: Person }[]) {
         (map[row.memory_id] ??= []).push(row.person);
       }
-      setFavorites(map);
     }
+    setMemories(nextMemories);
+    setFavorites(map);
+    // Only the newest slice is worth keeping: the whole library can be large,
+    // and what you open the screen on is the top of it.
+    void writeCache(CACHE_KEY, { memories: nextMemories.slice(0, 200), favorites: map });
   }, []);
 
   useEffect(() => {
@@ -170,11 +186,11 @@ function MemoriesInner() {
         next[memoryId] = mine ? list.filter((p) => p !== me) : [...list, me];
         return next;
       });
-      const sb = supabase();
+      const key = `${memoryId}:${me}`;
       if (mine) {
-        await sb.from("memory_favorites").delete().eq("memory_id", memoryId).eq("person", me);
+        await queueKeyedDelete("memory_favorites", { memory_id: memoryId, person: me }, key, "Unfavourite");
       } else {
-        await sb.from("memory_favorites").insert({ memory_id: memoryId, person: me });
+        await queueKeyedInsert("memory_favorites", { memory_id: memoryId, person: me }, key, "Favourite");
       }
     },
     [favorites, me],
@@ -189,50 +205,39 @@ function MemoriesInner() {
       setMemories((prev) =>
         (prev ?? []).map((m) => (m.id === id ? { ...m, ...fields, edited_at } : m)),
       );
-      const { error } = await supabase().from("memories").update({ ...fields, edited_at }).eq("id", id);
-      if (error) {
-        toast("Could not save your changes.");
-        void loadAll();
-      } else {
-        toast("Memory updated");
-      }
+      await queueUpdate("memories", { id }, { ...fields, edited_at }, "Memory edit");
+      toast("Memory updated");
     },
-    [toast, loadAll],
+    [toast],
   );
 
   const deleteMemory = useCallback(
     async (m: Memory) => {
       setViewerId(null);
       setMemories((prev) => (prev ?? []).filter((x) => x.id !== m.id));
-      const { error } = await supabase().from("memories").delete().eq("id", m.id);
-      if (error) {
-        toast("Could not delete that memory.");
-        void loadAll();
-        return;
-      }
+      await queueDelete("memories", { id: m.id }, "Delete memory");
       toast("Memory deleted", () => {
-        void (async () => {
-          const { error: reinsertError } = await supabase().from("memories").insert({
-            id: m.id,
-            kind: m.kind,
-            title: m.title,
-            caption: m.caption,
-            media_path: m.media_path,
-            media_meta: m.media_meta,
-            drawing_id: m.drawing_id,
-            letter_id: m.letter_id,
-            happened_on: m.happened_on,
-            location: m.location,
-            created_by: m.created_by,
-            created_at: m.created_at,
-            edited_at: m.edited_at,
-          });
-          if (reinsertError) toast("Could not restore the memory.");
-          void loadAll();
-        })();
+        setMemories((prev) => [m, ...(prev ?? [])]);
+        // The media file is untouched by the delete, so putting the row back
+        // restores the memory whole.
+        void queueInsert("memories", {
+          id: m.id,
+          kind: m.kind,
+          title: m.title,
+          caption: m.caption,
+          media_path: m.media_path,
+          media_meta: m.media_meta,
+          drawing_id: m.drawing_id,
+          letter_id: m.letter_id,
+          happened_on: m.happened_on,
+          location: m.location,
+          created_by: m.created_by,
+          created_at: m.created_at,
+          edited_at: m.edited_at,
+        }, "Restore memory");
       });
     },
-    [toast, loadAll],
+    [toast],
   );
 
   const createRecap = useCallback(async () => {
@@ -453,6 +458,8 @@ function MemoriesInner() {
     </>
   );
 }
+
+const CACHE_KEY = "memories:page";
 
 export default function Page() {
   return (

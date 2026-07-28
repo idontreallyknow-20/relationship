@@ -7,7 +7,8 @@ import { CheckCircle2, Flag, Trophy, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
 import { CHALLENGES, METRIC_LABEL, MISSION_BY_ID, type ChallengeDef, type MetricId, type MissionPeriod } from "@/game/config/objectives";
 import { ACHIEVEMENTS, ACHIEVEMENT_TOTAL, COLLECTIONS, NOTE_TEXT } from "@/game/config/awards";
-import { claimMission, finishChallenge, rerollMission, startChallenge } from "@/game/actions";
+import { claimMission, finishChallenge, rerollMission, setWater, startChallenge } from "@/game/actions";
+import { WATER_BY_ID } from "@/game/config/memories";
 import { metricTotal } from "@/game/engine";
 import { hasFlag } from "@/game/formulas";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
@@ -343,7 +344,7 @@ export function AchievementsTab() {
 export function CollectionsTab() {
   const { state, mutate, version } = useGame();
   const [note, setNote] = useState<string | null>(null);
-  const water = (state as { water?: string }).water ?? "default";
+  const water = state.water;
 
   const rows = useMemo(
     () =>
@@ -374,7 +375,7 @@ export function CollectionsTab() {
                     disabled={!has || (!isWater && !isNote)}
                     onClick={() => {
                       if (isNote) setNote(item.id);
-                      if (isWater) mutate((draft) => void ((draft as { water?: string }).water = item.id));
+                      if (isWater) mutate((draft) => void setWater(draft, item.id));
                     }}
                     className={`flex w-full flex-col gap-0.5 rounded-xl border p-3 text-left ${
                       has ? "border-line bg-white" : "border-dashed border-line bg-white/50"
@@ -384,7 +385,15 @@ export function CollectionsTab() {
                       <span
                         aria-hidden="true"
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: has ? (item.rare ? "#c99a3f" : "#8a7f86") : "var(--color-line)" }}
+                        style={{
+                          backgroundColor: !has
+                            ? "var(--color-line)"
+                            : isWater
+                              ? WATER_BY_ID[item.id]?.color || "var(--color-lavender-deep)"
+                              : item.rare
+                                ? "#c99a3f"
+                                : "#8a7f86",
+                        }}
                       />
                       <span className="truncate text-xs font-bold text-berry">{has ? item.name : "Not found"}</span>
                     </span>

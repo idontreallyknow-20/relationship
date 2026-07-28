@@ -8,7 +8,8 @@ import { Trash2 } from "lucide-react";
 import {
   Button, ConfirmDialog, Input, Label, Select, Sheet, Textarea, useToast,
 } from "@/components/ui";
-import { supabase } from "@/lib/supabase";
+import { queueDelete, queueInsert, queueUpdate } from "@/lib/offline/ops";
+import { noteRewardable } from "@/game/rewards-inbox";
 import { notifyPartner } from "@/lib/notify";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import type { CoupleEvent, EventKind, Person, Recurrence } from "@/lib/types";
@@ -164,30 +165,19 @@ export function EventComposer({
         remind_minutes: reminder === "none" ? null : Number(reminder),
       };
       if (editing) {
-        const { data, error } = await supabase()
-          .from("events")
-          .update(payload)
-          .eq("id", editing.id)
-          .select()
-          .single();
-        if (error || !data) {
-          toast("Could not save the event.");
-          return;
-        }
+        await queueUpdate("events", { id: editing.id }, payload, "Event edit");
         toast("Event updated");
-        onSaved(data as CoupleEvent, false);
+        onSaved({ ...editing, ...payload } as CoupleEvent, false);
       } else {
-        const { data, error } = await supabase()
-          .from("events")
-          .insert({ ...payload, created_by: me })
-          .select()
-          .single();
-        if (error || !data) {
-          toast("Could not save the event.");
-          return;
-        }
-        const saved = data as CoupleEvent;
+        const saved = {
+          ...payload,
+          id: crypto.randomUUID(),
+          created_by: me,
+          created_at: new Date().toISOString(),
+        } as CoupleEvent;
+        await queueInsert("events", { ...saved }, "Event");
         void notifyPartner("events", saved.id, { body: saved.title, url: "/plans" });
+        void noteRewardable("plan_made", new Date().toISOString().slice(0, 10), `event:${saved.id}`);
         clearDraft(DRAFT_KEY);
         toast("Event added");
         onSaved(saved, true);
@@ -200,11 +190,7 @@ export function EventComposer({
 
   const remove = async () => {
     if (!editing) return;
-    const { error } = await supabase().from("events").delete().eq("id", editing.id);
-    if (error) {
-      toast("Could not delete the event.");
-      return;
-    }
+    await queueDelete("events", { id: editing.id }, "Delete event");
     toast("Event deleted");
     onDeleted?.(editing);
     onClose();

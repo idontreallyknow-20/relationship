@@ -31,7 +31,7 @@ import {
   recordDay, tick as engineTick, type OfflineReport,
 } from "./engine";
 import {
-  buyCheapest, collectGift, grantTogether, recordSameEvening, refreshMissions,
+  buyCheapest, collectGift, grantTogether, receiveGift, recordSameEvening, refreshMissions,
 } from "./actions";
 import { drainRewards } from "./rewards-inbox";
 import {
@@ -262,12 +262,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const check = async () => {
       try {
         const saves = await loadBothSaves();
-        if (cancelled || !partnerIsAround(saves, me)) return;
-        const result = recordSameEvening(state, todayIn(couple.timezone), Date.now());
-        if (result.ok) {
-          notify({ kind: "reward", title: "You are both here", detail: result.message });
-          bump();
+        if (cancelled) return;
+        let changed = false;
+
+        // Anything they left behind when their tide went out. This is the
+        // receiving half of `leaveGift`, which can only write to its own save.
+        const theirs = saves.find((s) => s.person !== me);
+        if (theirs && receiveGift(state, theirs.state, Date.now()).ok) changed = true;
+
+        if (partnerIsAround(saves, me)) {
+          const result = recordSameEvening(state, todayIn(couple.timezone), Date.now());
+          if (result.ok) {
+            notify({ kind: "reward", title: "You are both here", detail: result.message });
+            changed = true;
+          }
         }
+
+        if (changed) bump();
       } catch {
         // Offline or not migrated yet. Nothing here is required to play.
       }

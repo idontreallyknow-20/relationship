@@ -10,6 +10,7 @@ import {
   CalendarHeart, HandHeart, House, Mail, MapPin, Settings, Smile, Sparkles, MessageCircleHeart,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { queueInsert } from "@/lib/offline/ops";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { signedUrl } from "@/lib/media";
@@ -58,17 +59,10 @@ export default function UsPage() {
   }, [me.avatar_path, partner?.avatar_path]);
 
   const sendSignal = async (kind: "check_in" | "made_it_home", message: string) => {
-    const { data: row, error } = await supabase()
-      .from("signals")
-      .insert({ from_person: me.person, kind })
-      .select("id")
-      .single();
-    if (!error && row) {
-      void notifyPartner(kind === "made_it_home" ? "arrivals" : "thinking_of_you", row.id, { url: "/us" });
-      toast(message);
-    } else {
-      toast("Could not send right now. Try again.");
-    }
+    const id = crypto.randomUUID();
+    await queueInsert("signals", { id, from_person: me.person, kind }, "Signal");
+    void notifyPartner(kind === "made_it_home" ? "arrivals" : "thinking_of_you", id, { url: "/us" });
+    toast(message);
   };
 
   const showRandomMemory = async () => {

@@ -7,6 +7,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { readCache, settled, writeCache } from "@/lib/offline/cache";
+import { queueDelete, queueInsert } from "@/lib/offline/ops";
 import { useCouple, useWho } from "@/lib/couple-context";
 import {
   Card, ConfirmDialog, EmptyState, IconButton, SegmentedControl, TopBar, useToast,
@@ -32,6 +34,14 @@ function sentStatus(letter: Letter): string {
   return "Sealed until opened";
 }
 
+const CACHE_KEY = "letters:page";
+
+interface CachedLetters {
+  letters: Letter[];
+  gratitude: Gratitude[];
+  gratitudeCount: number;
+}
+
 function LettersScreen() {
   const { me: meProfile, partner: partnerProfile } = useCouple();
   const { me, partner } = useWho();
@@ -48,18 +58,34 @@ function LettersScreen() {
   const load = useCallback(async () => {
     const sb = supabase();
     const [lettersRes, gratitudeRes] = await Promise.all([
-      sb.from("letters").select("*").order("created_at", { ascending: false }),
-      sb
+      settled(sb.from("letters").select("*").order("created_at", { ascending: false })),
+      settled(sb
         .from("gratitude")
         .select("*", { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(20),
+        .limit(20)),
     ]);
-    if (!lettersRes.error) setLetters((lettersRes.data ?? []) as Letter[]);
-    if (!gratitudeRes.error) {
-      setGratitude((gratitudeRes.data ?? []) as Gratitude[]);
-      setGratitudeCount(gratitudeRes.count ?? 0);
+    if (lettersRes.error && gratitudeRes.error) {
+      const cached = await readCache<CachedLetters>(CACHE_KEY);
+      if (cached) {
+        setLetters(cached.data.letters);
+        setGratitude(cached.data.gratitude);
+        setGratitudeCount(cached.data.gratitudeCount);
+      }
+      setLoading(false);
+      return;
     }
+    const nextLetters = (lettersRes.error ? [] : (lettersRes.data ?? [])) as Letter[];
+    const nextGratitude = (gratitudeRes.error ? [] : (gratitudeRes.data ?? [])) as Gratitude[];
+    const nextCount = gratitudeRes.count ?? 0;
+    setLetters(nextLetters);
+    setGratitude(nextGratitude);
+    setGratitudeCount(nextCount);
+    void writeCache<CachedLetters>(CACHE_KEY, {
+      letters: nextLetters,
+      gratitude: nextGratitude,
+      gratitudeCount: nextCount,
+    });
     setLoading(false);
   }, []);
 
@@ -106,26 +132,20 @@ function LettersScreen() {
     if (!toDelete) return;
     const id = toDelete.id;
     setToDelete(null);
-    const { error } = await supabase().from("letters").delete().eq("id", id);
-    if (error) {
-      toast("Could not delete the letter");
-      return;
-    }
+    await queueDelete("letters", { id }, "Delete letter");
     setLetters((prev) => prev.filter((l) => l.id !== id));
     toast("Letter deleted");
   };
 
   const addGratitude = async (body: string): Promise<boolean> => {
-    const { data, error } = await supabase()
-      .from("gratitude")
-      .insert({ person: me, body })
-      .select("*")
-      .single();
-    if (error || !data) {
-      toast("Could not add that, try again");
-      return false;
-    }
-    setGratitude((prev) => [data as Gratitude, ...prev].slice(0, 20));
+    const row: Gratitude = {
+      id: crypto.randomUUID(),
+      person: me,
+      body,
+      created_at: new Date().toISOString(),
+    };
+    await queueInsert("gratitude", { ...row }, "Gratitude");
+    setGratitude((prev) => [row, ...prev].slice(0, 20));
     setGratitudeCount((n) => n + 1);
     toast("Added to the jar");
     return true;

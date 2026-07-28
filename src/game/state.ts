@@ -92,6 +92,7 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
 
     vessel: "jam_jar",
     vesselsUnlocked: ["jam_jar"],
+    water: "default",
 
     settled: [],
     drifter: null,
@@ -211,6 +212,7 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     merged.vesselsUnlocked = Array.from(new Set(["jam_jar", ...mapped]));
     const currentWorld = typeof old.world === "string" ? LEGACY_WORLD_MAP[old.world] : null;
     merged.vessel = currentWorld && merged.vesselsUnlocked.includes(currentWorld) ? currentWorld : "jam_jar";
+    merged.water = "default";
 
     // Reset layer counts kept their meaning even though the names changed.
     merged.tideChanges = Number(old.rebirths) || 0;
@@ -220,6 +222,7 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
       ? (old.vesselsUnlocked as string[])
       : ["jam_jar"];
     merged.vessel = typeof old.vessel === "string" ? old.vessel : "jam_jar";
+    merged.water = typeof old.water === "string" ? old.water : "default";
     merged.upgrades = { ...((old.upgrades as Record<string, number>) ?? {}) };
   }
 
