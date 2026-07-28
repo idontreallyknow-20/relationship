@@ -16,13 +16,15 @@ import {
 } from "@/game/actions";
 import { hasFlag } from "@/game/formulas";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
-import { Button, ConfirmDialog, useToast } from "@/components/ui";
+import { Button, ConfirmDialog, SegmentedControl, useToast } from "@/components/ui";
 import { Bar, EmptyRow, Section, SpendButton } from "./bits";
+import { ResetTreeGraph } from "./tree";
 
 export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
   const { state, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [treeView, setTreeView] = useState<"tree" | "list">("tree");
   // Bumped by a completed rebirth. It is only in the key of the card below, so
   // the card remounts and its drain animation plays. A rebirth takes away
   // nearly everything you were looking at and it should look like it did.
@@ -164,32 +166,44 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       </div>
 
       <Section
-        title={`${def.currency === "moons" ? "Moon" : def.currency === "drops" ? "Drop" : "Star"} upgrades`}
+        title={`${def.currency === "moons" ? "Moon" : def.currency === "drops" ? "Drop" : "Star"} tree`}
         hint={`${formatNumber(state.wallet[def.currency], format)} to spend`}
+        action={
+          <SegmentedControl
+            label="View"
+            value={treeView}
+            onChange={(value) => setTreeView(value as "tree" | "list")}
+            options={[{ value: "tree", label: "Tree" }, { value: "list", label: "List" }]}
+          />
+        }
       >
-        <ul className="flex flex-col gap-2">
-          {upgrades.map((upgrade) => (
-            <ResetRow
-              key={upgrade.id}
-              def={upgrade}
-              owned={levels[upgrade.id] ?? 0}
-              balance={state.wallet[upgrade.currency]}
-              format={format}
-              confirmRare={state.settings.confirmRareSpends}
-              blockedBy={
-                upgrade.requires && (levels[upgrade.requires[0]] ?? 0) < upgrade.requires[1]
-                  ? upgrades.find((u) => u.id === upgrade.requires![0])?.name ?? null
-                  : null
-              }
-              onBuy={() =>
-                mutate((draft) => {
-                  const result = buyResetUpgrade(draft, upgrade.id);
-                  toast(result.message ?? "Cannot buy that");
-                })
-              }
-            />
-          ))}
-        </ul>
+        {treeView === "tree" ? (
+          <ResetTreeGraph currency={def.currency as "moons" | "stars" | "drops"} />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {upgrades.map((upgrade) => (
+              <ResetRow
+                key={upgrade.id}
+                def={upgrade}
+                owned={levels[upgrade.id] ?? 0}
+                balance={state.wallet[upgrade.currency]}
+                format={format}
+                confirmRare={state.settings.confirmRareSpends}
+                blockedBy={
+                  upgrade.requires && (levels[upgrade.requires[0]] ?? 0) < upgrade.requires[1]
+                    ? upgrades.find((u) => u.id === upgrade.requires![0])?.name ?? null
+                    : null
+                }
+                onBuy={() =>
+                  mutate((draft) => {
+                    const result = buyResetUpgrade(draft, upgrade.id);
+                    toast(result.message ?? "Cannot buy that");
+                  })
+                }
+              />
+            ))}
+          </ul>
+        )}
       </Section>
 
       <ConfirmDialog

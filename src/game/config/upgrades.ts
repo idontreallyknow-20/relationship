@@ -50,13 +50,24 @@ export interface UpgradeDef {
   milestones?: number[];
   milestoneMods?: Mods;
   /**
-   * The upgrade this one grows out of, drawn as a branch in the tree view.
+   * The upgrades this one grows out of, drawn as branches in the tree view.
    *
-   * Purely a shape: nothing enforces buying a parent first, because a tree you
-   * cannot see the far end of is a tree you cannot plan in. The first upgrade
-   * in each tree has no parent and is the trunk.
+   * More than one is allowed, and several nodes use it: a line that forks and
+   * comes back together is the difference between a tree and four queues. It
+   * was a single string, which is why the shape below the trunk used to be
+   * four straight columns however it was drawn.
+   *
+   * Still purely a shape. Nothing enforces buying a parent first, because a
+   * tree you cannot see the far end of is a tree you cannot plan in. The first
+   * upgrade in each tree has no parent and is the trunk.
    */
-  after?: string;
+  after?: string | string[];
+}
+
+/** Every upgrade this one grows out of, however it was written. */
+export function parentsOf(def: { after?: string | string[] }): string[] {
+  if (!def.after) return [];
+  return Array.isArray(def.after) ? def.after : [def.after];
 }
 
 interface Spec {
@@ -71,7 +82,7 @@ interface Spec {
   stat?: AddStat | MulStat;
   currency?: CurrencyId;
   unlock?: UnlockRule;
-  after?: string;
+  after?: string | string[];
 }
 
 function tree(treeId: Tree, defaults: { kind: EffectKind; stat: AddStat | MulStat; currency?: CurrencyId }, specs: Spec[]): UpgradeDef[] {
@@ -118,8 +129,18 @@ const CAMI = tree("cami", { kind: "add", stat: "clickFlat" }, [
   { after: "moonlit_water", id: "holding_on", name: "Holding On", description: "Combos survive a slip.", cost: 2e9, growth: 1.8, per: 1, stat: "comboShield", max: 8, unlock: { tideChanges: 1 } },
   { after: "deep_breath", id: "sea_otter_strength", name: "Sea Otter Strength", description: "Click power, permanently multiplied.", cost: 1e10, growth: 1.6, per: 0.35, kind: "mulLinear", stat: "click", max: 30, unlock: { tideChanges: 1 } },
   { after: "her_favourite_rock", id: "raft", name: "Raft", description: "Otters group together and lift everything.", cost: 8e11, growth: 1.7, per: 0.25, kind: "mulLinear", stat: "crackValue", max: 30, unlock: { tideChanges: 2 } },
-  { after: "sea_otter_strength", id: "endless_play", name: "Endless Play", description: "Click power, compounding.", cost: 5e14, growth: 2.4, per: 0.07, kind: "mulCompound", stat: "click", max: 50, unlock: { newWaters: 1 } },
-  { after: "sleek_coat", id: "her_whole_heart", name: "Her Whole Heart", description: "Everything, compounding.", cost: 1e17, growth: 3, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 2 } },
+  // Forks below the trunk, rather than four straight columns off it. Several of
+  // these grant stats that the engine reads and nothing anywhere granted: mega
+  // criticals could never fire, the combo cap was permanently thirty, and
+  // drifters, lucky rolls and free upgrades were all wired to a constant zero.
+  { after: "quick_paws", id: "sea_spray", name: "Sea Spray", description: "Things wash in far more often.", cost: 3_000, growth: 1.34, per: 0.0015, stat: "driftChance", max: 40 },
+  { after: "shell_cracking", id: "slippery_rock", name: "Slippery Rock", description: "Otters get through shells quicker.", cost: 5_000, growth: 1.3, per: 0.06, kind: "mulLinear", stat: "crackSpeed", max: 40 },
+  { after: ["playful", "quick_paws"], id: "lucky_dive", name: "Lucky Dive", description: "Better things come up off the bottom.", cost: 25_000, growth: 1.38, per: 0.03, stat: "luck", max: 30 },
+  { after: "somersault", id: "moon_eyes", name: "Moon Eyes", description: "A tap can land far harder than a critical.", cost: 250_000, growth: 1.45, per: 0.004, stat: "megaCritChance", max: 40, unlock: { lifetimeHearts: 200_000 } },
+  { after: ["reinforced_tap", "playful"], id: "double_tap", name: "Double Tap", description: "Some upgrades cost nothing at all.", cost: 600_000, growth: 1.5, per: 0.01, stat: "freeUpgradeChance", max: 30, unlock: { lifetimeHearts: 400_000 } },
+  { after: "deep_breath", id: "long_breath", name: "Long Breath", description: "The combo climbs past where it used to stop.", cost: 3e6, growth: 1.48, per: 2, stat: "comboCap", max: 60, unlock: { lifetimeHearts: 2e6 } },
+  { after: ["sea_otter_strength", "raft"], id: "endless_play", name: "Endless Play", description: "Click power, compounding.", cost: 5e14, growth: 2.4, per: 0.07, kind: "mulCompound", stat: "click", max: 50, unlock: { newWaters: 1 } },
+  { after: ["sleek_coat", "moonlit_water"], id: "her_whole_heart", name: "Her Whole Heart", description: "Everything, compounding.", cost: 1e17, growth: 3, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 2 } },
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -146,8 +167,16 @@ const JOSEPH = tree("joseph", { kind: "add", stat: "cpsFlat" }, [
   { after: "low_tide_reach", id: "ghost_step", name: "Ghost Step", description: "Collections come round far quicker.", cost: 2e10, growth: 1.6, per: 0.18, kind: "mulLinear", stat: "collectSpeed", max: 25, unlock: { tideChanges: 1 } },
   { after: "hoarding", id: "barnacle_farm", name: "Barnacle Farm", description: "Passive output, permanently multiplied.", cost: 4e11, growth: 1.65, per: 0.3, kind: "mulLinear", stat: "cps", max: 30, unlock: { tideChanges: 2 } },
   { after: "patience", id: "deep_burrow", name: "Deep Burrow", description: "A great deal more time away counts.", cost: 6e12, growth: 1.8, per: 3, stat: "offlineHours", max: 20, unlock: { tideChanges: 3 } },
+  // The same treatment: forks partway down, and two lines that come back
+  // together at the end rather than four that never meet.
+  { after: "pincer_strength", id: "slow_current", name: "Slow Current", description: "Nothing on the floor is ever wasted.", cost: 4_000, growth: 1.29, per: 0.08, kind: "mulLinear", stat: "collectValue", max: 50 },
+  { after: ["shell_collecting", "tidepool_sweep"], id: "driftwood", name: "Driftwood", description: "Whatever floats in is worth far more.", cost: 30_000, growth: 1.4, per: 0.18, kind: "mulLinear", stat: "driftReward", max: 30 },
+  { after: "hard_shell", id: "stone_patience", name: "Stone Patience", description: "One critical can set off the next.", cost: 200_000, growth: 1.44, per: 0.012, stat: "critChainChance", max: 40, unlock: { lifetimeHearts: 150_000 } },
+  { after: "steady_hands", id: "wide_floor", name: "Wide Floor", description: "Room for another creature in the jar.", cost: 2.5e6, growth: 2.6, per: 1, stat: "creatureSlots", max: 4, unlock: { lifetimeHearts: 2e6 } },
+  { after: ["sand_sifting", "claw_sharpening"], id: "tide_pools", name: "Tide Pools", description: "Glass and shells both come up faster.", cost: 8e6, growth: 1.46, per: 0.16, kind: "mulLinear", stat: "glassGain", max: 40, unlock: { lifetimeHearts: 6e6 } },
+  { after: ["hoarding", "night_scuttle"], id: "long_shadow", name: "Long Shadow", description: "The autobuyers keep up with you.", cost: 1e8, growth: 1.5, per: 2, stat: "autobuyerSpeed", max: 40, unlock: { lifetimeHearts: 8e7 } },
   { after: "barnacle_farm", id: "endless_patience", name: "Endless Patience", description: "Passive hearts, compounding.", cost: 5e14, growth: 2.4, per: 0.07, kind: "mulCompound", stat: "cps", max: 50, unlock: { newWaters: 1 } },
-  { after: "endless_patience", id: "his_whole_heart", name: "His Whole Heart", description: "Everything, compounding.", cost: 1e17, growth: 3, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 2 } },
+  { after: ["endless_patience", "deep_burrow"], id: "his_whole_heart", name: "His Whole Heart", description: "Everything, compounding.", cost: 1e17, growth: 3, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 2 } },
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -163,11 +192,18 @@ const US = tree("us", { kind: "mulLinear", stat: "all", currency: "tide" }, [
   { after: "holding_hands", id: "long_distance", name: "Long Distance", description: "Time apart counts for more.", cost: 35, growth: 1.45, per: 0.12, stat: "offline", max: 30 },
   { after: "long_distance", id: "home_again", name: "Home Again", description: "Coming back is worth more.", cost: 50, growth: 1.45, per: 0.15, stat: "offline", max: 25 },
   { after: "same_tide", id: "warm_evening", name: "Warm Evening", description: "Tide takes much longer to go out.", cost: 70, growth: 1.5, per: 0.12, stat: "tideGain", max: 25 },
+  // Us forks too. It was the flattest of the three: one root with four lines
+  // hanging off it and nothing joining up again.
+  { after: "same_tide", id: "evening_light", name: "Evening Light", description: "Warmth goes out much more slowly.", cost: 45, growth: 1.44, per: 0.14, stat: "tideGain", max: 25 },
+  { after: "shared_water", id: "saved_seat", name: "Saved Seat", description: "The jar holds a great deal more.", cost: 60, growth: 1.42, per: 0.18, stat: "cps", max: 25 },
+  { after: "long_distance", id: "postcards", name: "Postcards", description: "More hours away are counted.", cost: 90, growth: 1.5, per: 1, kind: "add", stat: "offlineHours", max: 30 },
+  { after: ["two_currents", "in_sync"], id: "four_hands", name: "Four Hands", description: "Both of your creatures work harder.", cost: 140, growth: 1.5, per: 0.14, stat: "creaturePower", max: 30 },
+  { after: ["evening_light", "saved_seat"], id: "same_room", name: "Same Room", description: "Everything, whenever either of you is here.", cost: 300, growth: 1.6, per: 0.12, stat: "all", max: 25, unlock: { tideChanges: 2 } },
   { after: "home_again", id: "left_for_you", name: "Left For You", description: "What you leave behind is worth more.", cost: 100, growth: 1.5, per: 0.2, stat: "all", max: 20, unlock: { tideChanges: 1 } },
   { after: "shared_water", id: "one_jar", name: "One Jar", description: "Everything, again.", cost: 160, growth: 1.55, per: 0.1, stat: "all", max: 30, unlock: { tideChanges: 1 } },
   { after: "in_sync", id: "anniversary_swell", name: "Anniversary Swell", description: "The day itself pays far more.", cost: 240, growth: 1.6, per: 0.25, stat: "missionReward", max: 20, unlock: { tideChanges: 2 } },
   { after: "warm_evening", id: "moon_pull", name: "Moon Pull", description: "Every rebirth pays more moons.", cost: 400, growth: 1.7, per: 0.12, stat: "moonGain", max: 25, unlock: { tideChanges: 3 } },
-  { after: "one_jar", id: "ours", name: "Ours", description: "Everything, compounding, for both of you.", cost: 1_200, growth: 2.2, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 1 } },
+  { after: ["one_jar", "anniversary_swell"], id: "ours", name: "Ours", description: "Everything, compounding, for both of you.", cost: 1_200, growth: 2.2, per: 0.05, kind: "mulCompound", stat: "all", max: 40, unlock: { newWaters: 1 } },
 ]);
 
 export const UPGRADES: UpgradeDef[] = [...CAMI, ...JOSEPH, ...US];

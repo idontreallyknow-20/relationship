@@ -132,9 +132,21 @@ export interface ResetUpgradeDef {
   per?: number;
   flag?: string;
   requires?: [string, number];
+  /**
+   * The upgrades this one grows out of, drawn as branches.
+   *
+   * The moon, star and drop trees were called trees and were flat scrolling
+   * lists: twenty-eight, twenty-one and eighteen entries with no shape at all,
+   * so there was no way to see that automating rebirth sits at the end of the
+   * line you have been feeding, or that everything comes out of the first two.
+   * The shape lives in `RESET_TREE_SHAPE` below rather than inline, because a
+   * topology is easier to read and to change as one block than as a field
+   * repeated across sixty-six one-line definitions.
+   */
+  after?: string[];
 }
 
-export const MOON_UPGRADES: ResetUpgradeDef[] = [
+const MOON_RAW: ResetUpgradeDef[] = [
   { id: "m_click", name: "Stronger Taps", description: "Click power, kept through every rebirth.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "click", per: 0.25 },
   { id: "m_cps", name: "Steadier Jar", description: "Passive hearts, kept through every rebirth.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "cps", per: 0.25 },
   { id: "m_all", name: "Everything At Once", description: "Everything, permanently.", currency: "moons", baseCost: 4, growth: 1.5, max: 60, kind: "mulLinear", stat: "all", per: 0.15 },
@@ -176,7 +188,7 @@ export const MOON_UPGRADES: ResetUpgradeDef[] = [
   { id: "m_new_water", name: "Deep Rebirth", description: "Unlocks the rebirth above rebirth. This is what the tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
 ];
 
-export const STAR_UPGRADES: ResetUpgradeDef[] = [
+const STAR_RAW: ResetUpgradeDef[] = [
   { id: "s_all", name: "Everything Rises", description: "Every heart, everywhere.", currency: "stars", baseCost: 1, growth: 1.4, max: 100, kind: "mulLinear", stat: "all", per: 0.4 },
   { id: "s_crack", name: "Old Hands", description: "Otters, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "crackValue", per: 0.35 },
   { id: "s_collect", name: "Old Paths", description: "Crabs, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "collectValue", per: 0.35 },
@@ -217,7 +229,7 @@ export function resetUpgradeCost(def: ResetUpgradeDef, level: number): number {
  * than its numbers: it lengthens the chain, automates the inner loop, and
  * removes the ceilings the layers above it live under.
  */
-export const DROP_UPGRADES: ResetUpgradeDef[] = [
+const DROP_RAW: ResetUpgradeDef[] = [
   { id: "d_all", name: "The Whole Sea", description: "Everything, everywhere.", currency: "drops", baseCost: 1, growth: 1.5, max: 200, kind: "mulLinear", stat: "all", per: 1 },
   { id: "d_depth", name: "Deep Pressure", description: "Every depth, enormously stronger.", currency: "drops", baseCost: 2, growth: 1.5, max: 200, kind: "mulLinear", stat: "depthPower", per: 3 },
   { id: "d_tide", name: "The Long Pull", description: "Everything moves far faster.", currency: "drops", baseCost: 3, growth: 1.55, max: 100, kind: "mulLinear", stat: "tideSpeed", per: 1 },
@@ -239,6 +251,98 @@ export const DROP_UPGRADES: ResetUpgradeDef[] = [
   { id: "d_auto_tide", name: "It Turns Itself", description: "Rebirth happens on its own.", currency: "drops", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },
   { id: "d_keep_depths", name: "What The Water Remembers", description: "Deepenings survive a deep rebirth.", currency: "drops", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_deepens" },
 ];
+
+/* ------------------------------------------------------------------ */
+/* The shape of the three reset trees                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What grows out of what. Anything not listed here is a root.
+ *
+ * Drawing only, exactly like the hearts trees: `requires` is what actually
+ * gates a purchase, and where both exist they agree. A tree whose far end you
+ * cannot see is a tree you cannot plan in, so the shape describes the route
+ * without closing it off.
+ */
+const RESET_TREE_SHAPE: Record<string, string[]> = {
+  // Moons. Two trunks, taps and passive, and everything general comes out of
+  // the point where they meet.
+  m_all: ["m_click", "m_cps"],
+  m_forever: ["m_all"],
+  m_crit: ["m_click"],
+  m_combo: ["m_crit"],
+  m_crack: ["m_click"],
+  m_collect: ["m_cps"],
+  m_creature: ["m_crack", "m_collect"],
+  m_slots: ["m_creature"],
+  m_items: ["m_creature"],
+  m_ability: ["m_all"],
+  m_keep: ["m_all"],
+  m_cost: ["m_all"],
+  m_moons: ["m_forever"],
+  m_gift: ["m_moons"],
+  m_offline: ["m_cps"],
+  m_auto_tap: ["m_click"],
+  m_auto_crit: ["m_auto_tap", "m_crit"],
+  m_auto_buy: ["m_all"],
+  m_autobuyer: ["m_auto_buy"],
+  m_auto_feed: ["m_slots"],
+  m_auto_skill: ["m_ability"],
+  m_auto_rebirth: ["m_forever", "m_auto_buy"],
+  m_depth: ["m_cps"],
+  m_tide_speed: ["m_depth"],
+  m_challenges: ["m_keep"],
+  m_new_water: ["m_all", "m_forever"],
+
+  // Stars. One trunk, because by here the player knows what a tree is.
+  s_crack: ["s_all"],
+  s_collect: ["s_all"],
+  s_moons: ["s_all"],
+  s_creature_keep: ["s_crack", "s_collect"],
+  s_item_keep: ["s_creature_keep"],
+  s_slots: ["s_creature_keep"],
+  s_keep: ["s_moons"],
+  s_stars: ["s_moons"],
+  s_offline_cap: ["s_all"],
+  s_offline_rate: ["s_offline_cap"],
+  s_pearls: ["s_crack"],
+  s_glass: ["s_collect"],
+  s_tide: ["s_all"],
+  s_cooldown: ["s_tide"],
+  s_auto_upgrade: ["s_keep"],
+  s_auto_tap: ["s_auto_upgrade"],
+  s_autobuyer: ["s_auto_upgrade"],
+  s_depth: ["s_all"],
+  s_deepen: ["s_depth"],
+  s_ocean: ["s_depth", "s_stars"],
+
+  // Drops. The chain lengthens down one side and the automation down the
+  // other, and the last two rungs need both.
+  d_depth: ["d_all"],
+  d_depth_1: ["d_depth"],
+  d_depth_2: ["d_depth_1"],
+  d_depth_3: ["d_depth_2"],
+  d_depth_4: ["d_depth_3"],
+  d_tide: ["d_all"],
+  d_tap: ["d_all"],
+  d_autobuyer: ["d_tap"],
+  d_moons: ["d_all"],
+  d_stars: ["d_moons"],
+  d_drops: ["d_stars"],
+  d_deepen: ["d_depth"],
+  d_offline: ["d_all"],
+  d_auto_deepen: ["d_deepen", "d_autobuyer"],
+  d_auto_tide: ["d_tide", "d_autobuyer"],
+  d_keep_depths: ["d_depth_4", "d_auto_deepen"],
+};
+
+function shaped(list: ResetUpgradeDef[]): ResetUpgradeDef[] {
+  return list.map((def) => ({ ...def, after: RESET_TREE_SHAPE[def.id] ?? [] }));
+}
+
+export const MOON_UPGRADES: ResetUpgradeDef[] = shaped(MOON_RAW);
+export const STAR_UPGRADES: ResetUpgradeDef[] = shaped(STAR_RAW);
+export const DROP_UPGRADES: ResetUpgradeDef[] = shaped(DROP_RAW);
 
 export const RESET_UPGRADE_BY_ID: Record<string, ResetUpgradeDef> = Object.fromEntries(
   [...MOON_UPGRADES, ...STAR_UPGRADES, ...DROP_UPGRADES].map((u) => [u.id, u]),
