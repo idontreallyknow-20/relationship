@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useGame } from "@/game/store";
+import type { Derived, GameState } from "@/game/types";
 import { STAGES, STAGE_BY_INDEX } from "@/game/config/stages";
 import { Button, Sheet } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
@@ -22,6 +23,20 @@ import { HeartIcon } from "@/components/hearts";
  * stages at once, the newest one is shown and the rest are readable from the
  * help sheet. Three modals in a row would be worse than none.
  */
+/**
+ * Is there an explanation waiting to be read?
+ *
+ * Exported because the notice stack needs to know. Achievement and unlock
+ * cards were drawn at z-65 and this at z-62, so an achievement that happened
+ * to fire on the same tick as a stage crossing landed on top of the paragraph
+ * explaining the thing that had just arrived, which is the one moment in the
+ * game where reading matters most.
+ */
+export function stagePending(state: GameState, derived: Derived): boolean {
+  if (!state.settings.tutorialDone) return false;
+  return derived.stage > state.stageSeen;
+}
+
 export function StageAnnounce() {
   const { state, derived, mutate } = useGame();
 

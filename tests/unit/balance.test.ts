@@ -265,10 +265,15 @@ describe("rebirth is the loop", () => {
 
 describe("the pets are a side thing", () => {
   it("are worth having, without being the whole game", () => {
+    // A new save has its pet out of the jar until the rung that explains
+    // pets, so this seats one rather than assuming it is already sitting.
     const alone = createGameState(0);
-    alone.slots = [null, null];
 
     const withPets = createGameState(0);
+    const pet = Object.values(withPets.creatures)[0];
+    withPets.slots[0] = pet.id;
+    pet.slot = 0;
+
     expect(derive(withPets, 0).heartsPerSecond)
       .toBeGreaterThan(derive(alone, 0).heartsPerSecond);
   });

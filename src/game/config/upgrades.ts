@@ -133,6 +133,17 @@ const CAMI = tree("cami", { kind: "add", stat: "clickFlat" }, [
   // these grant stats that the engine reads and nothing anywhere granted: mega
   // criticals could never fire, the combo cap was permanently thirty, and
   // drifters, lucky rolls and free upgrades were all wired to a constant zero.
+  // Per second and time away, early, and on both trees.
+  //
+  // Asked for directly: "there need to be upgrades for offline and per second".
+  // Both existed and both were miles in: the only early passive line was on
+  // Joseph's tree, and every offline node cost hundreds of thousands. So the
+  // one number a player watches most had nothing to spend on it for the first
+  // hour, on the tree half of them are looking at.
+  { after: "otter_hands", id: "steady_drip", name: "Steady Drip", description: "The jar makes hearts on its own.", cost: 120, growth: 1.16, per: 0.5, stat: "cpsFlat" },
+  { after: "steady_drip", id: "night_owl", name: "Night Owl", description: "More hours away are counted.", cost: 1_500, growth: 1.4, per: 1, stat: "offlineHours", max: 40 },
+  { after: "steady_drip", id: "slow_pour", name: "Slow Pour", description: "Everything the jar makes without you is worth more.", cost: 4_000, growth: 1.34, per: 0.12, kind: "mulLinear", stat: "cps", max: 60 },
+  { after: "night_owl", id: "left_running", name: "Left Running", description: "Time away is worth more per hour.", cost: 30_000, growth: 1.38, per: 0.1, kind: "mulLinear", stat: "offline", max: 40 },
   { after: "quick_paws", id: "sea_spray", name: "Sea Spray", description: "Things wash in far more often.", cost: 3_000, growth: 1.34, per: 0.0015, stat: "luck", max: 40 },
   { after: "shell_cracking", id: "slippery_rock", name: "Slippery Rock", description: "Otters get through shells quicker.", cost: 5_000, growth: 1.3, per: 0.06, kind: "mulLinear", stat: "petSpeed", max: 40 },
   { after: ["playful", "quick_paws"], id: "lucky_dive", name: "Lucky Dive", description: "Better things come up off the bottom.", cost: 25_000, growth: 1.38, per: 0.03, stat: "luck", max: 30 },
@@ -169,6 +180,12 @@ const JOSEPH = tree("joseph", { kind: "add", stat: "cpsFlat" }, [
   { after: "patience", id: "deep_burrow", name: "Deep Burrow", description: "A great deal more time away counts.", cost: 6e12, growth: 1.8, per: 3, stat: "offlineHours", max: 20, unlock: { tideChanges: 3 } },
   // The same treatment: forks partway down, and two lines that come back
   // together at the end rather than four that never meet.
+  // The same pair on his side. `sideways_walk` was already the passive root, so
+  // what was missing here was somewhere for it to go and anything about time
+  // away that arrived before the six figure marks.
+  { after: "sideways_walk", id: "early_riser", name: "Early Riser", description: "More hours away are counted.", cost: 1_200, growth: 1.4, per: 1, stat: "offlineHours", max: 40 },
+  { after: "sideways_walk", id: "long_shift", name: "Long Shift", description: "Everything the jar makes without you is worth more.", cost: 3_500, growth: 1.33, per: 0.13, kind: "mulLinear", stat: "cps", max: 60 },
+  { after: "early_riser", id: "slept_in", name: "Slept In", description: "Time away is worth more per hour.", cost: 25_000, growth: 1.37, per: 0.11, kind: "mulLinear", stat: "offline", max: 40 },
   { after: "pincer_strength", id: "slow_current", name: "Slow Current", description: "Nothing on the floor is ever wasted.", cost: 4_000, growth: 1.29, per: 0.08, kind: "mulLinear", stat: "petValue", max: 50 },
   { after: ["shell_collecting", "tidepool_sweep"], id: "driftwood", name: "Driftwood", description: "Whatever floats in is worth far more.", cost: 30_000, growth: 1.4, per: 0.18, kind: "mulLinear", stat: "petValue", max: 30 },
   { after: "hard_shell", id: "stone_patience", name: "Stone Patience", description: "One critical can set off the next.", cost: 200_000, growth: 1.44, per: 0.012, stat: "critChainChance", max: 40, unlock: { lifetimeHearts: 150_000 } },

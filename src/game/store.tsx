@@ -139,8 +139,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
+      // Paint from disk first, and only then talk to the server.
+      //
+      // This used to `await loadServer(me)` before anything rendered at all,
+      // which meant that opening the jar with no connection sat on a spinner
+      // for the whole of the query deadline before showing a save that had
+      // been on the device the entire time. The rest of the app has painted
+      // cache-first since the offline layer was written; the game was the one
+      // screen that did not.
       const local = await loadLocal(me);
+      if (cancelled) return;
+
+      Object.assign(state, local ?? createGameState(Date.now(), me));
+      state.stats.sessionStartedAt = Date.now();
+      state.stats.sessionHearts = 0;
+      setReady(true);
+      bump();
+
+      // Now reconcile with the server, if it answers. Whatever it says arrives
+      // as a second render rather than as a delay before the first.
       let server = null;
       try {
         server = await loadServer(me);
@@ -151,10 +170,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       }
       if (cancelled) return;
 
-      // Merge into the object the rest of the tree already holds a reference
-      // to, so nothing ends up pointing at a stale save.
-      const resolved = reconcile(local, server, me) ?? createGameState(Date.now(), me);
-      Object.assign(state, resolved);
+      if (server) {
+        const resolved = reconcile(state, server, me);
+        if (resolved) Object.assign(state, resolved);
+      }
 
       // Old love jar taps become starting progress, exactly once.
       if (!state.legacyClaimed) {
@@ -165,7 +184,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           // Try again next load; nothing is lost by waiting.
         }
       }
+      if (cancelled) return;
 
+      // Held until the reconcile has settled, so the window is measured
+      // against the save that won rather than the one that happened to be on
+      // this device.
       const startedAt = Date.now();
       const report = computeOffline(state, startedAt);
       if (report.hearts > 0 || report.ribbons > 0) {
@@ -173,13 +196,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       } else {
         state.lastSeenAt = startedAt;
       }
-      state.stats.sessionStartedAt = startedAt;
-      state.stats.sessionHearts = 0;
 
-      if (!cancelled) {
-        setReady(true);
-        bump();
-      }
+      bump();
     })();
     return () => {
       cancelled = true;

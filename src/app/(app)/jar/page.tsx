@@ -23,7 +23,7 @@ import {
   CodexTab, MinigamesTab, SettingsTab, StatsTab, UsTab, WalletStrip,
 } from "@/components/jar/extras";
 import { Tour } from "@/components/jar/tour";
-import { StageAnnounce } from "@/components/jar/explain";
+import { StageAnnounce, stagePending } from "@/components/jar/explain";
 import type { Feature } from "@/game/config/stages";
 
 /**
@@ -335,10 +335,15 @@ function LegacyDialog() {
 /* ------------------------------------------------------------------ */
 
 function NoticeStack() {
-  const { notices, dismissNotice, state } = useGame();
+  const { notices, dismissNotice, state, derived } = useGame();
   const toast = useToast();
-  // The tour already owns the screen; notices behind it only read as clutter.
-  const hidden = !state.settings.tutorialDone;
+  // Nothing on top of the tour, and nothing on top of an explanation.
+  //
+  // A notice is a congratulation and it keeps; a stage announcement is the one
+  // paragraph that says what the thing that just appeared actually does. When
+  // both wanted the screen the notice won, because it was drawn three layers
+  // higher.
+  const hidden = !state.settings.tutorialDone || stagePending(state, derived);
 
   // Auto-dismiss so the stack never grows without bound.
   useEffect(() => {
