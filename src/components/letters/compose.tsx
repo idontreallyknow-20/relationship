@@ -13,6 +13,7 @@ import { Button, Input, Label, Textarea, useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import type { LetterKind } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/format";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 interface LetterDraft {
   title: string;
@@ -113,6 +114,7 @@ export function ComposeLetter({
     }
 
     const id = (data as { id: string }).id;
+    void noteRewardable("letter_sent", new Date().toISOString().slice(0, 10), `letter:${id}`);
     // Scheduled letters are announced by the server at unlock time, not here.
     if (kind === "open_when") {
       void notifyPartner("letters", id, {

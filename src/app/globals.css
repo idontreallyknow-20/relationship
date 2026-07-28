@@ -119,6 +119,48 @@ body {
   .love-drop { animation: none; opacity: 0; }
 }
 
+/* ------------------------------------------------------------------ */
+/* Love Jar                                                            */
+/* ------------------------------------------------------------------ */
+
+/* Number popups drifting up from a tap. */
+@keyframes heart-popup {
+  0% { transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+  20% { transform: translate(-50%, -70%) scale(1.08); opacity: 1; }
+  100% { transform: translate(-50%, -160%) scale(0.95); opacity: 0; }
+}
+.heart-popup {
+  animation: heart-popup 900ms ease-out forwards;
+  will-change: transform, opacity;
+}
+
+/* Bonus hearts drifting while they wait to be caught. */
+@keyframes float-bob {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-8px); }
+}
+.float-bob {
+  animation: float-bob 2.4s ease-in-out infinite;
+  transform: translate(-50%, -50%);
+}
+
+/* A mega critical shakes the jar. Off by default under reduced motion. */
+@keyframes jar-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+.jar-shake {
+  animation: jar-shake 220ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart-popup { animation-duration: 400ms; }
+  .float-bob { animation: none; transform: translate(-50%, -50%); }
+  .jar-shake { animation: none; }
+}
+
 /* Drawing canvas: stop the page from scrolling under a finger. */
 .touch-draw {
   touch-action: none;

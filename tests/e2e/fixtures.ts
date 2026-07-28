@@ -5,7 +5,14 @@ export const JOSEPH_ID = "11240c34-ac31-4a8e-8a33-b2adac5bf7c8";
 
 const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
-const today = new Date().toISOString().slice(0, 10);
+// The app derives the daily question's date from the couple's timezone, so
+// the fixtures have to agree or the question looks like it is for another day.
+const today = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
 
 export const fixtures: Record<string, unknown[]> = {
   profiles: [

@@ -105,6 +105,9 @@ export interface DailyQuestion {
   for_date: string;
   skipped: boolean;
   created_at: string;
+  /** The timezone the date was minted for, so travel is explainable. */
+  timezone?: string | null;
+  created_by?: Person | null;
 }
 
 export interface Answer {
@@ -115,6 +118,10 @@ export interface Answer {
   guess: string | null;
   revealed_early: boolean;
   created_at: string;
+  updated_at?: string | null;
+  /** Set the moment the partner actually read it, which closes editing. */
+  seen_by_partner_at?: string | null;
+  edit_count?: number;
 }
 
 export type MemoryKind =

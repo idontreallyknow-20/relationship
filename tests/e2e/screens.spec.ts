@@ -11,6 +11,7 @@ const screens: { path: string; name: string; expectText: string | RegExp }[] = [
   { path: "/chat", name: "chat", expectText: /bookshop|hello|message/i },
   { path: "/moods", name: "moods", expectText: /mood|feel/i },
   { path: "/questions", name: "questions", expectText: /question/i },
+  { path: "/jar", name: "jar", expectText: /Love Jar/i },
   { path: "/letters", name: "letters", expectText: /letter|write/i },
   { path: "/memories", name: "memories", expectText: /memor/i },
   { path: "/plans", name: "plans", expectText: /calendar|plan|bucket/i },

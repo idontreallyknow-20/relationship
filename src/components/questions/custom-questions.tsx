@@ -1,12 +1,15 @@
 "use client";
 
-// "Your questions": write questions for the shared rotation pool, and manage
-// the ones you wrote.
+// "Your questions": write questions for the shared rotation, group them into
+// private packs, and manage the ones you wrote. Works offline.
 
-import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { useMemo, useState } from "react";
+import { FolderPlus, Plus, Trash2 } from "lucide-react";
 import { useWho } from "@/lib/couple-context";
+import {
+  categoryLabel, createPack, createQuestion, deleteQuestion,
+  type QuestionPack,
+} from "@/lib/questions";
 import {
   Button, Card, ConfirmDialog, IconButton, Input, Label, Select, Sheet, Textarea, useToast,
 } from "@/components/ui";
@@ -18,199 +21,289 @@ const KIND_LABELS: Record<QuestionKind, string> = {
   guess_mine: "Guess mine",
 };
 
+const BASE_CATEGORIES = [
+  "romantic", "funny", "serious", "future", "memories",
+  "preferences", "personal_growth", "relationship", "random",
+];
+
 export function CustomQuestions({
   categories,
   mine,
+  packs,
   onChanged,
 }: {
   categories: string[];
   mine: Question[];
-  onChanged: () => Promise<void> | void;
+  packs: QuestionPack[];
+  onChanged: () => void;
 }) {
   const { me } = useWho();
   const toast = useToast();
 
-  const categoryOptions = categories.length > 0 ? categories : ["ours"];
+  const categoryOptions = useMemo(
+    () => Array.from(new Set([...BASE_CATEGORIES, ...categories])).sort(),
+    [categories],
+  );
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editing, setEditing] = useState<Question | null>(null);
-  const [category, setCategory] = useState(categoryOptions[0]);
+  const [packSheetOpen, setPackSheetOpen] = useState(false);
+  const [category, setCategory] = useState(categoryOptions[0] ?? "random");
   const [prompt, setPrompt] = useState("");
-  const [kind, setKind] = useState<"open" | "this_or_that">("open");
+  const [kind, setKind] = useState<QuestionKind>("open");
   const [optionA, setOptionA] = useState("");
   const [optionB, setOptionB] = useState("");
+  const [packId, setPackId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [toDelete, setToDelete] = useState<Question | null>(null);
 
-  const openComposer = (question: Question | null) => {
-    setEditing(question);
-    setCategory(question?.category ?? categoryOptions[0]);
-    setPrompt(question?.prompt ?? "");
-    setKind(question?.kind === "this_or_that" ? "this_or_that" : "open");
-    setOptionA(question?.option_a ?? "");
-    setOptionB(question?.option_b ?? "");
-    setSheetOpen(true);
-  };
+  const [packName, setPackName] = useState("");
+  const [packDescription, setPackDescription] = useState("");
 
   const valid =
     prompt.trim().length > 0 &&
     (kind !== "this_or_that" || (optionA.trim().length > 0 && optionB.trim().length > 0));
 
+  const reset = () => {
+    setPrompt("");
+    setOptionA("");
+    setOptionB("");
+    setKind("open");
+    setPackId("");
+  };
+
   const save = async () => {
     if (!valid || saving) return;
     setSaving(true);
-    const row = {
-      category,
-      prompt: prompt.trim(),
-      kind,
-      option_a: kind === "this_or_that" ? optionA.trim() : null,
-      option_b: kind === "this_or_that" ? optionB.trim() : null,
-    };
-    const sb = supabase();
-    const { error } = editing
-      ? await sb.from("questions").update(row).eq("id", editing.id)
-      : await sb.from("questions").insert({ ...row, created_by: me });
-    setSaving(false);
-    if (error) {
-      toast("Could not save the question");
-      return;
+    try {
+      await createQuestion(me, {
+        category,
+        prompt: prompt.trim(),
+        kind,
+        option_a: kind === "this_or_that" ? optionA.trim() : null,
+        option_b: kind === "this_or_that" ? optionB.trim() : null,
+        pack_id: packId || null,
+      });
+      toast("Added to the rotation");
+      setSheetOpen(false);
+      reset();
+      onChanged();
+    } finally {
+      setSaving(false);
     }
-    toast(editing ? "Question updated" : "Added to the question pool");
-    setSheetOpen(false);
-    await onChanged();
   };
 
-  const remove = async () => {
-    if (!toDelete) return;
-    const { error } = await supabase().from("questions").delete().eq("id", toDelete.id);
-    setToDelete(null);
-    if (error) {
-      toast("Could not delete, it may already be in use");
-      return;
+  const savePack = async () => {
+    if (!packName.trim() || saving) return;
+    setSaving(true);
+    try {
+      await createPack(me, packName.trim(), packDescription.trim() || null);
+      toast("Pack created");
+      setPackSheetOpen(false);
+      setPackName("");
+      setPackDescription("");
+      onChanged();
+    } finally {
+      setSaving(false);
     }
-    toast("Question deleted");
-    await onChanged();
   };
+
+  const remove = async (question: Question) => {
+    await deleteQuestion(me, question.id);
+    setToDelete(null);
+    toast("Removed");
+    onChanged();
+  };
+
+  const byPack = useMemo(() => {
+    const groups = new Map<string, Question[]>();
+    for (const question of mine) {
+      const key = "loose";
+      const list = groups.get(key) ?? [];
+      list.push(question);
+      groups.set(key, list);
+    }
+    return groups;
+  }, [mine]);
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <h2 className="flex-1 font-display text-xl font-semibold text-plum">Your questions</h2>
-        <Button size="sm" variant="secondary" onClick={() => openComposer(null)}>
-          <Plus className="h-4 w-4" />
-          Write one
-        </Button>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-semibold text-plum">Your questions</h2>
+        <div className="flex gap-1">
+          <IconButton label="New pack" onClick={() => setPackSheetOpen(true)}>
+            <FolderPlus className="h-5 w-5" />
+          </IconButton>
+          <IconButton label="Write a question" onClick={() => setSheetOpen(true)}>
+            <Plus className="h-5 w-5" />
+          </IconButton>
+        </div>
       </div>
-      <p className="-mt-2 text-sm text-berry-soft">
-        Questions you write join the daily rotation automatically.
+
+      <p className="text-sm text-berry-soft">
+        Anything you write here joins the pool the daily question is picked from.
+        Both of you will see it eventually.
       </p>
 
-      {mine.length === 0 ? (
-        <p className="rounded-card border border-dashed border-line bg-white/60 px-4 py-5 text-center text-sm text-berry-soft">
-          Nothing yet. Write a question you wish someone would ask you.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {mine.map((q) => (
-            <Card key={q.id} className="flex items-start gap-2 p-3.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-berry-soft">
-                  {q.category} <span className="text-line">|</span> {KIND_LABELS[q.kind]}
-                </p>
-                <p className="mt-0.5 text-sm font-semibold text-berry">{q.prompt}</p>
-                {q.kind === "this_or_that" && (
-                  <p className="mt-0.5 text-xs text-berry-soft">
-                    {q.option_a} or {q.option_b}
-                  </p>
-                )}
-              </div>
-              <IconButton label="Edit question" onClick={() => openComposer(q)}>
-                <Pencil className="h-4 w-4" />
-              </IconButton>
-              <IconButton label="Delete question" onClick={() => setToDelete(q)}>
-                <Trash2 className="h-4 w-4 text-danger" />
-              </IconButton>
-            </Card>
+      {packs.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {packs.map((pack) => (
+            <span
+              key={pack.id}
+              className="rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-berry"
+              title={pack.description ?? undefined}
+            >
+              {pack.name}
+            </span>
           ))}
         </div>
       )}
 
-      <Sheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        title={editing ? "Edit question" : "Write a question"}
-      >
+      {mine.length === 0 ? (
+        <Card className="text-sm text-berry-soft">
+          You have not written any yet. The best ones are usually the ones you are
+          slightly nervous to ask.
+        </Card>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {(byPack.get("loose") ?? []).map((question) => (
+            <li
+              key={question.id}
+              className="flex items-start gap-2 rounded-card border border-line bg-white p-3.5 shadow-soft"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-berry-soft">
+                  {categoryLabel(question.category)} · {KIND_LABELS[question.kind]}
+                </p>
+                <p className="mt-0.5 font-semibold text-berry">{question.prompt}</p>
+                {question.kind === "this_or_that" && (
+                  <p className="mt-0.5 text-xs text-berry-soft">
+                    {question.option_a} or {question.option_b}
+                  </p>
+                )}
+              </div>
+              <IconButton
+                label="Remove this question"
+                onClick={() => setToDelete(question)}
+                className="h-9 w-9"
+              >
+                <Trash2 className="h-4 w-4" />
+              </IconButton>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Write a question">
         <div className="flex flex-col gap-4 pt-2">
           <div>
-            <Label htmlFor="custom-q-category">Category</Label>
-            <Select
-              id="custom-q-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+            <Label htmlFor="q-prompt">The question</Label>
+            <Textarea
+              id="q-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Ask them something you actually want to know"
+              maxLength={300}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="q-category">Category</Label>
+            <Select id="q-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {categoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {categoryLabel(option)}
                 </option>
               ))}
             </Select>
           </div>
+
           <div>
-            <Label htmlFor="custom-q-prompt">Question</Label>
-            <Textarea
-              id="custom-q-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Your question"
-              maxLength={300}
-            />
-          </div>
-          <div>
-            <Label htmlFor="custom-q-kind">Kind</Label>
+            <Label htmlFor="q-kind">Kind</Label>
             <Select
-              id="custom-q-kind"
+              id="q-kind"
               value={kind}
-              onChange={(e) => setKind(e.target.value as "open" | "this_or_that")}
+              onChange={(e) => setKind(e.target.value as QuestionKind)}
             >
-              <option value="open">Open answer</option>
-              <option value="this_or_that">This or that</option>
+              {(Object.keys(KIND_LABELS) as QuestionKind[]).map((option) => (
+                <option key={option} value={option}>
+                  {KIND_LABELS[option]}
+                </option>
+              ))}
             </Select>
           </div>
+
           {kind === "this_or_that" && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label htmlFor="custom-q-a">Option A</Label>
-                <Input
-                  id="custom-q-a"
-                  value={optionA}
-                  onChange={(e) => setOptionA(e.target.value)}
-                  maxLength={60}
-                />
+                <Label htmlFor="q-a">First option</Label>
+                <Input id="q-a" value={optionA} onChange={(e) => setOptionA(e.target.value)} maxLength={60} />
               </div>
               <div>
-                <Label htmlFor="custom-q-b">Option B</Label>
-                <Input
-                  id="custom-q-b"
-                  value={optionB}
-                  onChange={(e) => setOptionB(e.target.value)}
-                  maxLength={60}
-                />
+                <Label htmlFor="q-b">Second option</Label>
+                <Input id="q-b" value={optionB} onChange={(e) => setOptionB(e.target.value)} maxLength={60} />
               </div>
             </div>
           )}
+
+          {packs.length > 0 && (
+            <div>
+              <Label htmlFor="q-pack">Pack</Label>
+              <Select id="q-pack" value={packId} onChange={(e) => setPackId(e.target.value)}>
+                <option value="">No pack</option>
+                {packs.map((pack) => (
+                  <option key={pack.id} value={pack.id}>
+                    {pack.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           <Button onClick={() => void save()} disabled={!valid} loading={saving}>
-            {editing ? "Save changes" : "Add question"}
+            Add to the rotation
+          </Button>
+        </div>
+      </Sheet>
+
+      <Sheet open={packSheetOpen} onClose={() => setPackSheetOpen(false)} title="New question pack">
+        <div className="flex flex-col gap-4 pt-2">
+          <p className="text-sm text-berry-soft">
+            A pack is a set of questions you write for a particular thing: a trip, a
+            hard week, an anniversary.
+          </p>
+          <div>
+            <Label htmlFor="pack-name">Name</Label>
+            <Input
+              id="pack-name"
+              value={packName}
+              onChange={(e) => setPackName(e.target.value)}
+              placeholder="Road trip questions"
+              maxLength={80}
+            />
+          </div>
+          <div>
+            <Label htmlFor="pack-desc">Description</Label>
+            <Textarea
+              id="pack-desc"
+              value={packDescription}
+              onChange={(e) => setPackDescription(e.target.value)}
+              placeholder="What is this pack for?"
+              maxLength={200}
+            />
+          </div>
+          <Button onClick={() => void savePack()} disabled={!packName.trim()} loading={saving}>
+            Create pack
           </Button>
         </div>
       </Sheet>
 
       <ConfirmDialog
-        open={toDelete !== null}
-        title="Delete this question?"
-        message="It will leave the rotation pool. Days it already appeared on are kept."
-        confirmLabel="Delete"
+        open={Boolean(toDelete)}
+        title="Remove this question?"
+        message="It will not be asked again. Answers you have already given stay in your history."
+        confirmLabel="Remove"
         destructive
-        onConfirm={() => void remove()}
+        onConfirm={() => toDelete && void remove(toDelete)}
         onCancel={() => setToDelete(null)}
       />
     </section>

@@ -12,6 +12,7 @@ import { Button, Input, Label, Select, Sheet, Textarea, useToast } from "@/compo
 import { HeartIcon } from "@/components/hearts";
 import type { Mood } from "@/lib/types";
 import { MOOD_OPTIONS } from "./meta";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 type ExpireOption = "never" | "1h" | "tonight" | "24h";
 
@@ -105,6 +106,11 @@ export function MoodComposer({
     }
     if (draft.visible) {
       void notifyPartner("moods", (data as { id: string }).id, { url: "/moods" });
+      void noteRewardable(
+        "mood_shared",
+        new Date().toISOString().slice(0, 10),
+        `mood:${(data as { id: string }).id}`,
+      );
     }
     clearDraft(DRAFT_KEY);
     setDraft(EMPTY);

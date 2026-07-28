@@ -4,12 +4,14 @@
 export function HeartIcon({
   className = "h-5 w-5",
   filled = true,
+  style,
 }: {
   className?: string;
   filled?: boolean;
+  style?: React.CSSProperties;
 }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <svg viewBox="0 0 24 24" className={className} style={style} aria-hidden="true">
       <path
         d="M12 21c-.6-.5-9-6.4-9-12A5 5 0 0 1 12 6a5 5 0 0 1 9 3c0 5.6-8.4 11.5-9 12z"
         fill={filled ? "currentColor" : "none"}

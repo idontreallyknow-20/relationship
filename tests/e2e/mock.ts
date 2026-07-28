@@ -94,6 +94,20 @@ export async function mockSupabase(page: Page): Promise<void> {
       const fn = url.pathname.split("/").pop();
       if (fn === "pin_available") {
         await route.fulfill({ json: true });
+      } else if (fn === "question_stats") {
+        await route.fulfill({
+          json: [{
+            current_streak: 4, longest_streak: 9, both_days: 12,
+            my_answers: 12, total_answers: 25,
+            answered_today: false, partner_answered_today: true,
+          }],
+        });
+      } else if (fn === "ensure_daily_question") {
+        await route.fulfill({ json: (fixtures.daily_questions ?? [])[0] ?? null });
+      } else if (fn === "game_claim_legacy") {
+        await route.fulfill({ json: { claimed: false, taps: 0 } });
+      } else if (fn === "game_sync") {
+        await route.fulfill({ json: null });
       } else {
         await route.fulfill({ json: null });
       }

@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { formatRelative, formatTime, relationshipDays } from "@/lib/format";
+import { todayIn } from "@/lib/day";
 import { displayName, partnerOf } from "@/lib/types";
 import type { DailyQuestion, Message, MoodEntry, Question, Signal } from "@/lib/types";
 import { Button, Card, useToast } from "@/components/ui";
@@ -65,7 +66,9 @@ export default function HomePage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    // The shared day, not this device's day: a partner in another timezone
+    // must see the same daily question as the person at home.
+    const localDate = todayIn(couple.timezone);
 
     const [moods, msgs, unreadRes, dq, locations, signals] =
       await Promise.all([
@@ -107,7 +110,7 @@ export default function HomePage() {
       partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
       recentSignals: (signals.data ?? []) as Signal[],
     });
-  }, [me.person, partnerPerson]);
+  }, [me.person, partnerPerson, couple.timezone]);
 
   useEffect(() => {
     void load();

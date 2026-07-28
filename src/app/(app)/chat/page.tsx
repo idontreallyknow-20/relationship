@@ -29,6 +29,7 @@ import {
 import { MessageBubble } from "@/components/chat/bubble";
 import { ImageViewer } from "@/components/chat/media";
 import { Composer } from "@/components/chat/composer";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 const PAGE_SIZE = 50;
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -390,6 +391,7 @@ export default function Page() {
       pendingRef.current.delete(clientId);
       upsertRow(row, true);
       void notifyPartner("messages", row.id, { body: kindPreview(row), url: "/chat" });
+      void noteRewardable("message_sent", new Date().toISOString().slice(0, 10), `message:${row.id}`);
     } catch {
       setPending(clientId, "failed");
     }

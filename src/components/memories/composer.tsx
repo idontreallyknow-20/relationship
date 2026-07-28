@@ -11,6 +11,7 @@ import { compressImage, uploadMedia, validateUpload } from "@/lib/media";
 import { notifyPartner } from "@/lib/notify";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import type { Memory, MemoryKind, Person } from "@/lib/types";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 type ComposerKind = Extract<MemoryKind, "photo" | "video" | "note" | "milestone" | "date">;
 
@@ -145,6 +146,7 @@ export function MemoryComposer({
         return;
       }
       const saved = data as Memory;
+      void noteRewardable("memory_added", new Date().toISOString().slice(0, 10), `memory:${saved.id}`);
       void notifyPartner(kind === "milestone" ? "milestones" : "plans", saved.id, {
         body: "A new memory was added",
         url: "/memories",
