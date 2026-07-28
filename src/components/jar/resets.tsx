@@ -1,6 +1,6 @@
 "use client";
 
-// Tide changes, new water, and the vessels you move through between them.
+// Rebirth, at all three of its depths, and the vessels you move through.
 
 import { useMemo, useState } from "react";
 import { Droplets, Waves } from "lucide-react";
@@ -23,6 +23,10 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
   const { state, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  // Bumped by a completed rebirth. It is only in the key of the card below, so
+  // the card remounts and its drain animation plays. A rebirth takes away
+  // nearly everything you were looking at and it should look like it did.
+  const [drained, setDrained] = useState(0);
   const format = state.settings.numberFormat;
   const def = RESET_LAYERS.find((l) => l.id === layer)!;
 
@@ -39,8 +43,8 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       startedAt: state.runStartedAt,
       count: state.tideChanges,
       fastest: state.stats.fastestTideChangeMs,
-      countLabel: "Tide changes",
-      progressLabel: "This run",
+      countLabel: "Rebirths",
+      progressLabel: "This life",
       locked: null as string | null,
       run: (draft: typeof state, at: number) => changeTide(draft, at),
     },
@@ -54,11 +58,11 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       startedAt: state.eraStartedAt,
       count: state.newWaters,
       fastest: state.stats.fastestNewWaterMs,
-      countLabel: "Changes of water",
-      progressLabel: "This era",
+      countLabel: "Deep rebirths",
+      progressLabel: "Since the last deep one",
       locked: hasFlag(state, "new_water")
         ? null
-        : "New Water is a moon upgrade near the bottom of that tree.",
+        : "Deep Rebirth is a moon upgrade near the bottom of that tree.",
       run: (draft: typeof state, at: number) => changeWater(draft, at),
     },
     sea: {
@@ -71,11 +75,11 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
       startedAt: state.seaStartedAt,
       count: state.seas,
       fastest: null,
-      countLabel: "Seas",
+      countLabel: "Last rebirths",
       progressLabel: "Since the last one",
       locked: state.newWaters >= 3
         ? null
-        : `Change the water three times first. You have done it ${state.newWaters}.`,
+        : `Do three deep rebirths first. You have done ${state.newWaters}.`,
       run: (draft: typeof state, at: number) => letGo(draft, at),
     },
   }[layer];
@@ -96,7 +100,10 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-card border border-line bg-white p-4 shadow-soft">
+      <div
+        key={drained}
+        className={`rounded-card border border-line bg-white p-4 shadow-soft${drained > 0 ? " rebirth-drain" : ""}`}
+      >
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blush text-rose-dark">
             {isTide ? <Waves className="h-5 w-5" /> : <Droplets className="h-5 w-5" />}
@@ -122,7 +129,7 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
               <Box label="Would pay" value={formatNumber(gain, format)} />
               <Box label="So far" value={formatDurationShort(elapsed)} />
-              <Box label={rung.countLabel} value={`${rung.count}`} />
+              <Box label={rung.countLabel} value={`${rung.count}`} flash={drained > 0} />
               <Box
                 label="Fastest"
                 value={rung.fastest ? formatDurationShort(rung.fastest) : "not yet"}
@@ -195,8 +202,12 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
           const at = Date.now();
           mutate((draft) => {
             const result = rung.run(draft, at);
-            if (result.ok) notify({ kind: "reward", title: result.message ?? def.name });
-            else toast(result.message ?? "Cannot do that");
+            if (result.ok) {
+              notify({ kind: "reward", title: result.message ?? def.name });
+              setDrained((n) => n + 1);
+            } else {
+              toast(result.message ?? "Cannot do that");
+            }
           });
         }}
         onCancel={() => setConfirming(false)}
@@ -249,11 +260,13 @@ function ResetRow({ def, owned, balance, format, confirmRare, blockedBy, onBuy }
   );
 }
 
-function Box({ label, value }: { label: string; value: string }) {
+function Box({ label, value, flash }: { label: string; value: string; flash?: boolean }) {
   return (
     <div className="rounded-xl border border-line bg-cream/60 px-3 py-2">
       <p className="text-[0.6rem] font-semibold uppercase tracking-wide text-berry-soft">{label}</p>
-      <p className="truncate font-display text-base font-semibold text-plum">{value}</p>
+      <p className="truncate font-display text-base font-semibold text-plum">
+        <span className={flash ? "milestone-flash" : undefined}>{value}</span>
+      </p>
     </div>
   );
 }
