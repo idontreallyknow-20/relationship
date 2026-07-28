@@ -7,7 +7,7 @@ import { CheckCircle2, Flag, Trophy, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
 import { CHALLENGES, METRIC_LABEL, MISSION_BY_ID, type ChallengeDef, type MetricId, type MissionPeriod } from "@/game/config/objectives";
 import { ACHIEVEMENTS, ACHIEVEMENT_TOTAL, COLLECTIONS, NOTE_TEXT } from "@/game/config/awards";
-import { claimMission, finishChallenge, rerollMission, setWater, startChallenge } from "@/game/actions";
+import { claimMission, finishChallenge, rerollMission, startChallenge } from "@/game/actions";
 import { WATER_BY_ID } from "@/game/config/memories";
 import { metricTotal } from "@/game/engine";
 import { hasFlag } from "@/game/formulas";
@@ -344,7 +344,6 @@ export function AchievementsTab() {
 export function CollectionsTab() {
   const { state, mutate, version } = useGame();
   const [note, setNote] = useState<string | null>(null);
-  const water = state.water;
 
   const rows = useMemo(
     () =>
@@ -367,7 +366,9 @@ export function CollectionsTab() {
           <ul className="grid grid-cols-2 gap-2">
             {collection.items.map((item) => {
               const has = owned.includes(item.id);
-              const isWater = collection.id === "waters";
+              // The water colours went with the tank. Nothing in a collection is
+              // selectable any more; they are a record of what you have found.
+              const isWater = false;
               const isNote = collection.id === "notes";
               return (
                 <li key={item.id}>
@@ -375,11 +376,10 @@ export function CollectionsTab() {
                     disabled={!has || (!isWater && !isNote)}
                     onClick={() => {
                       if (isNote) setNote(item.id);
-                      if (isWater) mutate((draft) => void setWater(draft, item.id));
                     }}
                     className={`flex w-full flex-col gap-0.5 rounded-xl border p-3 text-left ${
                       has ? "border-line bg-white" : "border-dashed border-line bg-white/50"
-                    } ${isWater && water === item.id ? "ring-2 ring-rose-dark" : ""}`}
+                    }`}
                   >
                     <span className="flex items-center gap-1.5">
                       <span

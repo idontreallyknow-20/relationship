@@ -13,9 +13,8 @@ import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { SyncBadge } from "@/components/sync-status";
 import { JarScreen } from "@/components/jar/jar-screen";
 import { AbilitiesTab, UpgradesTab } from "@/components/jar/progress";
-import { AutomationTab, DepthsTab } from "@/components/jar/depths";
 import { CreaturesTab } from "@/components/jar/creatures";
-import { ResetsTab, VesselsTab } from "@/components/jar/resets";
+import { ResetsTab, JarsTab } from "@/components/jar/resets";
 import { DilationTab } from "@/components/jar/dilation";
 import {
   AchievementsTab, ChallengesTab, CollectionsTab, MissionsTab,
@@ -229,12 +228,10 @@ function JarApp() {
 
       <main className="mx-auto flex w-full max-w-lg flex-col gap-3 px-4 py-3 lg:max-w-5xl">
         {current === "jar" && <JarScreen onOpenTab={setTab} />}
-        {current === "depths" && <DepthsTab />}
-        {current === "automation" && <AutomationTab />}
         {current === "upgrades" && <UpgradesTab />}
         {current === "abilities" && <AbilitiesTab />}
         {current === "creatures" && <CreaturesTab />}
-        {current === "vessels" && <VesselsTab />}
+        {current === "vessels" && <JarsTab />}
         {current === "tide" && <ResetsTab layer="tide" />}
         {current === "water" && <ResetsTab layer="water" />}
         {current === "sea" && <ResetsTab layer="sea" />}
@@ -286,8 +283,9 @@ function OfflineDialog() {
         </p>
         <ul className="mt-3 space-y-1 text-sm text-berry">
           <li>{formatNumber(offlineReport.hearts, format)} hearts</li>
-          {offlineReport.shells > 0 && <li>{formatNumber(offlineReport.shells, format)} shells</li>}
-          {offlineReport.glass > 0 && <li>{formatNumber(offlineReport.glass, format)} sea glass</li>}
+          {offlineReport.ribbons > 0 && (
+            <li>{formatNumber(offlineReport.ribbons, format)} ribbons</li>
+          )}
         </ul>
         {offlineReport.clockSuspicious && (
           <p className="mt-2 rounded-xl bg-cream px-3 py-2 text-xs text-berry-soft">

@@ -1,13 +1,13 @@
 import type {
-  Buff, CurrencyId, Derived, Drifter, GameState, Settled,
+  Buff, CurrencyId, Derived, GameState,
 } from "./types";
 import { creaturesInJar, derive, fedFactor, hasFlag, heldHands } from "./formulas";
 import { safe } from "./numbers";
 import { CHALLENGE_BY_ID, MISSION_BY_ID, type MetricId } from "./config/objectives";
 import { ACHIEVEMENTS } from "./config/awards";
 import { CREATURE_BY_ID, actionInterval, creatureScale, xpFor } from "./config/creatures";
-import { DRIFTERS, DRIFTER_BY_ID, VESSEL_BY_ID } from "./config/vessels";
-import { DEPTHS } from "./config/depths";
+import { FIRST_JAR, JAR_BY_ID } from "./config/jars";
+import { ribbonGain } from "./config/shelf";
 import { EGG_BY_ID } from "./config/eggs";
 import { SKILL_BY_ID } from "./config/skills";
 import { advanceStage } from "./config/stages";
@@ -18,7 +18,7 @@ import { advanceStage } from "./config/stages";
 
 export type HeartSource =
   | "click" | "crit" | "passive" | "creature" | "skill"
-  | "offline" | "together" | "drifter";
+  | "offline" | "together" | "shelf";
 
 const STAT_FOR_SOURCE: Partial<Record<HeartSource, keyof GameState["stats"]>> = {
   click: "heartsFromClicks",
@@ -28,7 +28,7 @@ const STAT_FOR_SOURCE: Partial<Record<HeartSource, keyof GameState["stats"]>> = 
   skill: "heartsFromSkills",
   offline: "heartsFromOffline",
   together: "heartsFromTogether",
-  drifter: "heartsFromDrifters",
+  shelf: "heartsFromShelf",
 };
 
 export function addCurrency(state: GameState, currency: CurrencyId, amount: number): void {
@@ -70,7 +70,9 @@ export function earnHearts(state: GameState, amount: number, source: HeartSource
   if (source === "click" || source === "crit") {
     recordMetric(state, "heartsFromClicks", value);
   }
-  if (source === "passive" || source === "creature") recordMetric(state, "heartsFromPassive", value);
+  if (source === "passive" || source === "creature" || source === "shelf") {
+    recordMetric(state, "heartsFromPassive", value);
+  }
   if (source === "creature") recordMetric(state, "heartsFromCreatures", value);
   if (source === "skill") recordMetric(state, "heartsFromSkills", value);
   return value;
@@ -113,16 +115,15 @@ export function metricTotal(state: GameState, metric: MetricId): number {
     case "heartsFromCreatures": return s.heartsFromCreatures;
     case "bestCombo": return s.bestCombo;
     case "comboFinishers": return s.comboFinishers;
-    case "cracks": return s.cracks;
-    case "collects": return s.collects;
-    case "driftersOpened": return s.driftersOpened;
+    case "petDrops": return s.petDrops;
+    case "seals": return s.jarsSealed;
     case "upgrades": return s.upgradesBought;
     case "skillsUsed": return s.skillsUsed;
     case "creaturesArrived": return state.codex.length;
     case "creaturesEvolved": return s.creaturesEvolved;
     case "creatureLevels": return Object.values(state.creatures).reduce((sum, c) => sum + c.level - 1, 0);
     case "itemsMade": return s.itemsMade;
-    case "vessels": return state.vesselsUnlocked.length;
+    case "vessels": return state.jarsUnlocked.length;
     case "challenges": return s.challengesCompleted;
     case "minigames": return s.minigamesPlayed;
     case "tideChanges": return state.tideChanges;
@@ -131,9 +132,7 @@ export function metricTotal(state: GameState, metric: MetricId): number {
     case "questionAnswered": return state.storyProgress["questions"] ?? 0;
     case "togetherActions": return state.storyProgress["together"] ?? 0;
     case "sameEvening": return state.storyProgress["evenings"] ?? 0;
-    case "depthsBought": return state.depths.reduce((sum, d) => sum + d.bought, 0);
-    case "deepens": return state.deepens;
-    case "tideBought": return state.tideBought;
+    case "jars": return state.jarsUnlocked.length;
     case "seas": return state.seas;
     default: return 0;
   }
@@ -268,230 +267,65 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
 /* The floor                                                           */
 /* ------------------------------------------------------------------ */
 
-const MAX_SETTLED = 24;
-
-export function dropSettled(
-  state: GameState,
-  kind: Settled["kind"],
-  value: number,
-  x: number,
-  y = 0.05,
-): Settled {
-  const item: Settled = {
-    id: crypto.randomUUID(),
-    kind,
-    x: Math.max(4, Math.min(96, x)),
-    y,
-    value: safe(value),
-    droppedAt: Date.now(),
-  };
-  // Oldest falls out rather than letting the floor grow without bound.
-  if (state.settled.length >= MAX_SETTLED) state.settled.shift();
-  state.settled.push(item);
-  return item;
-}
-
-export interface CollectResult {
-  kind: Settled["kind"];
-  hearts: number;
-  currency: CurrencyId | null;
-  amount: number;
-}
-
-/**
- * Pay out the currency a settled thing is worth.
- *
- * Shared between cracking one open and picking one up, because both now pay
- * currency and the rates have to stay in step. `share` is how much of it this
- * particular event is worth.
- */
-export function paySettled(
-  state: GameState,
-  derived: Derived,
-  kind: Settled["kind"],
-  value: number,
-  share: number,
-): { currency: CurrencyId | null; amount: number } {
-  switch (kind) {
-    case "shell": {
-      const amount = Math.max(1, Math.ceil(value * 0.02 * share * derived.mods.mul.shellGain));
-      addCurrency(state, "shells", amount);
-      return { currency: "shells", amount };
-    }
-    case "glass": {
-      const amount = Math.max(1, Math.ceil(value * 0.02 * share * derived.mods.mul.glassGain));
-      addCurrency(state, "glass", amount);
-      return { currency: "glass", amount };
-    }
-    case "pearl": {
-      const amount = Math.max(1, Math.round(share * derived.mods.mul.pearlGain));
-      if (amount > 0) addCurrency(state, "pearls", amount);
-      return { currency: "pearls", amount };
-    }
-    default:
-      return { currency: null, amount: 0 };
-  }
-}
-
-/**
- * How much of a shell's worth comes off in the otter's hands.
- *
- * The rest is in the thing it drops, which somebody still has to pick up. That
- * split is the whole relationship between the two lines: her otters open
- * things, his crabs collect them, and a jar with both in it is worth more than
- * either on its own. It is not nothing on its own, though, because a starter
- * otter with no crab yet used to earn literally zero.
- */
-export const CRACK_SHARE = 0.35;
-
-/** A crab picking something up, or you tapping it yourself. */
-export function collectSettled(
-  state: GameState,
-  derived: Derived,
-  id: string,
-  byCreature: boolean,
-): CollectResult | null {
-  const index = state.settled.findIndex((s) => s.id === id);
-  if (index < 0) return null;
-  const item = state.settled[index];
-  state.settled.splice(index, 1);
-
-  const value = item.value * derived.collectValue * (1 + derived.luck);
-  state.stats.collects += 1;
-  recordMetric(state, "collects", 1);
-
-  // A crab picking something up pays no hearts; you reaching in and taking it
-  // yourself does, because that is a tap and taps are the game. Same item,
-  // same currency either way, so automating collection still costs you
-  // nothing except the hearts you would have got for doing it by hand.
-  const hearts = byCreature ? 0 : earnHearts(state, value, "click");
-
-  const paid = paySettled(state, derived, item.kind, value, 1 - CRACK_SHARE);
-  return { kind: item.kind, hearts, currency: paid.currency, amount: paid.amount };
-}
-
 /* ------------------------------------------------------------------ */
-/* Drifters                                                            */
-/* ------------------------------------------------------------------ */
-
-export function spawnDrifter(state: GameState, now: number, defId?: string): Drifter | null {
-  if (state.drifter) return null;
-  const def = defId ? DRIFTER_BY_ID[defId] : DRIFTERS[Math.floor(Math.random() * DRIFTERS.length)];
-  if (!def) return null;
-  const drifter: Drifter = {
-    id: crypto.randomUUID(),
-    defId: def.id,
-    taps: def.taps,
-    tapsDone: 0,
-    x: 20 + Math.random() * 60,
-    y: 25 + Math.random() * 40,
-    arrivedAt: now,
-  };
-  state.drifter = drifter;
-  return drifter;
-}
-
-export interface DrifterHit {
-  opened: boolean;
-  remaining: number;
-  reward?: { hearts: number; pearls: number; shells: number; glass: number };
-  note?: string;
-}
-
-export function tapDrifter(state: GameState, derived: Derived): DrifterHit | null {
-  const drifter = state.drifter;
-  if (!drifter) return null;
-  const def = DRIFTER_BY_ID[drifter.defId];
-  if (!def) {
-    state.drifter = null;
-    return null;
-  }
-
-  // Coconut crabs open things much faster.
-  const help = creaturesInJar(state).some((c) => c.defId === "coconut_crab") ? 3 : 1;
-  drifter.tapsDone += help;
-  if (drifter.tapsDone < drifter.taps) {
-    return { opened: false, remaining: drifter.taps - drifter.tapsDone };
-  }
-
-  state.drifter = null;
-  state.stats.driftersOpened += 1;
-  recordMetric(state, "driftersOpened", 1);
-
-  const scale = Math.max(1, derived.heartsPerSecond * 30) * derived.mods.mul.driftReward;
-  const hearts = earnHearts(state, def.reward.hearts * scale, "drifter");
-  const pearls = def.reward.pearls ?? 0;
-  const shells = def.reward.shells ?? 0;
-  const glass = def.reward.glass ?? 0;
-  if (pearls) addCurrency(state, "pearls", pearls);
-  if (shells) addCurrency(state, "shells", shells);
-  if (glass) addCurrency(state, "glass", glass);
-
-  // Notes turn up inside things that drift in.
-  const notes = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
-  const owned = state.collections["notes"] ?? [];
-  const missing = notes.filter((n) => !owned.includes(n));
-  let note: string | undefined;
-  if (missing.length > 0 && Math.random() < 0.2) {
-    note = missing[Math.floor(Math.random() * missing.length)];
-    grantCollectible(state, "notes", note);
-  }
-
-  return { opened: true, remaining: 0, reward: { hearts, pearls, shells, glass }, note };
-}
-
-/* ------------------------------------------------------------------ */
-/* The tick                                                            */
+/* Sealing a jar                                                       */
 /* ------------------------------------------------------------------ */
 
 export interface TickResult {
-  cracked: number;
-  collected: number;
+  /** Hearts the pets carried over this tick. */
+  carried: number;
   comboBroken: boolean;
-  drifted: boolean;
+  /** Whether a full jar sealed itself this tick. */
+  sealed: boolean;
   /** Taps the jar made on your behalf this tick. */
   autoTaps: number;
-  /** Hearts the depth chain produced this tick. */
-  chainHearts: number;
+  /** Hearts the shelf produced this tick. */
+  shelfHearts: number;
+}
+
+export function canSeal(state: GameState, derived: Derived): boolean {
+  return state.wallet.hearts >= derived.jarCapacity && derived.jarCapacity > 0;
+}
+
+export interface SealResult {
+  hearts: number;
+  ribbons: number;
+  jarId: string;
 }
 
 /**
- * Run the chain for `dt` seconds.
+ * Fill a jar, seal it, put it on the shelf, start the next one.
  *
- * Deepest first, so within a single tick a purchase at the bottom does not
- * instantly appear at the top: each depth is paid from what the one below it
- * held at the *start* of the tick. That one-tick lag is what makes a deep
- * purchase feel like it is travelling up through the water, and it keeps the
- * maths honest at any tick rate.
+ * Nothing is destroyed here, which is the whole reason this works as the fast
+ * inner loop: the hearts move out of the jar and onto the shelf, where they go
+ * on paying a share of themselves forever. What you give up is the balance you
+ * were holding, and what you get is a permanent income and a ribbon.
+ *
+ * The one subtlety is `sealKeep`, an upgrade that leaves a fraction behind so
+ * the new jar does not start from literally nothing. It is capped well under
+ * one, because a jar that kept everything would be a button that printed
+ * ribbons.
  */
-export function runChain(state: GameState, derived: Derived, dt: number): number {
-  const count = Math.min(state.depths.length, derived.depthCount, DEPTHS.length);
-  const speed = derived.depthPower * derived.tideSpeedMultiplier * dt;
+export function sealJar(state: GameState, derived: Derived, now: number): SealResult | null {
+  if (!canSeal(state, derived)) return null;
 
-  const before = state.depths.map((d) => d.owned);
-  for (let i = count - 1; i >= 1; i--) {
-    const producing = before[i];
-    if (producing <= 0) continue;
-    const made = producing * DEPTHS[i].power * speed;
-    if (made > 0) state.depths[i - 1].owned = safe(state.depths[i - 1].owned + made);
-  }
+  const hearts = state.wallet.hearts;
+  const kept = safe(hearts * derived.sealKeep);
+  const banked = safe(hearts - kept);
+  const ribbons = ribbonGain(hearts, derived.jarCapacity, derived.mods.mul.ribbonGain);
 
-  // The surface turns into hearts rather than into another depth.
-  const surface = before[0];
-  if (surface <= 0) return 0;
-  const hearts = surface * DEPTHS[0].power * speed
-    * derived.mods.mul.cps * derived.globalMultiplier;
-  return earnHearts(state, hearts, "passive");
+  state.sealed = [...state.sealed.slice(-199), { jarId: state.jar, hearts: banked, at: now }];
+  state.shelfHearts = safe(state.shelfHearts + banked);
+  state.wallet.hearts = kept;
+
+  addCurrency(state, "ribbons", ribbons);
+  state.stats.jarsSealed += 1;
+  recordMetric(state, "seals", 1);
+  pushLog(state, "Sealed", `${JAR_BY_ID[state.jar]?.name ?? "A jar"}, and onto the shelf`);
+
+  return { hearts: banked, ribbons, jarId: state.jar };
 }
 
-/**
- * Taps the jar makes for you.
- *
- * Fractional taps carry over in `tapCredit` rather than being rounded away,
- * so half a tap a second really is half a tap a second and not nothing. The
- * same function runs during offline catch-up, which is why it takes `dt`
- * rather than reading the clock.
- */
 export function runAutoTaps(state: GameState, derived: Derived, dt: number, now: number): number {
   if (!state.auto.tap || derived.autoTapsPerSecond <= 0) return 0;
 
@@ -514,8 +348,6 @@ export function runAutoTaps(state: GameState, derived: Derived, dt: number, now:
   return taps;
 }
 
-const SINK_PER_SECOND = 0.28;
-
 /** Advance the simulation. Called about ten times a second. */
 export function tick(state: GameState, dtMs: number, now: number): TickResult {
   const dt = Math.max(0, Math.min(dtMs, 5_000)) / 1000;
@@ -524,72 +356,55 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
 
   state.buffs = state.buffs.filter((b) => b.expiresAt > now);
 
-  // Whatever is in the water sinks toward the floor.
-  for (const item of state.settled) {
-    item.y = Math.min(1, item.y + SINK_PER_SECOND * dt);
-  }
-
-  // The chain, then the taps it pays for.
-  const chainHearts = challenge?.rule === "no_passive" ? 0 : runChain(state, derived, dt);
+  // The shelf, then the taps.
+  //
+  // Every jar ever sealed pays a share of what was put in it, all at once and
+  // forever. This is the compounding part of the game and the reason a run
+  // accelerates: income is proportional to what has been banked, and what
+  // gets banked is income times time.
+  const shelfHearts = challenge?.rule === "no_passive"
+    ? 0
+    : earnHearts(state, derived.shelfIncome * dt, "shelf");
   const autoTaps = runAutoTaps(state, derived, dt, now);
 
-  let cracked = 0;
-  let collected = 0;
+  let carried = 0;
   const noCreatures = challenge?.rule === "no_creatures";
   const noPassive = challenge?.rule === "no_passive";
   const paired = heldHands(state);
 
-  if (!noCreatures) {
+  // The pets, who sit around the jar rather than inside it.
+  //
+  // Each one walks over on its own clock and drops a heart in. That is the
+  // whole mechanic. It used to be two: an otter cracked something open inside
+  // the jar, the pieces sank to a floor, and a crab walked along that floor to
+  // pick them up, which meant an otter with no crab beside it earned nothing
+  // and neither of them earned hearts at all.
+  if (!noCreatures && !noPassive) {
     for (const creature of creaturesInJar(state)) {
       const def = CREATURE_BY_ID[creature.defId];
       if (!def) continue;
-      const speed = def.line === "otter" ? derived.crackSpeed : derived.collectSpeed;
-      const interval = actionInterval(def, creature.level, speed) * 1000;
-      // A clock that jumped backwards would otherwise leave a creature waiting
-      // for a moment that has already passed, forever.
+      const interval = actionInterval(def, creature.level, derived.petSpeed) * 1000;
+      // A clock that jumped backwards would otherwise leave a pet waiting for
+      // a moment that has already passed, forever.
       if (creature.lastActedAt > now) creature.lastActedAt = now - interval;
       if (now - creature.lastActedAt < interval) continue;
       creature.lastActedAt = now;
 
-      const scale = def.power * creatureScale(creature.level, creature.stars) * fedFactor(creature);
       const pairBoost = paired.has(creature.id) ? 1.25 * derived.pairBonus : 1;
+      const value = def.power
+        * creatureScale(creature.level, creature.stars)
+        * fedFactor(creature)
+        * derived.petValue
+        * derived.mods.mul.creaturePower
+        * derived.globalMultiplier
+        * pairBoost;
 
-      if (def.line === "otter") {
-        // Crack, and drop what came out of the shell.
-        //
-        // No hearts. Creatures used to be the largest single source of passive
-        // hearts in the game, which quietly made them the spine of it: the
-        // fastest way to more hearts was more otters, and the jar was
-        // something they happened to live in. They pay in shells, sea glass
-        // and pearls now, and in the permanent multipliers they carry. Hearts
-        // come from the jar, which is either you tapping it or the chain.
-        const value = scale * derived.crackValue * derived.mods.mul.creaturePower
-          * derived.globalMultiplier * pairBoost;
-        state.stats.cracks += 1;
-        recordMetric(state, "cracks", 1);
-        cracked += 1;
+      earnHearts(state, value, "creature");
+      state.stats.petDrops += 1;
+      recordMetric(state, "petDrops", 1);
+      carried += 1;
 
-        const roll = Math.random();
-        const kind: Settled["kind"] = roll < 0.06 * (1 + derived.luck) ? "pearl" : roll < 0.35 ? "glass" : "shell";
-        // Some of it comes off in her hands and the rest falls to the floor
-        // for a crab, or for you, to pick up. Without this an otter with no
-        // crab beside it earned nothing at all, which is precisely the jar
-        // Cami starts the game with.
-        paySettled(state, derived, kind, value, CRACK_SHARE);
-        dropSettled(state, kind, value, 10 + Math.random() * 80);
-      } else {
-        // Collect: take the nearest thing that has reached the floor.
-        const ready = state.settled.filter((s) => s.y > 0.75);
-        if (ready.length === 0) continue;
-        // Ghost crabs sweep everything at once, everyone else takes one.
-        const take = creature.defId === "ghost_crab" ? ready : [ready[0]];
-        for (const item of take) {
-          collectSettled(state, derived, item.id, true);
-          collected += 1;
-        }
-      }
-
-      // Creatures get a little hungrier and a little more experienced.
+      // Pets get a little hungrier and a little more experienced.
       creature.fed = Math.max(0, creature.fed - 0.35);
       addXpSilently(state, creature.id, 1 * derived.mods.mul.creatureXp);
     }
@@ -618,14 +433,10 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
   // Tide goes out slowly. Playing puts it back.
   state.tideLevel = Math.max(0, state.tideLevel - dt * 0.05);
 
-  // Something drifts in now and then.
-  let drifted = false;
-  if (state.settings.drifters && !state.drifter) {
-    const chance = (0.0025 + derived.driftChance) * dt;
-    if (Math.random() < chance) {
-      spawnDrifter(state, now);
-      drifted = true;
-    }
+  // A full jar seals itself, once you have taught it how.
+  let sealed = false;
+  if (derived.autoSeal && canSeal(state, derived)) {
+    sealed = sealJar(state, derived, now) !== null;
   }
 
   if (state.settings.autoSkills && hasFlag(state, "auto_skill")) {
@@ -645,7 +456,7 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
 
   state.lastTickAt = now;
   state.updatedAt = now;
-  return { cracked, collected, comboBroken, drifted, autoTaps, chainHearts };
+  return { carried, comboBroken, sealed, autoTaps, shelfHearts };
 }
 
 /** Experience without the level-up message; the tick calls this constantly. */
@@ -664,8 +475,8 @@ function addXpSilently(state: GameState, creatureId: string, xp: number): void {
 function autoFeed(state: GameState): void {
   for (const creature of creaturesInJar(state)) {
     if (creature.fed > 40) continue;
-    if (state.wallet.shells < 8) return;
-    if (spendCurrency(state, "shells", 8)) creature.fed = Math.min(100, creature.fed + 20);
+    if (state.wallet.ribbons < 1) return;
+    if (spendCurrency(state, "ribbons", 1)) creature.fed = Math.min(100, creature.fed + 30);
   }
 }
 
@@ -725,31 +536,31 @@ export function activateSkill(state: GameState, id: string, now: number): SkillA
       earnHearts(state, value, "skill");
       return { ok: true, instantHearts: value, label: def.name };
     }
-    case "crack_all": {
+    case "everyone_at_once": {
+      // Every pet makes its trip immediately, whether or not its timer was up.
       let total = 0;
       for (const creature of creaturesInJar(state)) {
         const cdef = CREATURE_BY_ID[creature.defId];
-        if (cdef?.line !== "otter") continue;
+        if (!cdef) continue;
         const value = cdef.power * creatureScale(creature.level, creature.stars)
-          * derived.crackValue * derived.globalMultiplier * power;
-        total += earnHearts(state, value * 8, "skill");
-        state.stats.cracks += 1;
-        recordMetric(state, "cracks", 1);
-        dropSettled(state, "shell", value, 10 + Math.random() * 80);
+          * fedFactor(creature) * derived.petValue * derived.globalMultiplier * power;
+        total += earnHearts(state, value, "skill");
+        state.stats.petDrops += 1;
+        recordMetric(state, "petDrops", 1);
       }
       return { ok: true, instantHearts: total, label: def.name };
     }
-    case "collect_all": {
-      let total = 0;
-      for (const item of [...state.settled]) {
-        const result = collectSettled(state, derived, item.id, true);
-        if (result) total += result.hearts * power;
-      }
-      return { ok: true, instantHearts: total, label: def.name };
+    case "top_it_up": {
+      // A pour straight into the jar, worth a stretch of the shelf's output.
+      const value = safe(derived.shelfIncome * 60 * power);
+      earnHearts(state, value, "skill");
+      return { ok: true, instantHearts: value, label: def.name };
     }
-    case "spawn_drifter": {
-      for (let i = 0; i < power; i++) spawnDrifter(state, now);
-      return { ok: true, label: def.name };
+    case "seal_it": {
+      const result = canSeal(state, derived) ? sealJar(state, derived, now) : null;
+      return result
+        ? { ok: true, label: def.name }
+        : { ok: false, reason: "The jar is not full yet" };
     }
     case "reset_cooldowns": {
       for (const [otherId, other] of Object.entries(state.skills)) {
@@ -785,55 +596,28 @@ export interface OfflineReport {
   awayMs: number;
   countedMs: number;
   hearts: number;
-  shells: number;
-  glass: number;
+  ribbons: number;
   cappedByWindow: boolean;
   clockSuspicious: boolean;
-  /** What each depth grew to while you were away. */
-  depths: number[];
-}
-
-/** Coarse steps used to advance the chain over an offline window. */
-const OFFLINE_STEPS = 240;
-
-/**
- * Run the chain forward over a long stretch without ticking it ten times a
- * second for every one of those seconds.
- *
- * Two hundred and forty steps over any window is close enough: the chain is
- * polynomial in time, and the error from coarse stepping is a fraction of a
- * percent against a number that is about to be multiplied by a hundred anyway.
- * Returns the depth counts and the hearts the surface produced.
- */
-function simulateChain(
-  state: GameState,
-  derived: Derived,
-  seconds: number,
-): { depths: number[]; hearts: number } {
-  const count = Math.min(state.depths.length, derived.depthCount, DEPTHS.length);
-  const owned = state.depths.map((d) => d.owned);
-  const step = seconds / OFFLINE_STEPS;
-  const speed = derived.depthPower * derived.tideSpeedMultiplier * step;
-  let hearts = 0;
-
-  for (let s = 0; s < OFFLINE_STEPS; s++) {
-    const before = owned.slice();
-    for (let i = count - 1; i >= 1; i--) {
-      if (before[i] <= 0) continue;
-      owned[i - 1] = safe(owned[i - 1] + before[i] * DEPTHS[i].power * speed);
-    }
-    if (before[0] > 0) hearts = safe(hearts + before[0] * DEPTHS[0].power * speed);
-  }
-
-  return { depths: owned, hearts: safe(hearts * derived.mods.mul.cps * derived.globalMultiplier) };
 }
 
 /**
  * What the jar produced while the app was closed.
  *
- * Elapsed time comes from the device clock but is bounded on both sides:
- * time that ran backwards is discarded, and the total is capped by the
- * offline window, so a wound-forward clock buys one window and no more.
+ * Elapsed time comes from the device clock but is bounded on both sides: time
+ * that ran backwards is discarded, and the total is capped by the offline
+ * window, so a wound-forward clock buys one window and no more.
+ *
+ * The shelf is paid in full and the rest at the offline rate. That split is
+ * deliberate: the shelf is the part of the game that is explicitly about
+ * hearts arriving while you are not there, and discounting it would be
+ * charging you for the mechanic's whole purpose. Tapping, obviously, pays
+ * nothing while the app is shut.
+ *
+ * This used to step an eight tier chain forward two hundred and forty times
+ * and then subtract the chain's current rate back out of `heartsPerSecond` to
+ * avoid paying for it twice, which was the most delicate arithmetic in the
+ * file and existed only to serve the mechanic that has now gone.
  */
 export function computeOffline(state: GameState, now: number): OfflineReport {
   const derived = derive(state, now);
@@ -845,46 +629,27 @@ export function computeOffline(state: GameState, now: number): OfflineReport {
   const cappedByWindow = awayMs > windowMs;
 
   if (countedMs < 60_000 || clockSuspicious) {
-    return {
-      awayMs, countedMs: 0, hearts: 0, shells: 0, glass: 0,
-      cappedByWindow, clockSuspicious, depths: state.depths.map((d) => d.owned),
-    };
+    return { awayMs, countedMs: 0, hearts: 0, ribbons: 0, cappedByWindow, clockSuspicious };
   }
 
   const seconds = countedMs / 1000;
+  const shelf = derived.shelfIncome * seconds;
+  const rest = Math.max(0, derived.heartsPerSecond - derived.shelfIncome);
+  const hearts = safe(shelf + rest * seconds * derived.offlineRate);
 
-  // The chain keeps running while the app is shut, so time away compounds
-  // rather than merely accruing. Everything else that is not the chain is
-  // paid at the offline rate as before.
-  const chain = simulateChain(state, derived, seconds);
-  const chainNow = (state.depths[0]?.owned ?? 0) * (DEPTHS[0]?.power ?? 1)
-    * derived.depthPower * derived.tideSpeedMultiplier
-    * derived.mods.mul.cps * derived.globalMultiplier;
-  const other = Math.max(0, derived.heartsPerSecond - chainNow);
+  // A ribbon for roughly every jar's worth that came in while you were out,
+  // so coming back to a long night is worth something in its own right rather
+  // than only in hearts.
+  const ribbons = derived.jarCapacity > 0
+    ? Math.floor(Math.min(50, hearts / derived.jarCapacity) * derived.mods.mul.ribbonGain)
+    : 0;
 
-  // Shells and sea glass are what the creatures pay, so they scale with how
-  // many of them are actually in the jar rather than being a flat trickle.
-  // Since creatures no longer make hearts, this is their offline earnings.
-  const working = creaturesInJar(state).length;
-  const creatureRate = (1 + working) * derived.mods.mul.creaturePower;
-  const hearts = safe(chain.hearts + other * seconds * derived.offlineRate);
-  const shells = Math.floor((seconds / 240) * derived.mods.mul.shellGain * creatureRate);
-  const glass = Math.floor((seconds / 300) * derived.mods.mul.glassGain * creatureRate);
-  return {
-    awayMs, countedMs, hearts, shells, glass,
-    cappedByWindow, clockSuspicious, depths: chain.depths,
-  };
+  return { awayMs, countedMs, hearts, ribbons, cappedByWindow, clockSuspicious };
 }
 
 export function claimOffline(state: GameState, report: OfflineReport, now: number): void {
-  // Whatever the chain grew into while the app was shut.
-  for (let i = 0; i < state.depths.length; i++) {
-    const grown = report.depths[i];
-    if (Number.isFinite(grown) && grown > state.depths[i].owned) state.depths[i].owned = grown;
-  }
   if (report.hearts > 0) earnHearts(state, report.hearts, "offline");
-  if (report.shells > 0) addCurrency(state, "shells", report.shells);
-  if (report.glass > 0) addCurrency(state, "glass", report.glass);
+  if (report.ribbons > 0) addCurrency(state, "ribbons", report.ribbons);
   state.lastSeenAt = now;
   state.storyProgress["offline"] = (state.storyProgress["offline"] ?? 0) + 1;
   recordMetric(state, "offlineClaims", 1);
@@ -916,7 +681,7 @@ function claimEgg(state: GameState, id: string, now: number): EggFound | null {
       expiresAt: now + def.durationMs,
     });
   }
-  if (def.pearls) addCurrency(state, "pearls", def.pearls);
+  if (def.ribbons) addCurrency(state, "ribbons", def.ribbons);
   pushLog(state, "Oh", def.line);
   return { id, line: def.line };
 }
@@ -951,7 +716,7 @@ export function checkEggs(state: GameState, now: number, partnerHereMs: number |
   // Five otters holding hands is a raft, and a raft is why they hold hands.
   if (heldHands(state).size >= 5) push("otter_hands");
   // A thousand things carried up off the floor.
-  if (state.stats.collects >= 1_000) push("crab_sideways");
+  if (state.stats.petDrops >= 1_000) push("crab_sideways");
   // A thousand taps by hand, which is a lot of sitting with it.
   if (state.stats.totalClicks >= 1_000) push("patient");
   // Spending literally everything.
@@ -1029,7 +794,7 @@ export function pushLog(state: GameState, label: string, detail: string): void {
 /* Daily and day rollover                                              */
 /* ------------------------------------------------------------------ */
 
-export function claimDailyBonus(state: GameState, day: string): { hearts: number; pearls: number; streak: number } | null {
+export function claimDailyBonus(state: GameState, day: string): { hearts: number; ribbons: number; streak: number } | null {
   if (state.dailyBonus.day === day) return null;
 
   // The first open is not a welcome back.
@@ -1053,12 +818,11 @@ export function claimDailyBonus(state: GameState, day: string): { hearts: number
 
   const derived = derive(state);
   const hearts = safe(Math.max(1_000, derived.heartsPerSecond * 900) * (1 + streak * 0.15));
-  const pearls = 2 + Math.min(15, streak);
+  const ribbons = 1 + Math.min(10, streak);
   earnHearts(state, hearts, "together");
-  addCurrency(state, "pearls", pearls);
-  addCurrency(state, "shells", 20 + streak * 3);
+  addCurrency(state, "ribbons", ribbons);
   pushLog(state, "Daily", `Day ${streak}`);
-  return { hearts, pearls, streak };
+  return { hearts, ribbons, streak };
 }
 
 export function rollDay(state: GameState, day: string): void {
@@ -1076,6 +840,6 @@ export function recordDay(state: GameState, day: string, hearts: number, clicks:
   entry.bestCombo = Math.max(entry.bestCombo, combo);
 }
 
-export function currentVessel(state: GameState) {
-  return VESSEL_BY_ID[state.vessel] ?? VESSEL_BY_ID["jam_jar"];
+export function currentJar(state: GameState) {
+  return JAR_BY_ID[state.jar] ?? JAR_BY_ID[FIRST_JAR];
 }

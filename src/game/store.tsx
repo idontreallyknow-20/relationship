@@ -168,7 +168,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       const startedAt = Date.now();
       const report = computeOffline(state, startedAt);
-      if (report.hearts > 0 || report.shells > 0) {
+      if (report.hearts > 0 || report.ribbons > 0) {
         setOfflineReport(report);
       } else {
         state.lastSeenAt = startedAt;

@@ -17,7 +17,7 @@ import { useMemo } from "react";
 import { useGame } from "@/game/store";
 import { UPGRADES, nextEffectLabel, parentsOf, type Tree } from "@/game/config/upgrades";
 import {
-  DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES,
+  SUN_UPGRADES, MOON_UPGRADES, STAR_UPGRADES,
   resetUpgradeCost, type ResetUpgradeDef,
 } from "@/game/config/resets";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
@@ -92,7 +92,7 @@ export function TreeGraph({ tree }: { tree: Tree }) {
 const RESET_TREES: Record<string, ResetUpgradeDef[]> = {
   moons: MOON_UPGRADES,
   stars: STAR_UPGRADES,
-  drops: DROP_UPGRADES,
+  suns: SUN_UPGRADES,
 };
 
 /** One short line describing what the next level of a reset upgrade does. */
@@ -105,7 +105,7 @@ function resetEffect(def: ResetUpgradeDef): string {
   return `${sign}${pct.toFixed(pct < 1 ? 2 : 0)}% ${stat}${def.kind === "mulCompound" ? ", compounding" : ""}`;
 }
 
-export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "drops" }) {
+export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "suns" }) {
   const { state, mutate, version } = useGame();
   const toast = useToast();
   const defs = RESET_TREES[currency] ?? [];
@@ -114,7 +114,7 @@ export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "dr
     ? state.moonUpgrades
     : currency === "stars"
       ? state.starUpgrades
-      : state.dropUpgrades;
+      : state.sunUpgrades;
 
   const nodes = useMemo<TreeNodeView[]>(() => {
     const present = new Set(defs.map((d) => d.id));

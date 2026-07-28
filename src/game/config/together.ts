@@ -49,25 +49,25 @@ export const JOINT_MILESTONES: JointMilestone[] = [
     at: 150,
     name: "A hundred and fifty",
     detail: "Somebody has been playing this at work.",
-    mods: { mul: { all: 2, depthPower: 1.5 } },
+    mods: { mul: { all: 2, shelfRate: 1.5 } },
   },
   {
     at: 400,
     name: "Four hundred",
     detail: "Four hundred lives, and the jar still fills the same way.",
-    mods: { mul: { all: 2.5, tideSpeed: 1.4 } },
+    mods: { mul: { all: 2.5, petSpeed: 1.4 } },
   },
   {
     at: 1_000,
     name: "A thousand",
     detail: "Between the two of you, a thousand times.",
-    mods: { mul: { all: 4, moonGain: 1.5, depthPower: 2 } },
+    mods: { mul: { all: 4, moonGain: 1.5, shelfRate: 2 } },
   },
   {
     at: 5_000,
     name: "Five thousand",
     detail: "There is no sensible thing left to say about this number.",
-    mods: { mul: { all: 8, moonGain: 2, depthPower: 3 } },
+    mods: { mul: { all: 8, moonGain: 2, shelfRate: 3 } },
   },
 ];
 

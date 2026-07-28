@@ -9,80 +9,76 @@ export interface CurrencyDef {
   color: string;
 }
 
-// Eight, down from fourteen. Every one is themed to the jar and has exactly
-// one place it comes from and one place it goes.
+// Seven, and every one of them can be explained in a sentence that names
+// exactly one action.
+//
+// That is the whole reason this list changed. It used to hold pearls, shells
+// and sea glass, and asked directly: those are confusing to obtain. They were,
+// and not by accident. All three came out of the same place by the same
+// mechanic, differing only in a dice roll: an otter cracked something open, the
+// pieces sank, a crab picked them up, and which of the three you got was
+// decided by `Math.random() < 0.06` inside the engine. Nothing on screen could
+// have told you how to get more of one and fewer of another, because the honest
+// answer was "you cannot, they are the same faucet wearing three hats".
+//
+// So the floor mechanic is gone and so are they. What is left is one currency
+// per thing you do.
 
 export const CURRENCIES: CurrencyDef[] = [
   {
     id: "hearts",
     name: "Hearts",
     short: "Hearts",
-    source: "Tapping, and everything living in the jar.",
-    purpose: "Upgrades and vessels.",
+    source: "Tapping the jar, and the pets dropping them in.",
+    purpose: "Upgrades, and filling the jar you are on.",
     color: "#a85b73",
   },
   {
-    id: "pearls",
-    name: "Pearls",
-    short: "Pearls",
-    source: "Otters cracking open the right shell.",
-    purpose: "Abilities, new creatures, the shop.",
-    color: "#c9b8a0",
+    id: "ribbons",
+    name: "Ribbons",
+    short: "Ribbons",
+    source: "Sealing a full jar. One jar, one ribbon, at least.",
+    purpose: "Bigger jars, more pets, and the shelf.",
+    color: "#d08aa8",
   },
   {
-    id: "shells",
-    name: "Shells",
-    short: "Shells",
-    source: "Cracked open on the surface, collected off the floor.",
-    purpose: "Feeding and levelling creatures.",
-    color: "#d08a6a",
-  },
-  {
-    id: "glass",
-    name: "Sea Glass",
-    short: "Glass",
-    source: "Crabs sifting the floor.",
-    purpose: "Rocks, shells and everything a creature carries.",
-    color: "#7fb0a8",
-  },
-  {
-    id: "tide",
-    name: "Tide",
-    short: "Tide",
-    source: "Both of you playing. Rises for either, spends for both.",
-    purpose: "The Us tree and shared boosts.",
-    color: "#7c6ba8",
+    id: "keepsakes",
+    name: "Keepsakes",
+    short: "Keeps",
+    source: "The two of you using the rest of the app.",
+    purpose: "The shared tree, which pays both of you.",
+    color: "#3f8f96",
   },
   {
     id: "moons",
     name: "Moons",
     short: "Moons",
-    source: "Changing the tide, which empties the jar.",
-    purpose: "Permanent upgrades that survive it.",
-    color: "#b0b0c8",
+    source: "A rebirth.",
+    purpose: "The moon tree, which is kept through every rebirth.",
+    color: "#8f86c9",
   },
   {
     id: "stars",
     name: "Stars",
     short: "Stars",
-    source: "Deep rebirth. Rare.",
-    purpose: "The last vessels and the deepest upgrades.",
-    color: "#4f7bd0",
+    source: "An ascension.",
+    purpose: "The star tree, which is kept through every ascension.",
+    color: "#c9a03f",
   },
   {
-    id: "drops",
-    name: "Drops",
-    short: "Drops",
-    source: "Letting the whole sea go, once you have one.",
-    purpose: "The deepest tree. It changes what the jar is.",
-    color: "#3b6ea5",
+    id: "suns",
+    name: "Suns",
+    short: "Suns",
+    source: "A forever.",
+    purpose: "The sun tree. It changes what the jar is.",
+    color: "#d2802f",
   },
   {
     id: "hours",
     name: "Hours",
     short: "Hours",
     source: "Playing on with the jar deliberately slowed down.",
-    purpose: "The last tree, and the only one that makes dilation bearable.",
+    purpose: "The last tree, and the only thing that makes dilation bearable.",
     color: "#7a6ba8",
   },
 ];
@@ -94,21 +90,3 @@ export const CURRENCY_BY_ID: Record<CurrencyId, CurrencyDef> = Object.fromEntrie
 export const ZERO_WALLET: Record<CurrencyId, number> = Object.fromEntries(
   CURRENCIES.map((c) => [c.id, 0]),
 ) as Record<CurrencyId, number>;
-
-/** Old saves carried fourteen currencies. This is where they land. */
-export const LEGACY_CURRENCY_MAP: Record<string, CurrencyId> = {
-  hearts: "hearts",
-  golden: "pearls",
-  treats: "shells",
-  dust: "glass",
-  fragments: "glass",
-  shards: "pearls",
-  bond: "tide",
-  tokens: "moons",
-  crystals: "stars",
-  star: "stars",
-  eternal: "stars",
-  event: "pearls",
-  skill: "pearls",
-  mastery: "stars",
-};

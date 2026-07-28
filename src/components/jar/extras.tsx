@@ -16,7 +16,7 @@ import {
   JOINT_MILESTONES, combinedRebirths, jointNext, jointReached,
 } from "@/game/config/together";
 import { CREATURES } from "@/game/config/creatures";
-import { VESSELS } from "@/game/config/vessels";
+import { JARS } from "@/game/config/jars";
 import { STAT_LABEL, TREES, UPGRADES } from "@/game/config/upgrades";
 import { SKILLS } from "@/game/config/skills";
 import { CHALLENGES } from "@/game/config/objectives";
@@ -167,7 +167,7 @@ export function UsTab() {
           <div className="mb-1 flex items-baseline justify-between text-sm">
             <span className="font-semibold text-plum">{Math.round(state.tideLevel)}%</span>
             <span className="text-xs text-berry-soft">
-              {formatNumber(state.wallet.tide, format)} tide saved
+              {formatNumber(state.wallet.keepsakes, format)} tide saved
             </span>
           </div>
           <Bar value={state.tideLevel} max={100} color="#7c6ba8" />
@@ -179,7 +179,7 @@ export function UsTab() {
           {MEMORIES.map((memory) => {
             const owned = ownedMemories.includes(memory.id);
             const ready = state.lifetime.hearts >= memory.unlockLifetime;
-            const affordable = state.wallet.tide >= memory.cost;
+            const affordable = state.wallet.keepsakes >= memory.cost;
             return (
               <li
                 key={memory.id}
@@ -241,7 +241,7 @@ export function UsTab() {
                   </div>
                   <Button
                     size="sm"
-                    disabled={away || !ready || state.wallet.tide < trip.cost}
+                    disabled={away || !ready || state.wallet.keepsakes < trip.cost}
                     onClick={() =>
                       mutate((draft) => {
                         const result = startTrip(draft, trip.id, Date.now());
@@ -279,7 +279,7 @@ export function StatsTab() {
     ["Abilities", state.stats.heartsFromSkills],
     ["Away", state.stats.heartsFromOffline],
     ["Together", state.stats.heartsFromTogether],
-    ["Drifters", state.stats.heartsFromDrifters],
+    ["Drifters", state.stats.heartsFromShelf],
   ] as const;
   const total = Math.max(1, breakdown.reduce((sum, [, v]) => sum + v, 0));
 
@@ -332,12 +332,12 @@ export function StatsTab() {
           <Stat label="Taps" value={formatNumber(state.stats.totalClicks, format)} />
             <Stat label="Criticals" value={formatNumber(state.stats.criticalClicks, format)} />
           <Stat label="Best combo" value={`${state.stats.bestCombo}`} />
-          <Stat label="Cracked" value={formatNumber(state.stats.cracks, format)} />
-          <Stat label="Collected" value={formatNumber(state.stats.collects, format)} />
-          <Stat label="Drifters" value={`${state.stats.driftersOpened}`} />
+          <Stat label="Cracked" value={formatNumber(state.stats.petDrops, format)} />
+          <Stat label="Collected" value={formatNumber(state.stats.jarsSealed, format)} />
+          <Stat label="Drifters" value={`${state.stats.jarsSealed}`} />
           <Stat label="Creatures" value={`${state.codex.length}`} />
           <Stat label="Grown" value={`${state.stats.creaturesEvolved}`} />
-          <Stat label="Vessels" value={`${state.vesselsUnlocked.length}`} />
+          <Stat label="Vessels" value={`${state.jarsUnlocked.length}`} />
           <Stat label="Rebirths" value={`${state.tideChanges}`} />
           <Stat label="Deep rebirths" value={`${state.newWaters}`} />
           <Stat
@@ -404,12 +404,12 @@ export function CodexTab() {
             />
           );
         })}
-        {section === "vessels" && VESSELS.map((v) => (
+        {section === "vessels" && JARS.map((v) => (
           <Entry
             key={v.id}
             title={v.name}
-            body={state.vesselsUnlocked.includes(v.id) ? `${v.blurb} ${v.rule}` : v.blurb}
-            color={v.accent}
+            body={state.jarsUnlocked.includes(v.id) ? `${v.blurb} ${v.rule}` : v.blurb}
+            color={v.glass}
           />
         ))}
         {section === "currencies" && CURRENCIES.map((c) => (
@@ -501,7 +501,6 @@ export function SettingsTab() {
           {toggle("haptics", "Haptics")}
           {toggle("sound", "Sound")}
           {toggle("screenShake", "Screen shake")}
-          {toggle("drifters", "Things drifting in")}
         </div>
       </Section>
 
@@ -602,8 +601,7 @@ function useMiniReward() {
     (score: number, label: string) => {
       mutate((draft) => {
         earnHearts(draft, Math.max(1, derived.heartsPerSecond * 40 * score), "together");
-        addCurrency(draft, "pearls", Math.max(1, Math.floor(score * 3)));
-        addCurrency(draft, "shells", Math.max(1, Math.floor(score * 20)));
+        addCurrency(draft, "ribbons", Math.max(1, Math.floor(score * 2)));
         draft.stats.minigamesPlayed += 1;
         recordMetric(draft, "minigames", 1);
       });

@@ -172,7 +172,7 @@ export function SpendButton({ currency, amount, format, disabled, confirm, label
   const def = CURRENCY_BY_ID[currency];
   const [asking, setAsking] = useState(false);
   // The slow currencies ask before they are spent.
-  const rare = currency === "moons" || currency === "stars" || currency === "drops";
+  const rare = currency === "moons" || currency === "stars" || currency === "suns";
   const needsConfirm = confirm && rare;
 
   return (

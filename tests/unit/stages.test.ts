@@ -22,6 +22,7 @@ import {
   type Feature,
 } from "@/game/config/stages";
 import { createGameState } from "@/game/state";
+import { JARS } from "@/game/config/jars";
 import type { GameState } from "@/game/types";
 
 function fresh(): GameState {
@@ -79,12 +80,14 @@ describe("stages", () => {
     }
   });
 
-  it("hands out the chain and deepening before it hands out rebirth", () => {
-    const chain = STAGES.find((s) => s.reveals.includes("chain"))!;
+  it("teaches the colours and sealing before it hands out rebirth", () => {
+    const colours = STAGES.find((s) => s.reveals.includes("colours"))!;
+    const seal = STAGES.find((s) => s.reveals.includes("seal"))!;
+    const shelf = STAGES.find((s) => s.reveals.includes("shelf"))!;
     const rebirth = STAGES.find((s) => s.reveals.includes("tideChange"))!;
-    const deepen = STAGES.find((s) => s.reveals.includes("deepen"))!;
-    expect(chain.at).toBeLessThan(deepen.at);
-    expect(deepen.at).toBeLessThan(rebirth.at);
+    expect(colours.at).toBeLessThan(seal.at);
+    expect(seal.at).toBeLessThan(shelf.at);
+    expect(shelf.at).toBeLessThan(rebirth.at);
   });
 
   // The heart of the rebalance. Hearts alone can be earned by waiting; a rung
@@ -109,8 +112,8 @@ describe("stages", () => {
     state.lifetime.hearts = 1e30;
     state.stats.totalClicks = 1e6;
     state.stats.upgradesBought = 1e6;
-    state.depths.forEach((d) => (d.bought = 1e4));
-    state.deepens = 1e4;
+    state.stats.jarsSealed = 1e4;
+    state.jarsUnlocked = JARS.map((j) => j.id);
     state.tideChanges = 1e4;
     state.newWaters = 1e4;
     state.seas = 1e4;
@@ -138,8 +141,8 @@ describe("stages", () => {
     state.lifetime.hearts = 1e30;
     state.stats.totalClicks = 1e6;
     state.stats.upgradesBought = 1e6;
-    state.depths.forEach((d) => (d.bought = 1e4));
-    state.deepens = 1e4;
+    state.stats.jarsSealed = 1e4;
+    state.jarsUnlocked = JARS.map((j) => j.id);
     state.tideChanges = 1e4;
     state.newWaters = 1e4;
     state.seas = 1e4;
@@ -162,8 +165,8 @@ describe("stages", () => {
     state.lifetime.hearts = 2e7;
     state.stats.totalClicks = 500;
     state.stats.upgradesBought = 80;
-    state.depths.forEach((d) => (d.bought = 80));
-    state.deepens = 8;
+    state.stats.jarsSealed = 40;
+    state.jarsUnlocked = JARS.slice(0, 6).map((j) => j.id);
 
     let now = 0;
     for (let i = 0; i < 20; i++) {
@@ -174,9 +177,9 @@ describe("stages", () => {
     expect(reached).toBeGreaterThanOrEqual(5);
     expect(featuresAt(reached).has("automation")).toBe(true);
 
-    // The rebirth.
-    state.depths.forEach((d) => (d.bought = 0));
-    state.deepens = 0;
+    // The rebirth, which clears the shelf and goes back to the first jar.
+    state.stats.jarsSealed = 0;
+    state.jarsUnlocked = [JARS[0].id];
 
     expect(stageFor(state)).toBe(reached);
     expect(featuresAt(stageFor(state)).has("automation")).toBe(true);

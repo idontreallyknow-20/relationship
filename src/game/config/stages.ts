@@ -53,8 +53,9 @@ export function stageGap(index: number): number {
 export type StageMetric =
   | "clicks"
   | "upgrades"
-  | "depthsBought"
-  | "deepens"
+  | "pets"
+  | "seals"
+  | "jars"
   | "tideChanges"
   | "newWaters"
   | "seas";
@@ -65,10 +66,12 @@ export function stageMetric(state: GameState, metric: StageMetric): number {
       return state.stats?.totalClicks ?? 0;
     case "upgrades":
       return state.stats?.upgradesBought ?? 0;
-    case "depthsBought":
-      return (state.depths ?? []).reduce((sum, d) => sum + (d?.bought ?? 0), 0);
-    case "deepens":
-      return state.deepens ?? 0;
+    case "pets":
+      return Object.keys(state.creatures ?? {}).length;
+    case "seals":
+      return state.stats?.jarsSealed ?? 0;
+    case "jars":
+      return (state.jarsUnlocked ?? []).length;
     case "tideChanges":
       return state.tideChanges ?? 0;
     case "newWaters":
@@ -106,15 +109,15 @@ export interface StageDef {
  */
 export type Feature =
   | "upgrades"
-  | "chain"
   | "buyAmounts"
+  | "colours"
+  | "pets"
+  | "seal"
+  | "shelf"
+  | "jars"
   | "automation"
   | "abilities"
-  | "pets"
-  | "deepen"
-  | "tide"
   | "us"
-  | "vessels"
   | "missions"
   | "tideChange"
   | "challenges"
@@ -128,111 +131,108 @@ export const STAGES: StageDef[] = [
     at: 0,
     reveals: [],
     title: "Your jar",
-    body: "Tap the heart. That is the whole game for now, and it is genuinely all you need to do.",
+    body: "Tap the heart and it goes in the jar. That is the whole game for now, and it is genuinely all you need to do.",
   },
   {
     index: 1,
-    at: 300,
-    needs: { metric: "clicks", count: 50 },
+    at: 30,
+    needs: { metric: "clicks", count: 25 },
+    reveals: ["colours"],
+    title: "Ten make one",
+    body: "Ten hearts of one colour become a single heart of the next, which is worth all ten. That is how the jar holds more than you could ever count.",
+  },
+  {
+    index: 2,
+    at: 120,
+    needs: { metric: "clicks", count: 60 },
     reveals: ["upgrades"],
     title: "Upgrades",
     body: "Spend hearts to make taps worth more. Spending is always better than saving here, so spend everything.",
   },
   {
-    index: 2,
-    at: 4_000,
-    needs: { metric: "upgrades", count: 12 },
-    // Buying ten at a time is given, not earned. Pressing a button a hundred
-    // times is not a skill and charging for the shortcut is not a reward. It
-    // waits only until there is something worth buying ten of.
+    index: 3,
+    at: 700,
+    needs: { metric: "upgrades", count: 8 },
     reveals: ["buyAmounts"],
     title: "Ten at a time",
     body: "Buy ten, a hundred, or as many as you can afford. There is a Buy all button beside it that takes the cheapest first.",
   },
   {
-    index: 3,
-    at: 40_000,
-    needs: { metric: "upgrades", count: 35 },
-    reveals: ["chain"],
-    title: "The jar fills itself",
-    body: "Buy Hearts and they arrive without you tapping. Each tier above makes the tier below it, so a Handful quietly makes Hearts all day.",
-  },
-  {
     index: 4,
-    at: 400_000,
-    needs: { metric: "depthsBought", count: 70 },
-    reveals: ["deepen"],
-    title: "Going deeper",
-    body: "Trade the chain in for a permanent multiplier and a longer chain. Your hearts stay, so you rebuild in seconds and come out ahead.",
+    at: 2_500,
+    needs: { metric: "upgrades", count: 20 },
+    reveals: ["seal"],
+    title: "Sealing the jar",
+    body: "A full jar can be sealed and put on the shelf, where it keeps paying a little of what is in it forever. Nothing is lost by sealing; the hearts are moved, not spent.",
   },
   {
     index: 5,
-    at: 5e6,
-    needs: { metric: "deepens", count: 6 },
-    reveals: ["automation"],
-    title: "It buys for you",
-    body: "Autobuyers spend your hearts so you do not have to. Each one only spends the share you allow it, so nothing runs away with your balance.",
+    at: 9_000,
+    needs: { metric: "seals", count: 1 },
+    reveals: ["shelf"],
+    title: "The shelf",
+    body: "Every jar you have ever filled is up there, all of them paying at once. Ribbons from sealing buy upgrades that make the whole shelf pay faster.",
   },
   {
     index: 6,
-    at: 4e7,
-    needs: { metric: "deepens", count: 12 },
-    reveals: ["tideChange"],
-    title: "Rebirth",
-    body: "Empty the jar, keep what you learned, come back faster. This is the loop the rest of the game is made of, and you will do it hundreds of times.",
+    at: 40_000,
+    needs: { metric: "seals", count: 2 },
+    reveals: ["jars"],
+    title: "A bigger jar",
+    body: "Ribbons also buy a larger jar, which holds far more before it is full and seats more friends around it.",
   },
   {
     index: 7,
-    at: 8e7,
-    needs: { metric: "tideChanges", count: 1 },
-    reveals: ["tide"],
-    title: "Warmth",
-    body: "A bar that fills when either of you plays and slips back when neither does. While it is up, everything in the jar is worth more.",
+    at: 150_000,
+    needs: { metric: "seals", count: 4 },
+    reveals: ["pets"],
+    title: "Otters and crabs",
+    body: "They sit around the jar and carry hearts over on their own. Hers open things, his carry them, and a table with both is worth more than either alone.",
   },
   {
     index: 8,
-    at: 2e8,
-    needs: { metric: "tideChanges", count: 3 },
-    reveals: ["us"],
-    title: "Together",
-    body: "What the two of you do in the rest of the app pays into the jar. Nothing here needs your partner, and all of it is better with them.",
+    at: 4e5,
+    needs: { metric: "seals", count: 12 },
+    reveals: ["automation"],
+    title: "It runs itself",
+    body: "A full jar can seal itself, and the autobuyers spend for you. Each one only spends the share you allow it, so nothing runs away with your balance.",
   },
   {
     index: 9,
-    at: 8e8,
-    needs: { metric: "tideChanges", count: 5 },
-    reveals: ["pets"],
-    title: "Otters and crabs",
-    body: "Hers open things at the surface, his carry them up off the floor. They are a side thing that makes the jar stronger, and nothing needs them.",
+    at: 1e9,
+    needs: { metric: "seals", count: 80 },
+    reveals: ["tideChange"],
+    title: "Rebirth",
+    body: "Clear the shelf, keep what you learned, come back faster. This is the loop the rest of the game is made of, and you will do it hundreds of times.",
   },
   {
     index: 10,
     at: 4e9,
-    needs: { metric: "tideChanges", count: 8 },
-    reveals: ["abilities"],
-    title: "Abilities",
-    body: "Bought with pearls and fired on a cooldown. Half apply an effect for a while, half go off once and are done.",
+    needs: { metric: "tideChanges", count: 1 },
+    reveals: ["us"],
+    title: "Together",
+    body: "What the two of you do in the rest of the app pays keepsakes into the jar. Nothing here needs your partner, and all of it is better with them.",
   },
   {
     index: 11,
-    at: 1e10,
-    needs: { metric: "tideChanges", count: 8 },
-    reveals: ["vessels"],
-    title: "A bigger jar",
-    body: "The jar you keep it all in can be a bigger one. Deeper water holds more creatures, and a wider floor holds more crabs.",
+    at: 2e10,
+    needs: { metric: "tideChanges", count: 3 },
+    reveals: ["abilities"],
+    title: "Abilities",
+    body: "Bought with ribbons and fired on a cooldown. Half apply an effect for a while, half go off once and are done.",
   },
   {
     index: 12,
-    at: 6e10,
-    needs: { metric: "tideChanges", count: 10 },
+    at: 1e11,
+    needs: { metric: "tideChanges", count: 5 },
     reveals: ["missions"],
     title: "Missions",
-    body: "Small goals that refresh daily, and longer ones that do not. They pay in the currencies you are shortest of.",
+    body: "Small goals that refresh daily, and longer ones that do not. They pay in whatever you are shortest of.",
   },
   {
     index: 13,
-    at: 4e11,
-    needs: { metric: "tideChanges", count: 14 },
+    at: 8e11,
+    needs: { metric: "tideChanges", count: 9 },
     reveals: ["challenges"],
     title: "Challenges",
     body: "A life with something taken away, and a permanent reward for finishing it anyway. Leave whenever you like; nothing is lost by trying.",
@@ -240,9 +240,9 @@ export const STAGES: StageDef[] = [
   {
     index: 14,
     at: 1e13,
-    needs: { metric: "tideChanges", count: 20 },
+    needs: { metric: "tideChanges", count: 16 },
     reveals: ["newWater"],
-    title: "Deep rebirth",
+    title: "Ascension",
     body: "A rebirth of the rebirths, paying stars. Everything you learned about rebirth applies again, larger.",
   },
   {
@@ -250,8 +250,8 @@ export const STAGES: StageDef[] = [
     at: 1e18,
     needs: { metric: "newWaters", count: 2 },
     reveals: ["sea"],
-    title: "The last one",
-    body: "The rebirth that takes the rebirths, and both of their trees, and pays drops. Nothing above this exists. There was never a jar.",
+    title: "Forever",
+    body: "The reset that takes the ascensions, and both of their trees, and pays suns. Nothing above this exists. There was never a jar.",
   },
   {
     index: 16,

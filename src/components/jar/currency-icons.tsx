@@ -125,13 +125,14 @@ function Hours({ className, color }: GlyphProps) {
 
 const GLYPHS: Record<CurrencyId, (props: GlyphProps) => React.ReactElement> = {
   hearts: Hearts,
-  pearls: Pearls,
-  shells: Shells,
-  glass: Glass,
-  tide: Tide,
+  // Ribbons reuse the shell drawing: a sealed jar's lid ring is closer to a
+  // shell than to anything else already drawn, and one new glyph is cheaper
+  // than one wrong one.
+  ribbons: Shells,
+  keepsakes: Tide,
   moons: Moons,
   stars: Stars,
-  drops: Drops,
+  suns: Drops,
   hours: Hours,
 };
 

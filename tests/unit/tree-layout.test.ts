@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, type LayoutInput } from "@/components/jar/tree/layout";
 import { UPGRADES, parentsOf } from "@/game/config/upgrades";
-import { MOON_UPGRADES, STAR_UPGRADES, DROP_UPGRADES } from "@/game/config/resets";
+import { MOON_UPGRADES, STAR_UPGRADES, SUN_UPGRADES } from "@/game/config/resets";
 
 function n(id: string, ...after: string[]): LayoutInput {
   return { id, after };
@@ -111,7 +111,7 @@ describe("the real trees", () => {
     ["us", UPGRADES.filter((u) => u.tree === "us").map((u) => ({ id: u.id, after: parentsOf(u) }))],
     ["moons", MOON_UPGRADES.map((u) => ({ id: u.id, after: u.after ?? [] }))],
     ["stars", STAR_UPGRADES.map((u) => ({ id: u.id, after: u.after ?? [] }))],
-    ["drops", DROP_UPGRADES.map((u) => ({ id: u.id, after: u.after ?? [] }))],
+    ["suns", SUN_UPGRADES.map((u) => ({ id: u.id, after: u.after ?? [] }))],
   ];
 
   for (const [name, input] of trees) {

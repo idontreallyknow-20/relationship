@@ -109,6 +109,16 @@ export function reconcile(local: GameState | null, server: ServerSave | null, pe
   const serverState = migrateSave(server.state, person);
   const chosen = Number(server.lifetime_hearts) > local.lifetime.hearts ? serverState : local;
 
+  // Settings belong to this device, not to the save.
+  //
+  // Whichever save wins takes its settings with it, and that is wrong for every
+  // field in there: reduced motion, sound, haptics, battery saver and the
+  // number format are all statements about the phone in your hand, not about
+  // the jar. `tutorialDone` is the one that shows: a server save arriving with
+  // a higher lifetime total would replay the first-run tour on a device that
+  // had already finished it, which is exactly how it was found.
+  if (chosen !== local) chosen.settings = { ...local.settings };
+
   chosen.lifetime.hearts = Math.max(chosen.lifetime.hearts, Number(server.lifetime_hearts) || 0);
   chosen.tideChanges = Math.max(chosen.tideChanges, Number(server.tide_changes) || 0);
   chosen.newWaters = Math.max(chosen.newWaters, Number(server.new_waters) || 0);

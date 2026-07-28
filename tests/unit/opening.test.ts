@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { createGameState } from "@/game/state";
 import { derive } from "@/game/formulas";
 import { performClick, tick } from "@/game/engine";
-import { buyAll, canDeepen, deepen } from "@/game/actions";
+import { buyAll, sealCurrentJar } from "@/game/actions";
 import { featuresAt, stageFor, type Feature } from "@/game/config/stages";
 import type { GameState } from "@/game/types";
 
@@ -56,7 +56,7 @@ function play(marks: number[], tapsPerSecond: number): Snapshot[] {
 
     // Only the things the game has actually offered.
     if (derived.features.has("upgrades")) buyAll(state, 8);
-    if (derived.features.has("deepen") && canDeepen(state)) deepen(state);
+    if (derived.features.has("seal")) sealCurrentJar(state, now);
 
     if (marks.includes(second)) {
       const stage = stageFor(state);
@@ -76,46 +76,54 @@ const MINUTE = 60;
 
 describe("the opening", () => {
   it("is a jar and a heart for the first minute, left alone", () => {
+    // At most the one sentence about ten hearts becoming one, which is an
+    // explanation of what is already happening in front of you rather than a
+    // system to learn.
     const [first] = play([MINUTE], 0);
-    expect(first.features).toEqual([]);
-  });
-
-  it("is a jar and a heart for the first minute, tapped hard", () => {
-    // Four taps a second is faster than anyone sustains, and it is still one
-    // screen. Rungs need a number and a decision, and a minute is not enough
-    // of either.
-    const [first] = play([MINUTE], 4);
     expect(first.features.length).toBeLessThanOrEqual(1);
-    expect(first.features.every((f) => f === "upgrades")).toBe(true);
+    expect(first.features.every((f) => f === "colours")).toBe(true);
   });
 
-  it("has not handed over the chain in the first five minutes", () => {
+  it("is still one screen after a minute of tapping hard", () => {
+    // Four taps a second is faster than anyone sustains, and it is still the
+    // jar. Rungs need a number and a decision, and a minute is not enough of
+    // either.
+    const [first] = play([MINUTE], 4);
+    expect(first.features.length).toBeLessThanOrEqual(2);
+    expect(first.features).not.toContain("seal");
+  });
+
+  it("has not handed over sealing or the shelf in the first five minutes", () => {
     const [five] = play([5 * MINUTE], 3);
-    expect(five.features).not.toContain("chain");
-    expect(five.features).not.toContain("deepen");
+    expect(five.features).not.toContain("seal");
+    expect(five.features).not.toContain("shelf");
+    expect(five.features).not.toContain("jars");
     expect(five.features).not.toContain("automation");
     expect(five.features).not.toContain("tideChange");
   });
 
-  it("has not handed over rebirth, creatures or abilities in the first hour", () => {
+  it("has not handed over rebirth or anything past it in the first hour", () => {
     const [hour] = play([60 * MINUTE], 3);
     // The old ladder reached rebirth, creatures, abilities, vessels, missions
     // and challenges inside the first few minutes. None of them belong in a
     // first sitting.
-    expect(hour.features).not.toContain("pets");
+    expect(hour.features).not.toContain("tideChange");
     expect(hour.features).not.toContain("abilities");
-    expect(hour.features).not.toContain("vessels");
+    expect(hour.features).not.toContain("us");
     expect(hour.features).not.toContain("missions");
     expect(hour.features).not.toContain("challenges");
   });
 
   it("does still give the player somewhere to go inside an hour", () => {
     // The opposite failure is just as real: a first sitting with nothing new in
-    // it is not calm, it is empty.
+    // it is not calm, it is empty. Tap, colours, upgrades, buying in tens,
+    // sealing, the shelf, a bigger jar and the pets is a good first evening.
     const [hour] = play([60 * MINUTE], 3);
+    expect(hour.features).toContain("colours");
     expect(hour.features).toContain("upgrades");
-    expect(hour.features).toContain("buyAmounts");
-    expect(hour.features.length).toBeGreaterThanOrEqual(2);
+    expect(hour.features).toContain("seal");
+    expect(hour.features).toContain("shelf");
+    expect(hour.features.length).toBeGreaterThanOrEqual(5);
   });
 
   it("never opens more than one thing at a time", () => {

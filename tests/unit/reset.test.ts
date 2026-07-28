@@ -77,3 +77,33 @@ describe("resetting all progress", () => {
     expect(state.wallet.hearts).toBe(4_321);
   });
 });
+
+describe("reconcile keeps the device's own settings", () => {
+  // Found by watching the first-run tour replay itself after a sync. Settings
+  // are statements about the phone in your hand, not about the jar, so the
+  // save that wins on progress must not bring its own along.
+  it("does not replay the tour when a server save wins", () => {
+    const local = createGameState(0, "cami");
+    local.settings.tutorialDone = true;
+    local.settings.reducedMotion = true;
+    local.settings.numberFormat = "scientific";
+    local.lifetime.hearts = 10;
+
+    const theirs = createGameState(0, "cami");
+    theirs.lifetime.hearts = 1e9;
+
+    const merged = reconcile(local, serverRow(SAVE_VERSION, {
+      person: "cami",
+      state: JSON.parse(JSON.stringify(theirs)),
+      hearts: 1e9,
+      lifetime_hearts: 1e9,
+      tide_changes: 0,
+      new_waters: 0,
+    }), "cami")!;
+
+    expect(merged.lifetime.hearts).toBe(1e9);
+    expect(merged.settings.tutorialDone).toBe(true);
+    expect(merged.settings.reducedMotion).toBe(true);
+    expect(merged.settings.numberFormat).toBe("scientific");
+  });
+});

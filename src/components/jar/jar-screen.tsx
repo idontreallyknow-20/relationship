@@ -8,21 +8,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  collectSettled, currentVessel, performClick, tapDrifter, activateSkill,
+  currentJar, performClick, activateSkill,
 } from "@/game/engine";
-import { buyUpgrade } from "@/game/actions";
+import { buyUpgrade, sealCurrentJar } from "@/game/actions";
 import {
   creaturesInJar, derive, heldHands, meetsUnlock, upgradeNextCost, visibleUpgrades,
 } from "@/game/formulas";
 import { formatDurationShort, formatNumber, formatPercent } from "@/game/numbers";
 import { NEWS_INTERVAL_MS, newsLine } from "@/game/config/news";
+import { TheJar, HeartLadder } from "./the-jar";
 import { play, release as releaseAudio, type Cue } from "@/game/sound";
 import { SKILLS } from "@/game/config/skills";
 import { CREATURE_BY_ID } from "@/game/config/creatures";
-import { DRIFTER_BY_ID } from "@/game/config/vessels";
 import { WATER_BY_ID } from "@/game/config/memories";
 import { TIDE_REQUIREMENT } from "@/game/config/resets";
-import type { Settled } from "@/game/types";
 import type { Feature } from "@/game/config/stages";
 import { useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
@@ -41,7 +40,7 @@ const MAX_POPUPS = 14;
 export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const { state, derived, mutate, version, now, notify } = useGame();
   const toast = useToast();
-  const vessel = currentVessel(state);
+  const jar = currentJar(state);
   /** Nothing is on screen until it is yours. */
   const has = (feature: Feature) => derived.features.has(feature);
 
@@ -64,8 +63,6 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const format = state.settings.numberFormat;
   const ringPhase = reduced ? 1 : ringValue;
 
-  const waterId = state.water;
-  const water = WATER_BY_ID[waterId]?.color || vessel.water;
 
   /* ---------------------------------------------------------------- */
   /* Timing ring                                                       */
@@ -165,47 +162,13 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
     });
   }, [addPopup, buzz, cue, format, mutate, reduced, state.settings.screenShake]);
 
-  /* ---------------------------------------------------------------- */
-  /* Things in the water                                               */
-  /* ---------------------------------------------------------------- */
-
-  const pickUp = (item: Settled) => {
-    mutate((draft) => {
-      const result = collectSettled(draft, derive(draft, Date.now()), item.id, false);
-      if (!result) return;
-      addPopup(`+${formatNumber(result.hearts, format)}`, item.x, 20 + item.y * 60, "bonus");
-      buzz(8);
-      cue("collect");
-    });
-  };
-
-  const hitDrifter = () => {
-    mutate((draft) => {
-      const result = tapDrifter(draft, derive(draft, Date.now()));
-      if (!result) return;
-      if (result.opened) {
-        buzz([20, 40, 20]);
-        cue("open");
-        notify({
-          kind: "reward",
-          title: "It opened",
-          detail: result.note ? "There was a note inside." : undefined,
-        });
-      } else {
-        buzz(6);
-        cue("tap");
-      }
-    });
-  };
-
-  /* ---------------------------------------------------------------- */
-  /* Layout of the jar                                                 */
-  /* ---------------------------------------------------------------- */
-
-  const fill = derived.capacity > 0 ? Math.min(1, state.wallet.hearts / derived.capacity) : 0;
-  const overflowing = state.wallet.hearts > derived.capacity;
-  // Water sits between the surface (top) and the floor (bottom).
-  const surfaceTop = 100 - Math.max(18, fill * 100 * vessel.depth);
+  // Everything drawn takes its colour from the jar, so moving up changes the
+  // whole picture rather than a label.
+  const accent = jar.glass;
+  const full = derived.jarCapacity > 0
+    ? Math.min(1, state.wallet.hearts / derived.jarCapacity)
+    : 0;
+  const readyToSeal = state.wallet.hearts >= derived.jarCapacity;
 
   const inJar = creaturesInJar(state);
   const paired = heldHands(state);
@@ -236,9 +199,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
     [version, now],
   );
 
-  const drifterDef = state.drifter ? DRIFTER_BY_ID[state.drifter.defId] : null;
-
-  return (
+    return (
     // The jar stays a column even on a wide window. It is one object and a
     // button; stretching it to fifteen hundred pixels makes a short, very wide
     // rectangle with a heart lost in the middle of it. The screens with two
@@ -246,102 +207,61 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
       <NewsTicker stage={derived.stage} />
 
-      {/* The jar */}
+      {/* The jar itself, with the hearts you can count in it, and the pets on
+          the table around it rather than swimming inside it. */}
       <div
         data-tour="vessel"
-        className={`relative h-44 overflow-hidden rounded-card border-2 ${shake ? "jar-shake" : ""} ${slosh ? "jar-slosh" : ""}`}
-        style={{ backgroundColor: vessel.backdrop, borderColor: vessel.glass }}
+        className={`relative flex items-end justify-center gap-1 rounded-card border border-line bg-white px-2 pt-3 ${shake ? "jar-shake" : ""} ${slosh ? "jar-slosh" : ""}`}
+        style={{ backgroundColor: jar.backdrop }}
       >
-        {/* Water */}
-        <div
-          className="absolute inset-x-0 bottom-0 transition-[top] duration-500"
-          style={{ top: `${surfaceTop}%`, backgroundColor: water, opacity: 0.85 }}
-          aria-hidden="true"
+        {/* Her side of the table */}
+        <span className="flex w-16 shrink-0 flex-wrap items-end justify-end gap-0.5 pb-6">
+          {otters.map((creature) => {
+            const def = CREATURE_BY_ID[creature.defId];
+            if (!def) return null;
+            return (
+              <span
+                key={creature.id}
+                title={`${creature.name ?? def.name}, level ${creature.level}`}
+                className={reduced ? "" : "float-bob"}
+              >
+                <CreatureGlyph line="otter" color={def.color} className="h-7 w-7" />
+              </span>
+            );
+          })}
+        </span>
+
+        <TheJar
+          hearts={state.wallet.hearts}
+          jar={jar}
+          capacity={derived.jarCapacity}
+          reducedMotion={reduced}
+          className="h-48 w-40 shrink-0"
         />
-        {/* Surface line */}
-        <div
-          className="absolute inset-x-0 h-0.5 transition-[top] duration-500"
-          style={{ top: `${surfaceTop}%`, backgroundColor: vessel.accent, opacity: 0.5 }}
+
+        {/* His side of the table */}
+        <span className="flex w-16 shrink-0 flex-wrap items-end justify-start gap-0.5 pb-6">
+          {crabs.map((creature) => {
+            const def = CREATURE_BY_ID[creature.defId];
+            if (!def) return null;
+            return (
+              <span
+                key={creature.id}
+                title={`${creature.name ?? def.name}, level ${creature.level}`}
+                className={reduced ? "" : "scuttle"}
+              >
+                <CreatureGlyph line="crab" color={def.color} className="h-7 w-7" />
+              </span>
+            );
+          })}
+        </span>
+
+        {/* The shelf the jar stands on. */}
+        <span
           aria-hidden="true"
+          className="absolute inset-x-3 bottom-2 h-1.5 rounded-full"
+          style={{ backgroundColor: jar.shelf, opacity: 0.7 }}
         />
-        {/* Floor */}
-        <div className="absolute inset-x-0 bottom-0 h-5" style={{ backgroundColor: vessel.accent, opacity: 0.35 }} aria-hidden="true" />
-
-        {/* Otters ride the surface */}
-        {otters.map((creature, index) => {
-          const def = CREATURE_BY_ID[creature.defId]!;
-          return (
-            <span
-              key={creature.id}
-              title={`${creature.name ?? def.name}, level ${creature.level}`}
-              className={`absolute ${reduced ? "" : "float-bob"}`}
-              style={{
-                left: `${14 + index * (72 / Math.max(1, otters.length))}%`,
-                top: `${surfaceTop}%`,
-                marginTop: "-14px",
-              }}
-            >
-              <CreatureGlyph line="otter" color={def.color} className="h-9 w-9" />
-              {paired.has(creature.id) && (
-                <span
-                  aria-hidden="true"
-                  className="absolute -right-1 top-1/2 h-0.5 w-3"
-                  style={{ backgroundColor: vessel.accent }}
-                />
-              )}
-            </span>
-          );
-        })}
-
-        {/* Crabs walk the floor */}
-        {crabs.map((creature, index) => {
-          const def = CREATURE_BY_ID[creature.defId]!;
-          return (
-            <span
-              key={creature.id}
-              title={`${creature.name ?? def.name}, level ${creature.level}`}
-              className={`absolute bottom-3 ${reduced ? "" : "scuttle"}`}
-              style={{ left: `${12 + index * (74 / Math.max(1, crabs.length))}%` }}
-            >
-              <CreatureGlyph line="crab" color={def.color} className="h-8 w-8" />
-            </span>
-          );
-        })}
-
-        {/* What the otters cracked, on its way down */}
-        {state.settled.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => pickUp(item)}
-            aria-label={`Pick up a ${item.kind}`}
-            className="absolute h-7 w-7 rounded-full"
-            style={{
-              left: `${item.x}%`,
-              top: `calc(${surfaceTop}% + ${item.y * (95 - surfaceTop)}%)`,
-              backgroundColor: item.kind === "pearl" ? "#e8e0d0" : item.kind === "glass" ? "#7fb0a8" : "#d0a880",
-              opacity: 0.9,
-            }}
-          />
-        ))}
-
-        {/* Something drifted in */}
-        {state.drifter && drifterDef && (
-          <button
-            onClick={hitDrifter}
-            aria-label={`Open the ${drifterDef.name}`}
-            className="absolute flex h-14 w-14 flex-col items-center justify-center rounded-xl text-[0.55rem] font-bold text-white"
-            style={{
-              left: `${state.drifter.x}%`,
-              top: `${state.drifter.y}%`,
-              backgroundColor: drifterDef.color,
-            }}
-          >
-            {drifterDef.name.split(" ")[0]}
-            <span className="mt-0.5 text-[0.6rem] opacity-90">
-              {state.drifter.taps - state.drifter.tapsDone}
-            </span>
-          </button>
-        )}
 
         {/* Popups */}
         {popups.map((popup) => (
@@ -354,18 +274,25 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
             style={{
               left: `${popup.x}%`,
               top: `${popup.y}%`,
-              color: popup.kind === "mega" ? "#c99a3f" : popup.kind === "bonus" ? "#3f7a80" : vessel.accent,
+              color: popup.kind === "mega" ? "#c99a3f" : popup.kind === "bonus" ? "#3f7a80" : accent,
             }}
           >
             {popup.text}
           </span>
         ))}
 
-        {/* Level */}
-        <p className="absolute left-2.5 top-2 text-[0.65rem] font-semibold text-berry-soft">
-          {vessel.name} · {formatNumber(state.wallet.hearts, format)}
-          {overflowing ? " over" : ` / ${formatNumber(derived.capacity, format)}`}
+        {/* What it is, and how close it is to full. */}
+        <p className="absolute left-3 top-2 text-[0.65rem] font-semibold text-berry-soft">
+          {jar.name} · {formatNumber(state.wallet.hearts, format)}
+          {derived.jarCapacity === Infinity
+            ? ""
+            : ` / ${formatNumber(derived.jarCapacity, format)}`}
         </p>
+        {readyToSeal && (
+          <span className="absolute right-3 top-2 rounded-full bg-rose-dark px-2 py-0.5 text-[0.6rem] font-bold text-white">
+            Full
+          </span>
+        )}
       </div>
 
       {/* The heart */}
@@ -375,7 +302,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           onContextMenu={(e) => e.preventDefault()}
           aria-label="Tap the heart"
           className="touch-draw relative flex h-32 w-32 select-none items-center justify-center rounded-full"
-          style={{ color: vessel.accent }}
+          style={{ color: accent }}
         >
           <span
             aria-hidden="true"
@@ -383,7 +310,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
             style={{
               width: `${54 + (1 - ringPhase) * 44}%`,
               height: `${54 + (1 - ringPhase) * 44}%`,
-              borderColor: ringPhase > 0.8 ? "#c99a3f" : vessel.accent,
+              borderColor: ringPhase > 0.8 ? "#c99a3f" : accent,
               opacity: reduced ? 0.25 : 0.3 + ringPhase * 0.4,
             }}
           />
@@ -394,7 +321,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               aria-hidden="true"
               className="auto-pulse absolute h-24 w-24 rounded-full border-2"
               style={{
-                borderColor: vessel.accent,
+                borderColor: accent,
                 animationDuration: `${Math.max(160, 1000 / derived.autoTapsPerSecond)}ms`,
               }}
             />
@@ -404,12 +331,12 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               key={ripple}
               aria-hidden="true"
               className="tap-ring absolute h-28 w-28 rounded-full border-2"
-              style={{ borderColor: vessel.accent }}
+              style={{ borderColor: accent }}
             />
           )}
           <HeartIcon className="h-20 w-20 drop-shadow" />
         </button>
-        <p className="text-xs font-semibold" style={{ color: vessel.accent }}>
+        <p className="text-xs font-semibold" style={{ color: accent }}>
           {state.auto.tap
             ? `Tapping for you, ${formatNumber(derived.autoTapsPerSecond, format)} a second`
             : ringPhase > 0.8
@@ -429,7 +356,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         const stats: { label: string; value: string; tone?: "accent" }[] = [
           { label: "Per tap", value: formatNumber(derived.heartsPerClick, format), tone: "accent" },
         ];
-        if (has("chain")) {
+        if (derived.heartsPerSecond > 0) {
           stats.push({ label: "Per second", value: formatNumber(derived.heartsPerSecond, format) });
         }
         if (state.combo > 0) {
@@ -438,11 +365,11 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         if (has("upgrades")) {
           stats.push({ label: "Critical", value: formatPercent(derived.critChance, 1) });
         }
-        if (has("chain")) {
-          stats.push({ label: "Lifetime", value: formatNumber(state.lifetime.hearts, format) });
+        if (has("shelf")) {
+          stats.push({ label: "On the shelf", value: formatNumber(state.shelfHearts, format) });
         }
-        if (has("tide")) {
-          stats.push({ label: "Tide", value: `${Math.round(state.tideLevel)}%` });
+        if (has("seal")) {
+          stats.push({ label: "Jars sealed", value: `${state.stats.jarsSealed}` });
         }
         const columns = Math.min(3, stats.length);
         return (
@@ -454,17 +381,57 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         );
       })()}
 
-      {/* Tide, which is the shared one */}
-      {has("tide") && state.tideLevel > 0 && (
+      {/* Warmth, which is the shared one */}
+      {has("us") && state.tideLevel > 0 && (
         <div className="rounded-card border border-line bg-white p-3">
           <div className="mb-1 flex items-baseline justify-between text-xs">
-            <span className="font-semibold text-plum">Tide</span>
+            <span className="font-semibold text-plum">Warmth</span>
             <span className="text-berry-soft">
               +{Math.round(Math.min(1, state.tideLevel / 100) * 60)}% to everything
             </span>
           </div>
           <Bar value={state.tideLevel} max={100} color="#7c6ba8" />
         </div>
+      )}
+
+      {/* Sealing, which is the loop the whole game runs on. */}
+      {has("seal") && (
+        <div className="rounded-card border border-line bg-white p-3.5">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="font-display text-lg text-plum">
+              {readyToSeal ? "The jar is full" : "Filling"}
+            </span>
+            <span className="text-xs text-berry-soft">
+              {readyToSeal
+                ? `${derived.ribbonsIfSealed} ribbon${derived.ribbonsIfSealed === 1 ? "" : "s"}`
+                : `${Math.floor(full * 100)}%`}
+            </span>
+          </div>
+          <Bar value={full * 100} max={100} color={jar.glass} label="How full the jar is" />
+          <button
+            disabled={!readyToSeal}
+            onClick={() =>
+              mutate((draft) => {
+                const result = sealCurrentJar(draft, Date.now());
+                if (result.message) notify({ kind: "reward", title: result.message });
+                if (result.ok) {
+                  cue("unlock");
+                  buzz([20, 40, 20]);
+                }
+              })
+            }
+            className={`pressable mt-2.5 w-full rounded-full py-2 text-sm font-bold ${
+              readyToSeal ? "bg-rose-dark text-white" : "bg-cream text-berry-soft"
+            }`}
+          >
+            {readyToSeal ? "Seal it and put it on the shelf" : "Not full yet"}
+          </button>
+        </div>
+      )}
+
+      {/* The colours, once they mean something. */}
+      {has("colours") && state.wallet.hearts >= 10 && (
+        <HeartLadder hearts={state.wallet.hearts} />
       )}
 
       {/* Buffs */}

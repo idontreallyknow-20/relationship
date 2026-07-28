@@ -313,7 +313,7 @@ export function AbilitiesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Abilities" hint={`${formatNumber(state.wallet.pearls, format)} pearls`}>
+      <Section title="Abilities" hint={`${formatNumber(state.wallet.ribbons, format)} pearls`}>
         <p className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-berry-soft">
           Pearls come out of shells the otters crack.
         </p>
@@ -337,7 +337,7 @@ export function AbilitiesTab() {
               </li>
             );
           }
-          const affordable = state.wallet.pearls >= cost && skill.level < def.maxLevel;
+          const affordable = state.wallet.ribbons >= cost && skill.level < def.maxLevel;
           return (
             <li key={def.id} className="rounded-card border border-line bg-white p-3.5 shadow-soft">
               <div className="flex items-start gap-2">

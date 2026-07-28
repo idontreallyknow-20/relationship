@@ -305,7 +305,7 @@ function CreatureSheet({ creature, onClose }: { creature: CreatureInstance; onCl
             <Button
               size="sm"
               className="mt-2"
-              disabled={live.level < def.evolveAt.level || state.wallet.glass < def.evolveAt.glass}
+              disabled={live.level < def.evolveAt.level || state.wallet.ribbons < def.evolveAt.glass}
               onClick={() =>
                 mutate((draft) => {
                   const result = growCreature(draft, live.id);
@@ -403,7 +403,7 @@ function ItemsView() {
         options={[{ value: "rock", label: "Rocks" }, { value: "shell", label: "Shells" }]}
       />
 
-      <Section title="Make one" hint={`${formatNumber(state.wallet.glass, format)} sea glass`}>
+      <Section title="Make one" hint={`${formatNumber(state.wallet.ribbons, format)} sea glass`}>
         <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
           {RARITIES.map((r) => (
             <button
@@ -419,7 +419,7 @@ function ItemsView() {
         </div>
         <Button
           className="mt-2"
-          disabled={state.wallet.glass < CRAFT_COST[rarity]}
+          disabled={state.wallet.ribbons < CRAFT_COST[rarity]}
           onClick={() =>
             mutate((draft) => {
               const result = craftItem(draft, kind, rarity);

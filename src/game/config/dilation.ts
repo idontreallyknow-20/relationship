@@ -108,13 +108,13 @@ export const DILATION_UPGRADES: DilationUpgradeDef[] = [
     id: "t_depth",
     name: "Slow Water",
     description: "Every tier of the chain, far stronger.",
-    baseCost: 3, growth: 1.7, max: 100, kind: "mulLinear", stat: "depthPower", per: 2,
+    baseCost: 3, growth: 1.7, max: 100, kind: "mulLinear", stat: "shelfRate", per: 2,
   },
   {
     id: "t_speed",
     name: "The Long Afternoon",
     description: "Everything in the jar moves faster, which is the joke.",
-    baseCost: 5, growth: 1.75, max: 60, kind: "mulLinear", stat: "tideSpeed", per: 1.5,
+    baseCost: 5, growth: 1.75, max: 60, kind: "mulLinear", stat: "petSpeed", per: 1.5,
   },
   {
     id: "t_tap",

@@ -36,13 +36,13 @@ const STEPS: Step[] = [
     anchor: null,
     tab: "jar",
     title: "Your jar",
-    body: "One jar, two people. Everything either of you does fills the same water.",
+    body: "One jar, two people. Every heart either of you puts in goes in the same jar.",
   },
   {
     anchor: "tap",
     tab: "jar",
     title: "Tap the heart",
-    body: "That is the whole game for now. Tap on the beat and it pays more. Everything else arrives on its own, one thing at a time.",
+    body: "That is the whole game for now. Tap on the beat and it pays more. Ten hearts of one colour become one of the next, so the jar can hold far more than you could count.",
   },
 ];
 
