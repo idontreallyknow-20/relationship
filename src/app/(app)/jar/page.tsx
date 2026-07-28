@@ -77,7 +77,7 @@ const GROUPS = [
     id: "more",
     label: "More",
     tabs: [
-      { id: "vessels", label: "Jars", needs: "vessels" },
+      { id: "vessels", label: "Jars and shelf", needs: "shelf" },
       { id: "achievements", label: "Achievements", needs: "missions" },
       { id: "collections", label: "Collections", needs: "pets" },
       { id: "codex", label: "Codex", needs: "pets" },

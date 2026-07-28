@@ -22,7 +22,8 @@ import {
 } from "@/game/config/resets";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import { buyableTree, meetsUnlock, resolveBuyCount, upgradeCost } from "@/game/formulas";
-import { buyResetUpgrade, buyUpgrade } from "@/game/actions";
+import { buyResetUpgrade, buyShelfUpgrade, buyUpgrade } from "@/game/actions";
+import { SHELF_UPGRADES, shelfUpgradeCost } from "@/game/config/shelf";
 import { STAT_LABEL } from "@/game/config/upgrades";
 import { useToast } from "@/components/ui";
 import { TreeCanvas, type TreeNodeView } from "./tree/canvas";
@@ -155,6 +156,62 @@ export function ResetTreeGraph({ currency }: { currency: "moons" | "stars" | "su
       onBuy={(id) =>
         mutate((draft) => {
           const result = buyResetUpgrade(draft, id);
+          if (!result.ok) toast(result.message ?? "Cannot buy that");
+          else if (result.message) toast(result.message);
+        })
+      }
+    />
+  );
+}
+
+
+/**
+ * The shelf tree, bought with ribbons.
+ *
+ * Same canvas as the other seven. Every node here is about the loop it sits
+ * in, making sealing pay more, the shelf pay faster, or the next jar arrive
+ * sooner; a tree whose nodes could have gone in any other tree is a tree with
+ * no reason to exist.
+ */
+export function ShelfTreeGraph() {
+  const { state, mutate, version } = useGame();
+  const toast = useToast();
+
+  const nodes = useMemo<TreeNodeView[]>(() => {
+    const present = new Set(SHELF_UPGRADES.map((d) => d.id));
+    return SHELF_UPGRADES.map((def) => {
+      const level = state.shelfUpgrades[def.id] ?? 0;
+      const atMax = def.max !== Infinity && level >= def.max;
+      const cost = shelfUpgradeCost(def, level);
+      return {
+        id: def.id,
+        after: (def.after ?? []).filter((p) => present.has(p)),
+        name: def.name,
+        effect: def.description,
+        description: def.description,
+        level,
+        max: def.max,
+        cost,
+        buyCount: 1,
+        currencyShort: CURRENCY_BY_ID.ribbons?.short ?? "",
+        colour: CURRENCY_BY_ID.ribbons?.color ?? "var(--color-rose-dark)",
+        unlocked: true,
+        affordable: !atMax && state.wallet.ribbons >= cost,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
+
+  return (
+    <TreeCanvas
+      nodes={nodes}
+      label="shelf tree"
+      format={state.settings.numberFormat}
+      reducedMotion={state.settings.reducedMotion}
+      height={360}
+      onBuy={(id) =>
+        mutate((draft) => {
+          const result = buyShelfUpgrade(draft, id);
           if (!result.ok) toast(result.message ?? "Cannot buy that");
           else if (result.message) toast(result.message);
         })

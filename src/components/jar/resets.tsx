@@ -18,7 +18,7 @@ import { hasFlag } from "@/game/formulas";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import { Button, ConfirmDialog, SegmentedControl, useToast } from "@/components/ui";
 import { Bar, EmptyRow, Section, SpendButton } from "./bits";
-import { ResetTreeGraph } from "./tree";
+import { ResetTreeGraph, ShelfTreeGraph } from "./tree";
 
 export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
   const { state, mutate, version, now, notify } = useGame();
@@ -333,6 +333,13 @@ export function JarsTab() {
             Paying {formatNumber(derived.shelfIncome, format)} hearts a second
           </p>
         </div>
+      </Section>
+
+      <Section
+        title="The shelf tree"
+        hint={`${formatNumber(state.wallet.ribbons, format)} ribbons to spend`}
+      >
+        <ShelfTreeGraph />
       </Section>
 
       {next && (
