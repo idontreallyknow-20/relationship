@@ -49,6 +49,7 @@ export function earnHearts(state: GameState, amount: number, source: HeartSource
   addCurrency(state, "hearts", value);
   state.runHearts = safe(state.runHearts + value);
   state.eraHearts = safe(state.eraHearts + value);
+  state.seaHearts = safe(state.seaHearts + value);
   state.stats.sessionHearts = safe(state.stats.sessionHearts + value);
 
   const key = STAT_FOR_SOURCE[source];

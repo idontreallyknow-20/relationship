@@ -34,6 +34,7 @@ const TABS = [
   { id: "vessels", label: "Vessels" },
   { id: "tide", label: "Tide" },
   { id: "water", label: "New Water" },
+  { id: "sea", label: "The Sea" },
   { id: "us", label: "Us" },
   { id: "missions", label: "Missions" },
   { id: "challenges", label: "Challenges" },
@@ -125,6 +126,7 @@ function JarApp() {
         {tab === "vessels" && <VesselsTab />}
         {tab === "tide" && <ResetsTab layer="tide" />}
         {tab === "water" && <ResetsTab layer="water" />}
+        {tab === "sea" && <ResetsTab layer="sea" />}
         {tab === "us" && <UsTab />}
         {tab === "missions" && <MissionsTab />}
         {tab === "challenges" && <ChallengesTab />}

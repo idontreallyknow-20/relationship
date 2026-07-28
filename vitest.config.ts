@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     include: ["tests/unit/**/*.test.ts"],
     environment: "node",
+    // The balance suite plays hours of the game; it is slow on purpose.
+    testTimeout: 120_000,
   },
   resolve: {
     alias: {

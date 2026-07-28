@@ -4,7 +4,7 @@ import {
   type UnlockRule, type UpgradeDef,
 } from "./config/upgrades";
 import {
-  MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
+  DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, resetUpgradeCost, resetUpgradeMods,
 } from "./config/resets";
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
@@ -69,6 +69,9 @@ export function hasFlag(state: GameState, flag: string): boolean {
   }
   for (const def of STAR_UPGRADES) {
     if (def.flag === flag && (state.starUpgrades[def.id] ?? 0) > 0) return true;
+  }
+  for (const def of DROP_UPGRADES) {
+    if (def.flag === flag && (state.dropUpgrades[def.id] ?? 0) > 0) return true;
   }
   return false;
 }
@@ -183,6 +186,10 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     if (def) apply(bags, resetUpgradeMods(def, level));
   }
   for (const [id, level] of Object.entries(state.starUpgrades)) {
+    const def = RESET_UPGRADE_BY_ID[id];
+    if (def) apply(bags, resetUpgradeMods(def, level));
+  }
+  for (const [id, level] of Object.entries(state.dropUpgrades)) {
     const def = RESET_UPGRADE_BY_ID[id];
     if (def) apply(bags, resetUpgradeMods(def, level));
   }

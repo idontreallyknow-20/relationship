@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Waves, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  DEEPEN_MULTIPLIER, DEEPEN_REQUIREMENT, DEPTHS, depthBulkCost, tideBulkCost, tideSpeed,
+  DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthBulkCost, tideBulkCost, tideSpeed,
 } from "@/game/config/depths";
 import {
   buyAll, buyDepth, buyTide, canDeepen, deepen, deepestUnlocked, depthBuyCount, tideBuyCount,
@@ -53,6 +53,7 @@ export function DepthsTab() {
   const deepest = deepestUnlocked(state);
   const readyToDeepen = canDeepen(state);
   const towardDeepen = state.depths[deepest]?.bought ?? 0;
+  const needed = deepenRequirement(state.deepens);
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,7 +135,7 @@ export function DepthsTab() {
             <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-semibold text-plum">Go deeper</p>
               <p className="text-xs text-berry-soft">
-                {towardDeepen} of {DEEPEN_REQUIREMENT} {DEPTHS[deepest]?.unit ?? ""} bought
+                {towardDeepen} of {needed} {DEPTHS[deepest]?.unit ?? ""} bought
               </p>
             </div>
           </div>
@@ -143,10 +144,10 @@ export function DepthsTab() {
             disabled={!readyToDeepen}
             onClick={() => setConfirmDeepen(true)}
           >
-            {readyToDeepen ? "Go deeper" : `Buy ${DEEPEN_REQUIREMENT - towardDeepen} more`}
+            {readyToDeepen ? "Go deeper" : `Buy ${needed - towardDeepen} more`}
           </Button>
           <p className="mt-1.5 text-center text-xs text-berry-soft">
-            Clears the chain and your hearts. Upgrades, creatures and everything else stay.
+            Clears the chain. Your hearts, upgrades and creatures stay.
           </p>
         </div>
       </Section>
@@ -154,7 +155,7 @@ export function DepthsTab() {
       <ConfirmDialog
         open={confirmDeepen}
         title="Go deeper?"
-        message={`The chain and your hearts go. Everything gets ${DEEPEN_MULTIPLIER} times stronger, and there may be something further down.`}
+        message={`The chain goes. Everything gets ${DEEPEN_MULTIPLIER} times stronger, and there may be something further down.`}
         confirmLabel="Go deeper"
         onConfirm={() => {
           setConfirmDeepen(false);

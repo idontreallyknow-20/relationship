@@ -32,7 +32,7 @@ import {
 } from "./engine";
 import {
   buyCheapest, collectGift, grantTogether, receiveGift, recordSameEvening, refreshMissions,
-  runAutobuyers,
+  runAutobuyers, runDeepAutomation,
 } from "./actions";
 import { drainRewards } from "./rewards-inbox";
 import {
@@ -350,6 +350,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       // The autobuyers, which are free and on by choice, then the deeper
       // automation that the star tree unlocks.
       runAutobuyers(state, now);
+      runDeepAutomation(state, now);
       if (hasFlag(state, "auto_upgrade")) buyCheapest(state);
 
       const unlocked = checkAchievements(state, now);

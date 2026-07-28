@@ -19,6 +19,30 @@ export interface ResetLayerDef {
 
 export const TIDE_REQUIREMENT = 1e9;
 export const WATER_REQUIREMENT = 1e15;
+/** The last rung, and reachable only after several changes of water. */
+export const SEA_REQUIREMENT = 1e30;
+
+/**
+ * Every rung asks for more than the last one did.
+ *
+ * Without this the layers collapse: the moment a run crosses the flat
+ * requirement it can reset, and each reset pays a currency that buys
+ * multipliers that make the next crossing instant. Simulated, that fired
+ * fourteen tide changes in the thirteenth minute and reached the floating
+ * point ceiling in fifteen. The rising bar is the brake, and it is what turns
+ * an afternoon into months.
+ */
+export function tideRequirement(tideChanges: number): number {
+  return TIDE_REQUIREMENT * Math.pow(60, tideChanges);
+}
+
+export function waterRequirement(newWaters: number): number {
+  return WATER_REQUIREMENT * Math.pow(1e5, newWaters);
+}
+
+export function seaRequirement(seas: number): number {
+  return SEA_REQUIREMENT * Math.pow(1e6, seas);
+}
 
 /**
  * Moons scale with the cube root of the run, so a long run is worth more than
@@ -26,8 +50,9 @@ export const WATER_REQUIREMENT = 1e15;
  * fed both count.
  */
 export function moonGain(state: GameState, multiplier = 1): number {
-  if (state.runHearts < TIDE_REQUIREMENT) return 0;
-  const base = Math.pow(state.runHearts / TIDE_REQUIREMENT, 1 / 3) * 8;
+  const bar = tideRequirement(state.tideChanges);
+  if (state.runHearts < bar) return 0;
+  const base = Math.pow(state.runHearts / bar, 1 / 3) * 8;
   const comboBonus = 1 + Math.min(1, state.stats.bestCombo / 400) * 0.3;
   const activeBonus = 1 + Math.min(1, state.stats.heartsFromClicks / Math.max(1, state.runHearts)) * 0.35;
   const creatureBonus = 1 + Math.min(1, Object.keys(state.creatures).length / 14) * 0.25;
@@ -35,11 +60,26 @@ export function moonGain(state: GameState, multiplier = 1): number {
 }
 
 export function starGain(state: GameState, multiplier = 1): number {
-  if (state.eraHearts < WATER_REQUIREMENT) return 0;
-  const base = Math.pow(state.eraHearts / WATER_REQUIREMENT, 1 / 4) * 4;
+  const bar = waterRequirement(state.newWaters);
+  if (state.eraHearts < bar) return 0;
+  const base = Math.pow(state.eraHearts / bar, 1 / 4) * 4;
   const tideBonus = 1 + Math.min(2, state.tideChanges / 20);
   const codexBonus = 1 + Math.min(0.5, state.codex.length / 14);
   return Math.floor(base * tideBonus * codexBonus * multiplier);
+}
+
+/**
+ * Drops scale with the fifth root, which is flatter than the layers above it.
+ * At this depth the numbers are enormous, and anything steeper would hand out
+ * the whole tree on the first reset.
+ */
+export function dropGain(state: GameState, multiplier = 1): number {
+  const bar = seaRequirement(state.seas);
+  if (state.seaHearts < bar) return 0;
+  const base = Math.pow(state.seaHearts / bar, 1 / 5) * 3;
+  const waterBonus = 1 + Math.min(3, state.newWaters / 10);
+  const depthBonus = 1 + Math.min(1, state.deepens / 100);
+  return Math.floor(base * waterBonus * depthBonus * multiplier);
 }
 
 export interface ResetUpgradeDef {
@@ -115,9 +155,6 @@ export const STAR_UPGRADES: ResetUpgradeDef[] = [
   { id: "s_stars", name: "More Stars", description: "Every new water pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
 ];
 
-export const RESET_UPGRADE_BY_ID: Record<string, ResetUpgradeDef> = Object.fromEntries(
-  [...MOON_UPGRADES, ...STAR_UPGRADES].map((u) => [u.id, u]),
-);
 
 export function resetUpgradeMods(def: ResetUpgradeDef, level: number): Mods {
   if (level <= 0 || def.kind === "flag" || !def.stat || !def.per) return {};
@@ -129,6 +166,38 @@ export function resetUpgradeMods(def: ResetUpgradeDef, level: number): Mods {
 export function resetUpgradeCost(def: ResetUpgradeDef, level: number): number {
   return Math.ceil(def.baseCost * Math.pow(def.growth, level));
 }
+
+/**
+ * The drop tree, which is the only place the shape of the game changes rather
+ * than its numbers: it lengthens the chain, automates the inner loop, and
+ * removes the ceilings the layers above it live under.
+ */
+export const DROP_UPGRADES: ResetUpgradeDef[] = [
+  { id: "d_all", name: "The Whole Sea", description: "Everything, everywhere.", currency: "drops", baseCost: 1, growth: 1.5, max: 200, kind: "mulLinear", stat: "all", per: 1 },
+  { id: "d_depth", name: "Deep Pressure", description: "Every depth, enormously stronger.", currency: "drops", baseCost: 2, growth: 1.5, max: 200, kind: "mulLinear", stat: "depthPower", per: 3 },
+  { id: "d_tide", name: "The Long Pull", description: "Everything moves far faster.", currency: "drops", baseCost: 3, growth: 1.55, max: 100, kind: "mulLinear", stat: "tideSpeed", per: 1 },
+  { id: "d_tap", name: "Countless Hands", description: "The jar taps for you constantly.", currency: "drops", baseCost: 2, growth: 1.45, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 500 },
+  { id: "d_autobuyer", name: "Tireless", description: "Autobuyers run as fast as the game ticks.", currency: "drops", baseCost: 4, growth: 1.5, max: 200, kind: "add", stat: "autobuyerSpeed", per: 100 },
+  { id: "d_moons", name: "Bright Moons", description: "Tide changes pay vastly more.", currency: "drops", baseCost: 6, growth: 1.6, max: 100, kind: "mulLinear", stat: "moonGain", per: 1 },
+  { id: "d_stars", name: "Whole Sky", description: "New water pays vastly more.", currency: "drops", baseCost: 8, growth: 1.6, max: 100, kind: "mulLinear", stat: "starGain", per: 1 },
+  { id: "d_drops", name: "It Rains", description: "Every future sea pays more.", currency: "drops", baseCost: 12, growth: 1.7, max: 60, kind: "mulLinear", stat: "dropGain", per: 0.5 },
+  { id: "d_deepen", name: "No Bottom", description: "Deepening pays far more.", currency: "drops", baseCost: 10, growth: 1.65, max: 60, kind: "mulLinear", stat: "deepenGain", per: 1 },
+  { id: "d_offline", name: "It Keeps Going", description: "Far more time away counts, and it counts for more.", currency: "drops", baseCost: 5, growth: 1.5, max: 80, kind: "add", stat: "offlineHours", per: 12 },
+
+  // The four that lengthen the chain. This is what the layer is for.
+  { id: "d_depth_1", name: "The Trench", description: "One more depth, below The Current.", currency: "drops", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1 },
+  { id: "d_depth_2", name: "The Dark", description: "Another one, below that.", currency: "drops", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_1", 1] },
+  { id: "d_depth_3", name: "The Floor Of It", description: "Deeper still.", currency: "drops", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_2", 1] },
+  { id: "d_depth_4", name: "Whatever Is Under That", description: "The last one there is.", currency: "drops", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_3", 1] },
+
+  { id: "d_auto_deepen", name: "It Deepens Itself", description: "The jar goes deeper on its own the moment it can.", currency: "drops", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "auto_deepen" },
+  { id: "d_auto_tide", name: "It Turns Itself", description: "Tide changes happen on their own.", currency: "drops", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },
+  { id: "d_keep_depths", name: "What The Water Remembers", description: "Deepenings survive a change of water.", currency: "drops", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_deepens" },
+];
+
+export const RESET_UPGRADE_BY_ID: Record<string, ResetUpgradeDef> = Object.fromEntries(
+  [...MOON_UPGRADES, ...STAR_UPGRADES, ...DROP_UPGRADES].map((u) => [u.id, u]),
+);
 
 export const RESET_LAYERS: ResetLayerDef[] = [
   {
@@ -176,6 +245,27 @@ export const RESET_LAYERS: ResetLayerDef[] = [
       "Stars and star upgrades",
       "Lifetime statistics and records",
       "Question history and everything else in the app",
+    ],
+  },
+  {
+    id: "sea",
+    name: "The Sea",
+    verb: "Let it all go",
+    currency: "drops",
+    blurb: "There was never a jar. There was only ever this.",
+    requirement: SEA_REQUIREMENT,
+    gain: dropGain,
+    resets: [
+      "Everything a change of water takes",
+      "Moons, stars, and both of their trees",
+      "Every change of water and tide you have made",
+      "The chain, and how deep the jar goes",
+    ],
+    keeps: [
+      "Drops and the drop tree",
+      "Creatures, the codex, collections and cosmetics",
+      "Memories, and everything the two of you did together",
+      "Achievements, statistics and the old jar",
     ],
   },
 ];

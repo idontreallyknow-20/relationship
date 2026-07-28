@@ -6,39 +6,93 @@ import { useMemo, useState } from "react";
 import { Droplets, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  MOON_UPGRADES, RESET_LAYERS, STAR_UPGRADES, TIDE_REQUIREMENT, WATER_REQUIREMENT,
-  resetUpgradeCost, type ResetUpgradeDef,
+  DROP_UPGRADES, MOON_UPGRADES, RESET_LAYERS, STAR_UPGRADES, resetUpgradeCost,
+  seaRequirement, tideRequirement, waterRequirement, type ResetUpgradeDef,
 } from "@/game/config/resets";
 import { VESSELS } from "@/game/config/vessels";
 import {
-  canChangeTide, canChangeWater, changeTide, changeWater, buyResetUpgrade,
-  moveTo, tidePreview, unlockVessel, waterPreview,
+  canChangeTide, canChangeWater, canLetGo, changeTide, changeWater, buyResetUpgrade,
+  letGo, moveTo, seaPreview, tidePreview, unlockVessel, waterPreview,
 } from "@/game/actions";
 import { hasFlag } from "@/game/formulas";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import { Button, ConfirmDialog, useToast } from "@/components/ui";
 import { Bar, EmptyRow, Section, SpendButton } from "./bits";
 
-export function ResetsTab({ layer }: { layer: "tide" | "water" }) {
+export function ResetsTab({ layer }: { layer: "tide" | "water" | "sea" }) {
   const { state, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const format = state.settings.numberFormat;
   const def = RESET_LAYERS.find((l) => l.id === layer)!;
 
-  const isTide = layer === "tide";
+  // Three rungs of one shape rather than three screens. Each differs only in
+  // which counter it reads, which tree it spends into, and what stops it.
+  const rung = {
+    tide: {
+      gain: tidePreview,
+      ready: canChangeTide,
+      current: state.runHearts,
+      requirement: tideRequirement(state.tideChanges),
+      upgrades: MOON_UPGRADES,
+      levels: state.moonUpgrades,
+      startedAt: state.runStartedAt,
+      count: state.tideChanges,
+      fastest: state.stats.fastestTideChangeMs,
+      countLabel: "Tide changes",
+      progressLabel: "This run",
+      locked: null as string | null,
+      run: (draft: typeof state, at: number) => changeTide(draft, at),
+    },
+    water: {
+      gain: waterPreview,
+      ready: canChangeWater,
+      current: state.eraHearts,
+      requirement: waterRequirement(state.newWaters),
+      upgrades: STAR_UPGRADES,
+      levels: state.starUpgrades,
+      startedAt: state.eraStartedAt,
+      count: state.newWaters,
+      fastest: state.stats.fastestNewWaterMs,
+      countLabel: "Changes of water",
+      progressLabel: "This era",
+      locked: hasFlag(state, "new_water")
+        ? null
+        : "New Water is a moon upgrade near the bottom of that tree.",
+      run: (draft: typeof state, at: number) => changeWater(draft, at),
+    },
+    sea: {
+      gain: seaPreview,
+      ready: canLetGo,
+      current: state.seaHearts,
+      requirement: seaRequirement(state.seas),
+      upgrades: DROP_UPGRADES,
+      levels: state.dropUpgrades,
+      startedAt: state.seaStartedAt,
+      count: state.seas,
+      fastest: null,
+      countLabel: "Seas",
+      progressLabel: "Since the last one",
+      locked: state.newWaters >= 3
+        ? null
+        : `Change the water three times first. You have done it ${state.newWaters}.`,
+      run: (draft: typeof state, at: number) => letGo(draft, at),
+    },
+  }[layer];
+
   const gain = useMemo(
-    () => (isTide ? tidePreview(state) : waterPreview(state)),
+    () => rung.gain(state),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, isTide],
+    [version, layer],
   );
-  const ready = isTide ? canChangeTide(state) : canChangeWater(state);
-  const current = isTide ? state.runHearts : state.eraHearts;
-  const requirement = isTide ? TIDE_REQUIREMENT : WATER_REQUIREMENT;
-  const upgrades = isTide ? MOON_UPGRADES : STAR_UPGRADES;
-  const levels = isTide ? state.moonUpgrades : state.starUpgrades;
-  const elapsed = now - (isTide ? state.runStartedAt : state.eraStartedAt);
-  const locked = !isTide && !hasFlag(state, "new_water");
+  const ready = rung.ready(state);
+  const current = rung.current;
+  const requirement = rung.requirement;
+  const upgrades = rung.upgrades;
+  const levels = rung.levels;
+  const elapsed = now - rung.startedAt;
+  const locked = rung.locked;
+  const isTide = layer === "tide";
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,14 +108,12 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" }) {
         </div>
 
         {locked ? (
-          <p className="mt-3 rounded-xl bg-cream px-3.5 py-2.5 text-sm text-berry-soft">
-            New Water is a moon upgrade near the bottom of that tree.
-          </p>
+          <p className="mt-3 rounded-xl bg-cream px-3.5 py-2.5 text-sm text-berry-soft">{locked}</p>
         ) : (
           <>
             <div className="mt-3 space-y-1">
               <div className="flex items-baseline justify-between text-xs text-berry-soft">
-                <span>{isTide ? "This run" : "This era"}</span>
+                <span>{rung.progressLabel}</span>
                 <span>{formatNumber(current, format)} / {formatNumber(requirement, format)}</span>
               </div>
               <Bar value={current} max={requirement} label={`Progress toward ${def.name}`} />
@@ -70,14 +122,10 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" }) {
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
               <Box label="Would pay" value={formatNumber(gain, format)} />
               <Box label="So far" value={formatDurationShort(elapsed)} />
-              <Box label={isTide ? "Tide changes" : "Changes of water"} value={`${isTide ? state.tideChanges : state.newWaters}`} />
+              <Box label={rung.countLabel} value={`${rung.count}`} />
               <Box
                 label="Fastest"
-                value={
-                  (isTide ? state.stats.fastestTideChangeMs : state.stats.fastestNewWaterMs)
-                    ? formatDurationShort((isTide ? state.stats.fastestTideChangeMs : state.stats.fastestNewWaterMs)!)
-                    : "not yet"
-                }
+                value={rung.fastest ? formatDurationShort(rung.fastest) : "not yet"}
               />
             </div>
 
@@ -109,7 +157,7 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" }) {
       </div>
 
       <Section
-        title={`${def.currency === "moons" ? "Moon" : "Star"} upgrades`}
+        title={`${def.currency === "moons" ? "Moon" : def.currency === "drops" ? "Drop" : "Star"} upgrades`}
         hint={`${formatNumber(state.wallet[def.currency], format)} to spend`}
       >
         <ul className="flex flex-col gap-2">
@@ -144,8 +192,9 @@ export function ResetsTab({ layer }: { layer: "tide" | "water" }) {
         confirmLabel={def.verb}
         onConfirm={() => {
           setConfirming(false);
+          const at = Date.now();
           mutate((draft) => {
-            const result = isTide ? changeTide(draft, Date.now()) : changeWater(draft, Date.now());
+            const result = rung.run(draft, at);
             if (result.ok) notify({ kind: "reward", title: result.message ?? def.name });
             else toast(result.message ?? "Cannot do that");
           });

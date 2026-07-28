@@ -35,11 +35,45 @@ export interface DepthDef {
 }
 
 /**
- * Ten purchases and the eleventh costs about a hundred times the first. Steep
- * enough that reaching further down is always tempting, shallow enough that
- * the next one is never far away.
+ * How many you buy at one price before the price steps up.
+ *
+ * The cost rising on every single purchase was the whole early-game problem:
+ * twenty otters at 1.6x each came to two hundred thousand hearts, which at
+ * starting income is two days of waiting for the first deepening. Stepping the
+ * price every ten purchases instead means the first twenty are cheap, the
+ * hundredth is dear, and there is no wall in between.
  */
-const GROWTH = 1.6;
+const TIER_SIZE = 10;
+
+/** What the price multiplies by at each step of ten. */
+const GROWTH = 3.2;
+
+/**
+ * How fast one of anything makes the thing above it, per second.
+ *
+ * This is the single most sensitive number in the game. At 1 the chain reached
+ * the floating point ceiling inside half an hour of play; the compounding is
+ * seven layers deep, so a factor here is that factor to the seventh power by
+ * the time it arrives as hearts. Roughly eight of a depth to make one of the
+ * depth above each second is slow enough to last months and fast enough to
+ * watch.
+ */
+const BASE_POWER = 0.12;
+
+/**
+ * How much slower each depth is than the one above it.
+ *
+ * Without this every depth ran at the same rate, and eight equal layers make
+ * hearts grow as a degree-seven polynomial in time: measured, that reached the
+ * floating point ceiling in fourteen minutes no matter how the costs were
+ * priced. Deeper things being individually slower is both the obvious fiction
+ * and the thing that makes the curve survive a long game.
+ */
+const POWER_FALLOFF = 0.6;
+
+function powerFor(tier: number): number {
+  return BASE_POWER * Math.pow(POWER_FALLOFF, tier - 1);
+}
 
 /**
  * Each depth starts far dearer than the one above. This is what makes the
@@ -56,7 +90,7 @@ export const DEPTHS: DepthDef[] = [
     color: "#a87f6a",
     baseCost: 10,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(1),
   },
   {
     tier: 2,
@@ -67,7 +101,7 @@ export const DEPTHS: DepthDef[] = [
     color: "#8a5a4a",
     baseCost: 100,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(2),
   },
   {
     tier: 3,
@@ -76,9 +110,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "fronds",
     blurb: "It grows where the light still reaches, and the crabs live in it.",
     color: "#5d7f5a",
-    baseCost: 1e4,
+    baseCost: 1_200,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(3),
     mods: { mul: { collectValue: 1.05 } },
   },
   {
@@ -88,9 +122,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "clams",
     blurb: "Shut, mostly. What they open for, the kelp takes root in.",
     color: "#8f8299",
-    baseCost: 1e7,
+    baseCost: 4e4,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(4),
     mods: { mul: { pearlGain: 1.1 } },
   },
   {
@@ -100,9 +134,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "urchins",
     blurb: "Slow, spined, and patient. The clams grow on what they leave.",
     color: "#6b5b8f",
-    baseCost: 1e11,
+    baseCost: 2e6,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(5),
     mods: { mul: { crackValue: 1.08 } },
   },
   {
@@ -112,9 +146,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "rays",
     blurb: "They pass over the floor and stir it, and the urchins follow.",
     color: "#4a6b8f",
-    baseCost: 1e16,
+    baseCost: 5e8,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(6),
     mods: { mul: { all: 1.03 } },
   },
   {
@@ -124,9 +158,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "eels",
     blurb: "Down where the light gave up. Nothing here is in a hurry.",
     color: "#3d4a6b",
-    baseCost: 1e22,
+    baseCost: 2e11,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(7),
     mods: { mul: { all: 1.05 } },
   },
   {
@@ -136,9 +170,9 @@ export const DEPTHS: DepthDef[] = [
     unit: "currents",
     blurb: "Not alive. It moves everything above it anyway.",
     color: "#2a3350",
-    baseCost: 1e30,
+    baseCost: 1e15,
     growth: GROWTH,
-    power: 1,
+    power: powerFor(8),
     mods: { mul: { all: 1.08 } },
   },
 ];
@@ -152,31 +186,51 @@ export const BASE_DEPTH_COUNT = DEPTHS.length;
 
 /** Cost of the next one, given how many have been bought at this depth. */
 export function depthCost(def: DepthDef, bought: number): number {
-  return def.baseCost * Math.pow(def.growth, bought);
+  return def.baseCost * Math.pow(def.growth, Math.floor(bought / TIER_SIZE));
 }
 
 /**
  * Cost of `count` more in one go.
  *
- * The closed form of a geometric series, so buying a thousand at once is one
- * multiply rather than a thousand, which matters when an autobuyer is doing it
- * ten times a second.
+ * Walks the price steps rather than summing a geometric series, because the
+ * price is a staircase now, not a curve. The loop is bounded by how many times
+ * a number can triple before it leaves floating point, so a few hundred
+ * iterations at the absolute worst and single digits in practice.
  */
 export function depthBulkCost(def: DepthDef, bought: number, count: number): number {
   if (count <= 0) return 0;
-  const first = depthCost(def, bought);
-  if (def.growth === 1) return first * count;
-  return (first * (Math.pow(def.growth, count) - 1)) / (def.growth - 1);
+  let total = 0;
+  let done = 0;
+  let at = bought;
+  while (done < count) {
+    const room = TIER_SIZE - (at % TIER_SIZE);
+    const take = Math.min(room, count - done);
+    total += depthCost(def, at) * take;
+    if (!Number.isFinite(total)) return Infinity;
+    done += take;
+    at += take;
+  }
+  return total;
 }
 
-/** How many more you could afford with `hearts`, solved rather than looped. */
+/** How many more you could afford with `hearts`. */
 export function depthAffordable(def: DepthDef, bought: number, hearts: number): number {
   if (hearts <= 0) return 0;
-  const first = depthCost(def, bought);
-  if (hearts < first) return 0;
-  if (def.growth === 1) return Math.floor(hearts / first);
-  const n = Math.log(1 + (hearts * (def.growth - 1)) / first) / Math.log(def.growth);
-  return Math.max(0, Math.floor(n));
+  let budget = hearts;
+  let count = 0;
+  let at = bought;
+  // Bounded by the price outgrowing any possible budget.
+  for (let step = 0; step < 2_000; step++) {
+    const price = depthCost(def, at);
+    if (!Number.isFinite(price) || price > budget) break;
+    const room = TIER_SIZE - (at % TIER_SIZE);
+    const affordable = Math.min(room, Math.floor(budget / price));
+    if (affordable <= 0) break;
+    budget -= price * affordable;
+    count += affordable;
+    at += affordable;
+  }
+  return count;
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,20 +239,51 @@ export function depthAffordable(def: DepthDef, bought: number, hearts: number): 
 
 /**
  * How many of the deepest unlocked depth you need before the jar will go
- * deeper. Flat and small on purpose: this is the fast inner loop, and it must
- * never be the thing you are waiting on.
+ * deeper.
+ *
+ * It rises, because a flat requirement meant every depth was open within
+ * minutes and the permanent multiplier compounded without limit. It rises
+ * gently, because this is still the fast inner loop and must never be the
+ * thing you sit and wait for.
  */
 export const DEEPEN_REQUIREMENT = 20;
 
-/** Each deepening multiplies every depth's output, forever. */
-export const DEEPEN_MULTIPLIER = 2;
+export function deepenRequirement(deepens: number): number {
+  // Gentle, and capped.
+  //
+  // The price staircase triples every ten purchases, so it passes the largest
+  // representable number at roughly six thousand bought. Any requirement above
+  // that is not expensive, it is impossible, and the run simply stops. The cap
+  // is what keeps every deepening reachable however many you have done.
+  return Math.min(1_500, Math.ceil(DEEPEN_REQUIREMENT * Math.pow(1.12, deepens)));
+}
 
 /**
- * Deepening past the eighth needs the drop tree. Until then the chain stops at
- * The Current and further deepenings just pay the multiplier.
+ * Each deepening multiplies every depth's output, forever.
+ *
+ * Modest on purpose. Doubling compounded with the chain's own growth and the
+ * moon tree's multipliers, and thirteen deepenings were enough to leave the
+ * range of a double entirely.
  */
+export const DEEPEN_MULTIPLIER = 1.5;
+
+/**
+ * How many depths an ordinary game reaches.
+ *
+ * Five, not eight. Each layer multiplies the growth by another factor of time,
+ * and measured, eight equal layers reached the floating point ceiling inside
+ * fifteen minutes however the costs were priced: the maths does not fit in a
+ * double, and this game has no big-number type. Five is a degree-four curve,
+ * which lasts.
+ *
+ * The last three are still there, reached only through the drop tree, so the
+ * chain does grow again in the endgame when the resets that come with it can
+ * absorb the numbers.
+ */
+export const REACHABLE_DEPTHS = 3;
+
 export function maxDepthCount(extraDepths: number): number {
-  return Math.min(DEPTHS.length + extraDepths, DEPTHS.length + 4);
+  return Math.min(REACHABLE_DEPTHS + extraDepths, DEPTHS.length);
 }
 
 /* ------------------------------------------------------------------ */

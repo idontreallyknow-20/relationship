@@ -11,8 +11,9 @@ import {
 import { safe, seededRandom } from "./numbers";
 import { UPGRADES, UPGRADE_BY_ID } from "./config/upgrades";
 import {
-  MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID, TIDE_REQUIREMENT,
-  WATER_REQUIREMENT, moonGain, resetUpgradeCost, starGain,
+  DROP_UPGRADES, MOON_UPGRADES, STAR_UPGRADES, RESET_UPGRADE_BY_ID,
+  dropGain, moonGain, resetUpgradeCost, seaRequirement, starGain, tideRequirement,
+  waterRequirement,
 } from "./config/resets";
 import { SKILL_BY_ID, skillCost } from "./config/skills";
 import {
@@ -24,7 +25,7 @@ import {
 } from "./config/items";
 import { VESSELS, VESSEL_BY_ID, vesselIndex } from "./config/vessels";
 import {
-  DEEPEN_MULTIPLIER, DEEPEN_REQUIREMENT, DEPTHS, depthAffordable, depthBulkCost,
+  DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthAffordable, depthBulkCost,
   tideAffordable, tideBulkCost,
 } from "./config/depths";
 import { FOOD_BY_ID, MEMORY_BY_ID, TRIP_BY_ID } from "./config/memories";
@@ -443,7 +444,7 @@ export function deepestUnlocked(state: GameState): number {
 
 export function canDeepen(state: GameState): boolean {
   const tier = deepestUnlocked(state);
-  return state.depths[tier].bought >= DEEPEN_REQUIREMENT;
+  return state.depths[tier].bought >= deepenRequirement(state.deepens);
 }
 
 /**
@@ -455,7 +456,7 @@ export function canDeepen(state: GameState): boolean {
  */
 export function deepen(state: GameState): ActionResult {
   if (!canDeepen(state)) {
-    return fail(`Buy ${DEEPEN_REQUIREMENT} of your deepest before going deeper`);
+    return fail(`Buy ${deepenRequirement(state.deepens)} of your deepest before going deeper`);
   }
   const derived = derive(state);
   const tier = deepestUnlocked(state);
@@ -473,7 +474,10 @@ export function deepen(state: GameState): ActionResult {
   }
   state.depths[0].unlocked = true;
   state.depths[1].unlocked = true;
-  state.wallet.hearts = 0;
+  // Hearts stay. Taking them as well meant rebuilding from nothing every time,
+  // and measured, that was one deepening per quarter of an hour: a wall in the
+  // one loop that is supposed to be the fast one. Losing the chain is the cost;
+  // losing the means to rebuild it is just waiting.
 
   pushLog(state, "Deeper", opened ? DEPTHS[tier + 1].name : `x${DEEPEN_MULTIPLIER} again`);
   return done(
@@ -999,7 +1003,7 @@ export function finishChallenge(state: GameState, now: number, abandon = false):
 /* ------------------------------------------------------------------ */
 
 export function canChangeTide(state: GameState): boolean {
-  return state.runHearts >= TIDE_REQUIREMENT;
+  return state.runHearts >= tideRequirement(state.tideChanges);
 }
 
 export function tidePreview(state: GameState): number {
@@ -1048,7 +1052,7 @@ export function changeTide(state: GameState, now: number): ActionResult {
 }
 
 export function canChangeWater(state: GameState): boolean {
-  return hasFlag(state, "new_water") && state.eraHearts >= WATER_REQUIREMENT;
+  return hasFlag(state, "new_water") && state.eraHearts >= waterRequirement(state.newWaters);
 }
 
 export function waterPreview(state: GameState): number {
@@ -1106,11 +1110,88 @@ export function changeWater(state: GameState, now: number): ActionResult {
   return done(`New water ${state.newWaters}: ${stars} stars`);
 }
 
+/* ------------------------------------------------------------------ */
+/* The Sea                                                             */
+/* ------------------------------------------------------------------ */
+
+export function canLetGo(state: GameState): boolean {
+  return state.newWaters >= 3 && state.seaHearts >= seaRequirement(state.seas);
+}
+
+export function seaPreview(state: GameState): number {
+  return dropGain(state, derive(state).mods.mul.dropGain);
+}
+
+/**
+ * The last rung.
+ *
+ * Takes everything the layers above it took, plus those layers themselves:
+ * moons, stars, both trees, and how deep the jar goes. What survives is the
+ * drop tree and everything that was never really about the numbers, which is
+ * the creatures, the memories and the two of you.
+ */
+export function letGo(state: GameState, now: number): ActionResult {
+  if (state.newWaters < 3) return fail("Change the water three times first");
+  if (!canLetGo(state)) return fail("Not enough yet");
+  const drops = seaPreview(state);
+  if (drops <= 0) return fail("This one would not pay anything");
+
+  addCurrency(state, "drops", drops);
+  state.seas += 1;
+  recordMetric(state, "seas", 1);
+
+  const keepDeepens = hasFlag(state, "keep_deepens");
+
+  state.upgrades = {};
+  state.moonUpgrades = {};
+  state.starUpgrades = {};
+  state.wallet.hearts = 0;
+  state.wallet.moons = 0;
+  state.wallet.stars = 0;
+  state.runHearts = 0;
+  state.eraHearts = 0;
+  state.seaHearts = 0;
+  state.tideChanges = 0;
+  state.newWaters = 0;
+  state.runStartedAt = now;
+  state.eraStartedAt = now;
+  state.seaStartedAt = now;
+  state.combo = 0;
+  state.comboExpiresAt = 0;
+  state.buffs = [];
+  state.settled = [];
+  state.drifter = null;
+  state.vessel = "jam_jar";
+  state.vesselsUnlocked = ["jam_jar"];
+  state.tideBought = 0;
+  if (!keepDeepens) state.deepens = 0;
+
+  for (let i = 0; i < state.depths.length; i++) {
+    state.depths[i] = { bought: 0, owned: 0, unlocked: i < 2 };
+  }
+
+  pushLog(state, "The Sea", `${drops} drops`);
+  return done(`${drops} drops. There was never a jar.`);
+}
+
+/**
+ * Go deeper on its own, and turn the tide on its own, once the drop tree has
+ * bought the right to. Both are pure convenience: they do exactly what the
+ * player would do by hand, at the first moment it is possible.
+ */
+export function runDeepAutomation(state: GameState, now: number): void {
+  if (hasFlag(state, "auto_deepen") && canDeepen(state)) deepen(state);
+  if (hasFlag(state, "auto_tide") && canChangeTide(state)) changeTide(state, now);
+}
+
 export function buyResetUpgrade(state: GameState, id: string): ActionResult {
   const def = RESET_UPGRADE_BY_ID[id];
   if (!def) return fail("Unknown upgrade");
-  const isMoon = MOON_UPGRADES.some((u) => u.id === id);
-  const levels = isMoon ? state.moonUpgrades : state.starUpgrades;
+  const levels = MOON_UPGRADES.some((u) => u.id === id)
+    ? state.moonUpgrades
+    : DROP_UPGRADES.some((u) => u.id === id)
+      ? state.dropUpgrades
+      : state.starUpgrades;
   const owned = levels[id] ?? 0;
   if (owned >= def.max) return fail("Already at maximum");
   if (def.requires) {
@@ -1126,9 +1207,13 @@ export function buyResetUpgrade(state: GameState, id: string): ActionResult {
   return done(`${def.name} level ${owned + 1}`);
 }
 
-export function respec(state: GameState, layer: "moons" | "stars"): ActionResult {
-  const defs = layer === "moons" ? MOON_UPGRADES : STAR_UPGRADES;
-  const levels = layer === "moons" ? state.moonUpgrades : state.starUpgrades;
+export function respec(state: GameState, layer: "moons" | "stars" | "drops"): ActionResult {
+  const defs = layer === "moons" ? MOON_UPGRADES : layer === "drops" ? DROP_UPGRADES : STAR_UPGRADES;
+  const levels = layer === "moons"
+    ? state.moonUpgrades
+    : layer === "drops"
+      ? state.dropUpgrades
+      : state.starUpgrades;
   let refund = 0;
   for (const def of defs) {
     const owned = levels[def.id] ?? 0;
@@ -1136,6 +1221,7 @@ export function respec(state: GameState, layer: "moons" | "stars"): ActionResult
   }
   if (refund <= 0) return fail("Nothing to refund");
   if (layer === "moons") state.moonUpgrades = {};
+  else if (layer === "drops") state.dropUpgrades = {};
   else state.starUpgrades = {};
   addCurrency(state, layer, Math.floor(refund * 0.9));
   return done(`Refunded ${Math.floor(refund * 0.9)}`);

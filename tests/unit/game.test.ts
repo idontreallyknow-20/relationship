@@ -18,7 +18,7 @@ import {
   runAutobuyers, salvageItem, setWater, startChallenge, startTrip, unlockVessel,
   GIFT_WINDOW_MS,
 } from "@/game/actions";
-import { DEEPEN_REQUIREMENT, DEPTHS, depthCost, tideCost } from "@/game/config/depths";
+import { deepenRequirement, DEPTHS, depthCost, tideCost } from "@/game/config/depths";
 import { UPGRADE_BY_ID } from "@/game/config/upgrades";
 import { TIDE_REQUIREMENT, WATER_REQUIREMENT } from "@/game/config/resets";
 import { CREATURE_BY_ID, STARTER } from "@/game/config/creatures";
@@ -1077,11 +1077,14 @@ describe("the depth chain", () => {
     expect(state.depths[1].bought).toBe(0);
   });
 
-  it("charges more for each one bought and nothing for what is produced", () => {
+  it("steps the price every ten, and charges nothing for what is produced", () => {
     const state = createGameState(0);
     state.wallet.hearts = 1e9;
     const first = depthCost(DEPTHS[0], 0);
+    // The price is a staircase, so the second one costs the same as the first.
     buyDepth(state, 0, 1);
+    expect(depthCost(DEPTHS[0], state.depths[0].bought)).toBe(first);
+    buyDepth(state, 0, 9);
     expect(depthCost(DEPTHS[0], state.depths[0].bought)).toBeGreaterThan(first);
 
     // Production raises `owned` without touching the price.
@@ -1114,7 +1117,7 @@ describe("deepening", () => {
     state.wallet.hearts = 1e12;
     expect(canDeepen(state)).toBe(false);
 
-    buyDepth(state, 1, DEEPEN_REQUIREMENT);
+    buyDepth(state, 1, deepenRequirement(state.deepens));
     expect(canDeepen(state)).toBe(true);
 
     const before = derive(state, 0).depthPower;
@@ -1123,7 +1126,8 @@ describe("deepening", () => {
     expect(state.deepens).toBe(1);
     expect(state.depths[0].owned).toBe(0);
     expect(state.depths[1].bought).toBe(0);
-    expect(state.wallet.hearts).toBe(0);
+    // Hearts survive, so the chain can be rebuilt straight away.
+    expect(state.wallet.hearts).toBeGreaterThan(0);
     expect(derive(state, 0).depthPower).toBeGreaterThan(before);
     // And it opened the next one down.
     expect(state.depths[2].unlocked).toBe(true);
@@ -1134,7 +1138,7 @@ describe("deepening", () => {
     buyUpgrade(state, "otter_hands", 5);
     const creatures = Object.keys(state.creatures).length;
     const lifetime = state.lifetime.hearts;
-    buyDepth(state, 1, DEEPEN_REQUIREMENT);
+    buyDepth(state, 1, deepenRequirement(state.deepens));
     deepen(state);
     expect(state.upgrades["otter_hands"]).toBe(5);
     expect(Object.keys(state.creatures).length).toBe(creatures);
