@@ -232,10 +232,17 @@ export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(
   UPGRADES.map((u) => [u.id, u]),
 );
 
+/**
+ * The three trees.
+ *
+ * Two of them are named after the two of you, so their `name` here is only a
+ * fallback: the screens substitute the real name off the profile. It is the
+ * difference between an app for two named people and an app for a couple.
+ */
 export const TREES: { id: Tree; name: string; blurb: string }[] = [
-  { id: "cami", name: "Cami", blurb: "Otters, the surface, and hitting things until they open." },
-  { id: "joseph", name: "Joseph", blurb: "Crabs, the floor, and picking up what falls." },
-  { id: "us", name: "Us", blurb: "Bought with Tide. Both of you get it." },
+  { id: "cami", name: "Hers", blurb: "Otters, tapping, and everything that happens the moment you touch the jar." },
+  { id: "joseph", name: "His", blurb: "Crabs, patience, and everything that keeps going while you are away." },
+  { id: "us", name: "Us", blurb: "Bought with keepsakes. Both of you get every level of it." },
 ];
 
 export function upgradeMods(def: UpgradeDef, level: number): Mods {

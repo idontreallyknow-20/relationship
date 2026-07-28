@@ -32,14 +32,28 @@ import type { GameState } from "../types";
  *
  * Graduated rather than flat. The first couple of rungs are small and quick to
  * absorb, and making someone sit four minutes in front of a single button to
- * earn the word "Upgrades" is its own kind of bad. Everything from the chain
- * onward is a system rather than a button, and gets room.
+ * earn the word "Upgrades" is its own kind of bad.
+ *
+ * Retuned once, after "new things in the early game should be introduced a bit
+ * faster". Measuring it was the useful part: every rung up to automation was
+ * arriving exactly `STAGE_LATE_GAP_MS` after the one before it, which is to
+ * say the numbers on the rungs were doing nothing at all and the whole opening
+ * was a four minute metronome. Sealing at nine minutes, the shelf at thirteen,
+ * the pets at twenty-one. The middle band is what fixes that: the pets now
+ * arrive around minute twelve instead of minute twenty-two, and the whole of
+ * the first evening is over inside a quarter of an hour rather than half of
+ * one. Rebirth is left where it was, gated by its own count of seals, because
+ * that one really is meant to be the end of a first sitting rather than the
+ * middle of it.
  */
-export const STAGE_MIN_GAP_MS = 90_000;
+export const STAGE_MIN_GAP_MS = 75_000;
+export const STAGE_MID_GAP_MS = 135_000;
 export const STAGE_LATE_GAP_MS = 240_000;
 
 export function stageGap(index: number): number {
-  return index <= 2 ? STAGE_MIN_GAP_MS : STAGE_LATE_GAP_MS;
+  if (index <= 2) return STAGE_MIN_GAP_MS;
+  if (index <= 8) return STAGE_MID_GAP_MS;
+  return STAGE_LATE_GAP_MS;
 }
 
 /**
@@ -151,23 +165,23 @@ export const STAGES: StageDef[] = [
   },
   {
     index: 3,
-    at: 700,
-    needs: { metric: "upgrades", count: 8 },
+    at: 500,
+    needs: { metric: "upgrades", count: 6 },
     reveals: ["buyAmounts"],
     title: "Ten at a time",
     body: "Buy ten, a hundred, or as many as you can afford. There is a Buy all button beside it that takes the cheapest first.",
   },
   {
     index: 4,
-    at: 2_500,
-    needs: { metric: "upgrades", count: 20 },
+    at: 1_800,
+    needs: { metric: "upgrades", count: 15 },
     reveals: ["seal"],
     title: "Sealing the jar",
     body: "A full jar can be sealed and put on the shelf, where it keeps paying a little of what is in it forever. Nothing is lost by sealing; the hearts are moved, not spent.",
   },
   {
     index: 5,
-    at: 9_000,
+    at: 6_000,
     needs: { metric: "seals", count: 1 },
     reveals: ["shelf"],
     title: "The shelf",
@@ -175,7 +189,7 @@ export const STAGES: StageDef[] = [
   },
   {
     index: 6,
-    at: 40_000,
+    at: 25_000,
     needs: { metric: "seals", count: 2 },
     reveals: ["jars"],
     title: "A bigger jar",
@@ -183,16 +197,16 @@ export const STAGES: StageDef[] = [
   },
   {
     index: 7,
-    at: 150_000,
-    needs: { metric: "seals", count: 4 },
+    at: 70_000,
+    needs: { metric: "seals", count: 3 },
     reveals: ["pets"],
     title: "Otters and crabs",
     body: "They sit around the jar and carry hearts over on their own. Hers open things, his carry them, and a table with both is worth more than either alone.",
   },
   {
     index: 8,
-    at: 4e5,
-    needs: { metric: "seals", count: 12 },
+    at: 2.5e5,
+    needs: { metric: "seals", count: 8 },
     reveals: ["automation"],
     title: "It runs itself",
     body: "A full jar can seal itself, and the autobuyers spend for you. Each one only spends the share you allow it, so nothing runs away with your balance.",

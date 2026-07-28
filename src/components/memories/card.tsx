@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { formatShortDate } from "@/lib/format";
 import { displayName, type Memory, type Person } from "@/lib/types";
+import { useNames } from "@/lib/couple-context";
 import { MemoryMedia } from "./media";
 
 export const KIND_LABELS: Record<Memory["kind"], string> = {
@@ -65,6 +66,7 @@ export function MemoryCard({
   onOpen: () => void;
   onToggleFavorite: () => void;
 }) {
+  const names = useNames();
   const hasMedia =
     (memory.kind === "photo" || memory.kind === "video" || memory.kind === "drawing") &&
     memory.media_path;
@@ -100,7 +102,7 @@ export function MemoryCard({
         </div>
       </button>
       <div className="flex items-center gap-2 px-4 pb-3 pt-2">
-        <Avatar name={displayName(memory.created_by)} size="sm" />
+        <Avatar name={names[memory.created_by]} size="sm" />
         {memory.happened_on && (
           <span className="text-xs text-berry-soft">{formatShortDate(memoryDate(memory))}</span>
         )}

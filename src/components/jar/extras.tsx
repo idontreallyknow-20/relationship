@@ -31,6 +31,7 @@ import { HeartIcon } from "@/components/hearts";
 import { Bar, CurrencyPill, EmptyRow, Section, Stat } from "./bits";
 import { ExplainAll } from "./explain";
 import { GlossaryButton } from "./glossary";
+import { PartnerJar } from "./partner";
 
 /* ------------------------------------------------------------------ */
 /* Us                                                                  */
@@ -63,6 +64,8 @@ export function UsTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      <PartnerJar />
+
       <Section title="The jar, both of you" hint="Added together, not compared.">
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <p className="font-display text-3xl font-semibold text-plum">

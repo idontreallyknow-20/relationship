@@ -652,7 +652,7 @@ export function leaveGift(state: GameState, from: Person, now: number): void {
   state.giftLeft = {
     from,
     at: now,
-    label: `${from === "cami" ? "Cami" : "Joseph"} left the tide out for you`,
+    label: "They left something out for you",
     mods: { mul: { all: strength } },
     durationMs: 2 * 3_600_000,
     collected: false,

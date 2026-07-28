@@ -82,6 +82,24 @@ export async function loadBothSaves(): Promise<ServerSave[]> {
   return (data ?? []) as ServerSave[];
 }
 
+/**
+ * Their jar, to look at.
+ *
+ * The whole state blob is already in the row and already readable, so watching
+ * how the other one is getting on needs no new table, no new column and no new
+ * permission: it is the save that was going to be fetched anyway, migrated the
+ * same way, and never written back. Returns null rather than throwing when
+ * they have not started, which on a fresh pair is most of the time.
+ */
+export async function loadPartnerSave(
+  partner: Person,
+): Promise<{ state: GameState; updatedAt: number } | null> {
+  const row = await loadServer(partner);
+  if (!row || serverIsStale(row)) return null;
+  const state = migrateSave(row.state, partner);
+  return { state, updatedAt: Date.parse(row.updated_at) || 0 };
+}
+
 /** True when this server row predates the reset and has nothing to offer. */
 function serverIsStale(server: ServerSave): boolean {
   const version = (server.state as { version?: number } | null)?.version ?? 0;

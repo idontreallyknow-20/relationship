@@ -23,7 +23,7 @@ export const NEWS: NewsLine[] = [
   { from: 0, text: "Jar reports being tapped. Jar reports liking it." },
   { from: 0, text: "Local heart found to be in excellent condition." },
   { from: 0, text: "Studies confirm: the jar is bigger on the inside, emotionally." },
-  { from: 0, text: "Cami and Joseph, still going. More at eleven." },
+  { from: 0, text: "Local couple still going. More at eleven." },
   { from: 0, text: "Heart tapped repeatedly. Heart declines to comment." },
   { from: 0, text: "Nothing else has happened today. This is the news." },
 

@@ -9,7 +9,7 @@ import { supabase } from "./supabase";
 import { readCache, settled, writeCache } from "./offline/cache";
 import { storedDeviceId, signOutDevice } from "./pairing";
 import type { Couple, Person, Profile } from "./types";
-import { partnerOf } from "./types";
+import { displayName, partnerOf } from "./types";
 
 interface CoupleState {
   session: Session;
@@ -39,6 +39,40 @@ export function useCouple(): CoupleState {
 export function useWho(): { me: Person; partner: Person } {
   const { me } = useCouple();
   return { me: me.person, partner: partnerOf(me.person) };
+}
+
+/**
+ * What to call each of you, from the database rather than from a constant.
+ *
+ * `displayName` in `lib/types.ts` returns the literal strings "Cami" and
+ * "Joseph", and thirty places in the app called it, which is what made this
+ * feel like an app for two named people rather than an app for a couple. The
+ * names have always been columns on `profiles`; nothing was reading them.
+ *
+ * `displayName` stays as the fallback, and is still the right thing on the
+ * welcome and invite screens, which render before anyone is signed in and
+ * therefore before there is a profile to read a name from.
+ */
+export function useNames(): Record<Person, string> {
+  const { me, partner } = useCouple();
+  return useMemo(() => {
+    const out = { cami: displayName("cami"), joseph: displayName("joseph") };
+    out[me.person] = me.display_name?.trim() || displayName(me.person);
+    if (partner) out[partner.person] = partner.display_name?.trim() || displayName(partner.person);
+    return out;
+  }, [me, partner]);
+}
+
+/** One name. The common case, and a shorter call than reading the record. */
+export function useName(person: Person): string {
+  return useNames()[person];
+}
+
+/** Both of you, in the order that puts you first. */
+export function useBothNames(join = "and"): string {
+  const names = useNames();
+  const { me, partner } = useWho();
+  return `${names[me]} ${join} ${names[partner]}`;
 }
 
 export function CoupleProvider({ children }: { children: React.ReactNode }) {

@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { Lock, Plus, Unlock } from "lucide-react";
+import { useNames } from "@/lib/couple-context";
 import { useGame } from "@/game/store";
 import {
   CREATURES, CREATURE_BY_ID, LINE_NAME, TRAIT_BY_ID, xpFor,
@@ -27,6 +28,7 @@ type View = "jar" | "all" | "items";
 export function CreaturesTab() {
   const { state, derived, mutate, version, notify } = useGame();
   const toast = useToast();
+  const names = useNames();
   const [view, setView] = useState<View>("jar");
   const [selected, setSelected] = useState<CreatureInstance | null>(null);
   const format = state.settings.numberFormat;
@@ -88,7 +90,9 @@ export function CreaturesTab() {
             })}
           </div>
           <p className="text-xs text-berry-soft">
-            Otters crack shells at the surface. What comes out sinks. Crabs pick it up off the floor.
+            Otters and crabs sit at the table around the jar and carry hearts
+            into it on their own. Hers are the otters, his are the crabs, and a
+            table with both is worth more than a table with either.
           </p>
         </Section>
       )}
@@ -96,7 +100,7 @@ export function CreaturesTab() {
       {view === "all" && (
         <>
           {(["otter", "crab"] as const).map((line) => (
-            <Section key={line} title={LINE_NAME[line]} hint={line === "otter" ? "Cami" : "Joseph"}>
+            <Section key={line} title={LINE_NAME[line]} explain="pets" hint={line === "otter" ? names.cami : names.joseph}>
               <ul className="flex flex-col gap-2">
                 {CREATURES.filter((d) => d.line === line).map((def) => {
                   const mine = owned.find((c) => c.defId === def.id);

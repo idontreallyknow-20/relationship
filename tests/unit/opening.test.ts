@@ -126,6 +126,42 @@ describe("the opening", () => {
     expect(hour.features.length).toBeGreaterThanOrEqual(5);
   });
 
+  // The other half of the same complaint, made later: "new things in the early
+  // game should be introduced a bit faster". Measuring it was what mattered.
+  // Every rung up to automation was arriving exactly one late-gap after the one
+  // before it, so the numbers on the rungs were doing nothing and the opening
+  // was a four minute metronome: sealing at nine minutes, the pets at
+  // twenty-one. These two pin the window at both ends, because moving one gap
+  // constant moves every rung and it is easy to overshoot in either direction.
+  it("has given the player the whole of the first evening inside a quarter of an hour", () => {
+    const [quarter] = play([15 * MINUTE], 3);
+    expect(quarter.features).toContain("seal");
+    expect(quarter.features).toContain("shelf");
+    expect(quarter.features).toContain("jars");
+    expect(quarter.features).toContain("pets");
+  });
+
+  it("still lets each of those land before the next one arrives", () => {
+    // A minute apart is not "a bit faster", it is the pile-up this ladder was
+    // built to stop. Nothing may arrive within a minute of the rung below it.
+    const marks = Array.from({ length: 30 }, (_, i) => (i + 1) * 30);
+    const snaps = play(marks, 3);
+    // The first reveal has nothing before it to be too close to.
+    let lastChange: number | null = null;
+    let previous = 0;
+    for (const snap of snaps) {
+      if (snap.features.length === previous) continue;
+      if (lastChange !== null) {
+        expect(
+          snap.at - lastChange,
+          `two reveals ${snap.at - lastChange}s apart, at ${snap.at}s`,
+        ).toBeGreaterThanOrEqual(60);
+      }
+      lastChange = snap.at;
+      previous = snap.features.length;
+    }
+  });
+
   it("never opens more than one thing at a time", () => {
     const marks = Array.from({ length: 60 }, (_, i) => (i + 1) * MINUTE);
     const snaps = play(marks, 3);

@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { Zap } from "lucide-react";
+import { useNames } from "@/lib/couple-context";
 import { useGame } from "@/game/store";
 import { TREES, type Tree } from "@/game/config/upgrades";
 import { SKILLS, skillCost } from "@/game/config/skills";
@@ -27,7 +28,10 @@ const BUY_OPTIONS = [
 export function UpgradesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
+  const names = useNames();
   const [tree, setTree] = useState<Tree>(state.owner === "joseph" ? "joseph" : "cami");
+  /** Two of the three trees are people, and people have names. */
+  const treeName = (id: Tree) => (id === "us" ? "Us" : names[id]);
   // Yours and the shared one. Theirs is theirs.
   const trees = TREES.filter((entry) => entry.id === state.owner || entry.id === "us");
 
@@ -46,7 +50,7 @@ export function UpgradesTab() {
                 tree === entry.id ? "border-plum bg-plum text-white" : "border-line bg-white text-berry-soft"
               }`}
             >
-              {entry.name}
+              {treeName(entry.id)}
             </button>
           );
         })}
@@ -65,8 +69,8 @@ export function UpgradesTab() {
               grows out of and what it leads to.
             </p>
             <p>
-              These are yours. {state.owner === "cami" ? "Joseph" : "Cami"} has their
-              own, and neither of you can spend into the other one.
+              These are yours. {names[state.owner === "cami" ? "joseph" : "cami"]}{" "}
+              has their own, and neither of you can spend into the other one.
             </p>
           </Explain>
         </div>

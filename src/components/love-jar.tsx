@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { useWho } from "@/lib/couple-context";
+import { useNames, useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { isTransportError } from "@/lib/offline/net";
 import { AlreadyAppliedError, PermanentOpError, enqueue, registerOp } from "@/lib/offline/outbox";
@@ -57,6 +57,7 @@ interface CachedJar {
 
 export function LoveJar() {
   const { me, partner } = useWho();
+  const names = useNames();
   const [taps, setTaps] = useState<Tap[]>([]);
   const [total, setTotal] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -253,6 +254,7 @@ function JarSvg({ taps }: { taps: Tap[] }) {
 }
 
 function JarHistory({ me, partner, total }: { me: Person; partner: Person; total: number }) {
+  const names = useNames();
   const [days, setDays] = useState<{ day: string; mine: number; theirs: number }[] | null>(null);
 
   useEffect(() => {
@@ -311,11 +313,11 @@ function JarHistory({ me, partner, total }: { me: Person; partner: Person; total
       <div className="flex items-center justify-center gap-4 text-xs font-semibold">
         <span className="flex items-center gap-1.5" style={{ color: COLORS[me] }}>
           <HeartIcon className="h-3 w-3" />
-          {displayName(me)}
+          {names[me]}
         </span>
         <span className="flex items-center gap-1.5" style={{ color: COLORS[partner] }}>
           <HeartIcon className="h-3 w-3" />
-          {displayName(partner)}
+          {names[partner]}
         </span>
       </div>
       <p className="text-center text-xs text-berry-soft">

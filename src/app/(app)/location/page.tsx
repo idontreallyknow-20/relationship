@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Button, ConfirmDialog, EmptyState, TopBar, useToast } from "@/components/ui";
 import { HeartIcon, HeartSpinner } from "@/components/hearts";
-import { useCouple, useWho } from "@/lib/couple-context";
+import { useCouple, useNames, useWho } from "@/lib/couple-context";
 import { supabase } from "@/lib/supabase";
 import { notifyPartner } from "@/lib/notify";
 import { distanceKm, formatDistance, formatRelative } from "@/lib/format";
@@ -70,6 +70,7 @@ export default function Page() {
   const toast = useToast();
   const { me, partner } = useWho();
   const { partner: partnerProfile } = useCouple();
+  const names = useNames();
 
   const [mode, setMode] = useState<UiMode>("off");
   const [restoring, setRestoring] = useState(true);
@@ -435,7 +436,7 @@ export default function Page() {
       ? distanceKm(myCurrent.lat, myCurrent.lng, partnerCurrent.lat, partnerCurrent.lng)
       : null;
 
-  const partnerName = partnerProfile?.display_name ?? displayName(partner);
+  const partnerName = names[partner];
 
   return (
     <>
@@ -535,7 +536,7 @@ export default function Page() {
                   <p className="font-display text-2xl font-semibold text-plum">
                     You two are {formatDistance(km)}
                   </p>
-                  <DistanceLine km={km} meName={displayName(me)} partnerName={partnerName} />
+                  <DistanceLine km={km} meName={names[me]} partnerName={partnerName} />
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

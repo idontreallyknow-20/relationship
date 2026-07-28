@@ -10,6 +10,7 @@ import { HeartIcon } from "@/components/hearts";
 import { formatDay, formatTime, sameDay } from "@/lib/format";
 import type { MoodEntry, Person } from "@/lib/types";
 import { displayName } from "@/lib/types";
+import { useNames } from "@/lib/couple-context";
 import { moodColor, moodLabel } from "./meta";
 
 type Range = "week" | "month";
@@ -66,6 +67,7 @@ export function MoodHistory({ entries, me }: { entries: MoodEntry[]; me: Person 
 }
 
 function WeekGrid({ entries }: { entries: MoodEntry[] }) {
+  const names = useNames();
   const days = useMemo(() => {
     const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -91,7 +93,7 @@ function WeekGrid({ entries }: { entries: MoodEntry[] }) {
             </span>
             <div className="flex flex-col items-center gap-1 pt-0.5">
               {dayEntries.slice(0, 4).map((e) => (
-                <span key={e.id} title={`${displayName(e.person)}: ${moodLabel(e)}`}>
+                <span key={e.id} title={`${names[e.person]}: ${moodLabel(e)}`}>
                   <HeartIcon className={`h-3.5 w-3.5 ${moodColor(e.mood)}`} />
                 </span>
               ))}
@@ -109,6 +111,7 @@ function WeekGrid({ entries }: { entries: MoodEntry[] }) {
 }
 
 function MonthList({ entries, showNames }: { entries: MoodEntry[]; showNames: boolean }) {
+  const names = useNames();
   // Entries arrive newest first; group them by calendar day.
   const groups = useMemo(() => {
     const map = new Map<string, MoodEntry[]>();
@@ -140,7 +143,7 @@ function MonthList({ entries, showNames }: { entries: MoodEntry[]; showNames: bo
                     {moodLabel(e)}
                     {showNames && (
                       <span className="ml-1.5 font-normal text-berry-soft">
-                        {displayName(e.person)}
+                        {names[e.person]}
                       </span>
                     )}
                   </p>
