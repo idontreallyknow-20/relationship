@@ -5,13 +5,11 @@
 import { useMemo, useState } from "react";
 import { Lock, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
-import {
-  UPGRADE_TREES, nextEffectLabel, upgradeMods, type UpgradeDef, type UpgradeTree,
-} from "@/game/config/upgrades";
+import { TREES, nextEffectLabel, type Tree, type UpgradeDef } from "@/game/config/upgrades";
 import { SKILLS, skillCost } from "@/game/config/skills";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import {
-  maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades, hasFlag,
+  hasFlag, isOwnTree, maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades,
 } from "@/game/formulas";
 import { buyUpgrade, levelSkill, toggleSkillAuto } from "@/game/actions";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
@@ -19,7 +17,7 @@ import type { GameSettings } from "@/game/types";
 import { Button, SegmentedControl, Sheet, useToast } from "@/components/ui";
 import { Bar, EmptyRow, LockedRow, Section } from "./bits";
 
-const BUY_OPTIONS: { value: string; label: string }[] = [
+const BUY_OPTIONS = [
   { value: "1", label: "x1" },
   { value: "10", label: "x10" },
   { value: "25", label: "x25" },
@@ -30,50 +28,58 @@ const BUY_OPTIONS: { value: string; label: string }[] = [
 export function UpgradesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
-  const [tree, setTree] = useState<UpgradeTree>("click");
+  const [tree, setTree] = useState<Tree>(state.owner === "joseph" ? "joseph" : "cami");
   const [detail, setDetail] = useState<UpgradeDef | null>(null);
   const format = state.settings.numberFormat;
-  const bulkUnlocked = hasFlag(state, "bulk");
+  const bulk = hasFlag(state, "bulk");
 
-  const trees = useMemo(
-    () => UPGRADE_TREES.filter((t) => t.id !== "mastery" || hasFlag(state, "mastery")),
+  const rows = useMemo(
+    () =>
+      visibleUpgrades(state)
+        .filter((def) => def.tree === tree)
+        .map((def) => {
+          const owned = state.upgrades[def.id] ?? 0;
+          const unlocked = meetsUnlock(state, def.unlock);
+          const count = Math.max(1, resolveBuyCount(state, def, derived));
+          const cost = upgradeCost(state, def, count, derived);
+          return {
+            def, owned, unlocked, count, cost,
+            mine: isOwnTree(state, def),
+            affordable: unlocked && state.wallet[def.currency] >= cost && count > 0,
+          };
+        }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version],
+    [version, tree],
   );
 
-  const rows = useMemo(() => {
-    return visibleUpgrades(state)
-      .filter((def) => def.tree === tree)
-      .map((def) => {
-        const owned = state.upgrades[def.id] ?? 0;
-        const unlocked = meetsUnlock(state, def.unlock);
-        const count = Math.max(1, resolveBuyCount(state, def, derived));
-        const cost = upgradeCost(state, def, count, derived);
-        const affordable = unlocked && state.wallet[def.currency] >= cost && count > 0;
-        return { def, owned, unlocked, count, cost, affordable };
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, tree]);
-
-  const treeMeta = UPGRADE_TREES.find((t) => t.id === tree);
+  const meta = TREES.find((t) => t.id === tree);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-        {trees.map((entry) => (
-          <button
-            key={entry.id}
-            onClick={() => setTree(entry.id)}
-            className={`pressable shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold ${
-              tree === entry.id ? "border-plum bg-plum text-white" : "border-line bg-white text-berry-soft"
-            }`}
-          >
-            {entry.name}
-          </button>
-        ))}
+      <div className="flex gap-2">
+        {TREES.map((entry) => {
+          const mine = entry.id === state.owner;
+          return (
+            <button
+              key={entry.id}
+              onClick={() => setTree(entry.id)}
+              className={`pressable flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
+                tree === entry.id ? "border-plum bg-plum text-white" : "border-line bg-white text-berry-soft"
+              }`}
+            >
+              {entry.name}
+              {mine && <span className="ml-1 opacity-70">·</span>}
+            </button>
+          );
+        })}
       </div>
 
-      {treeMeta && <p className="text-sm text-berry-soft">{treeMeta.blurb}</p>}
+      {meta && <p className="text-sm text-berry-soft">{meta.blurb}</p>}
+      {tree !== "us" && tree !== state.owner && (
+        <p className="rounded-xl bg-blush/50 px-3.5 py-2 text-xs text-berry">
+          Not your tree, so it costs more and gives less. You can still buy all of it.
+        </p>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-xs font-semibold text-berry-soft">Buy</span>
@@ -82,8 +88,8 @@ export function UpgradesTab() {
           value={String(state.settings.buyAmount)}
           onChange={(value) =>
             mutate((draft) => {
-              if (value !== "1" && !bulkUnlocked) {
-                toast("Bulk buying unlocks with a rebirth upgrade");
+              if (value !== "1" && !bulk) {
+                toast("Handfuls is a moon upgrade");
                 return;
               }
               draft.settings.buyAmount = (value === "max" ? "max" : Number(value)) as GameSettings["buyAmount"];
@@ -94,18 +100,16 @@ export function UpgradesTab() {
       </div>
 
       {rows.length === 0 ? (
-        <EmptyRow>Nothing in this tree is available yet.</EmptyRow>
+        <EmptyRow>Nothing here yet.</EmptyRow>
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map(({ def, owned, unlocked, count, cost, affordable }) => {
+          {rows.map(({ def, owned, unlocked, count, cost, affordable, mine }) => {
             const atMax = def.max !== Infinity && owned >= def.max;
             const currency = CURRENCY_BY_ID[def.currency];
             return (
               <li
                 key={def.id}
-                className={`rounded-card border bg-white shadow-soft ${
-                  unlocked ? "border-line" : "border-line-soft opacity-70"
-                }`}
+                className={`rounded-card border bg-white shadow-soft ${unlocked ? "border-line" : "border-line-soft opacity-70"}`}
               >
                 <div className="flex items-start gap-2 p-3.5">
                   <button className="min-w-0 flex-1 text-left" onClick={() => setDetail(def)}>
@@ -113,13 +117,13 @@ export function UpgradesTab() {
                       {!unlocked && <Lock className="h-3.5 w-3.5 shrink-0 text-berry-soft" />}
                       <span className="truncate">{def.name}</span>
                       <span className="shrink-0 rounded-full bg-cream px-2 py-0.5 text-[0.6rem] font-bold text-berry-soft">
-                        {owned}
-                        {def.max !== Infinity ? `/${def.max}` : ""}
+                        {owned}{def.max !== Infinity ? `/${def.max}` : ""}
                       </span>
                     </p>
                     <p className="mt-0.5 truncate text-xs text-berry-soft">{def.description}</p>
                     <p className="mt-1 text-xs font-semibold" style={{ color: currency?.color }}>
-                      {atMax ? "Maxed" : `Next: ${nextEffectLabel(def)}`}
+                      {atMax ? "Maxed" : nextEffectLabel(def)}
+                      {mine && !atMax && <span className="ml-1 text-berry-soft">· yours</span>}
                     </p>
                   </button>
 
@@ -129,7 +133,7 @@ export function UpgradesTab() {
                       onClick={() =>
                         mutate((draft) => {
                           const result = buyUpgrade(draft, def.id, count);
-                          if (!result.ok) toast(result.message ?? "Could not buy that");
+                          if (!result.ok) toast(result.message ?? "Cannot buy that");
                           else if (result.message) toast(result.message);
                         })
                       }
@@ -139,12 +143,11 @@ export function UpgradesTab() {
                     >
                       <span className="block text-xs font-bold">{formatNumber(cost, format)}</span>
                       <span className="block text-[0.6rem] opacity-80">
-                        {count > 1 ? `buy ${count}` : currency?.short.toLowerCase()}
+                        {count > 1 ? `x${count}` : currency?.short.toLowerCase()}
                       </span>
                     </button>
                   )}
                 </div>
-
                 {def.max !== Infinity && (
                   <div className="px-3.5 pb-2.5">
                     <Bar value={owned} max={def.max} height="0.25rem" />
@@ -156,86 +159,36 @@ export function UpgradesTab() {
         </ul>
       )}
 
-      <UpgradeDetail def={detail} onClose={() => setDetail(null)} />
+      {detail && <UpgradeDetail def={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
 
-function UpgradeDetail({ def, onClose }: { def: UpgradeDef | null; onClose: () => void }) {
+function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void }) {
   const { state, derived } = useGame();
-  if (!def) return null;
   const owned = state.upgrades[def.id] ?? 0;
   const format = state.settings.numberFormat;
-  const currency = CURRENCY_BY_ID[def.currency];
-  const mods = upgradeMods(def, owned);
-  const nextMilestone = def.milestones?.find((m) => m > owned);
 
   return (
     <Sheet open onClose={onClose} title={def.name}>
       <div className="space-y-4 pt-1">
         <p className="text-sm text-berry">{def.description}</p>
-
         <dl className="grid grid-cols-2 gap-2 text-sm">
-          <Row label="Category" value={UPGRADE_TREES.find((t) => t.id === def.tree)?.name ?? def.tree} />
+          <Row label="Tree" value={TREES.find((t) => t.id === def.tree)?.name ?? def.tree} />
           <Row label="Level" value={`${owned}${def.max !== Infinity ? ` of ${def.max}` : ""}`} />
-          <Row label="Currency" value={currency?.name ?? def.currency} />
-          <Row label="Next effect" value={nextEffectLabel(def)} />
-          <Row
-            label="Next cost"
-            value={formatNumber(upgradeCost(state, def, 1, derived), format)}
-          />
-          <Row label="Max affordable" value={`${maxAffordable(state, def, derived)}`} />
+          <Row label="Currency" value={CURRENCY_BY_ID[def.currency]?.name ?? def.currency} />
+          <Row label="Next" value={nextEffectLabel(def)} />
+          <Row label="Cost" value={formatNumber(upgradeCost(state, def, 1, derived), format)} />
+          <Row label="Affordable" value={`${maxAffordable(state, def, derived)}`} />
         </dl>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-berry-soft">Currently giving</p>
-          {Object.keys(mods.add ?? {}).length === 0 && Object.keys(mods.mul ?? {}).length === 0 ? (
-            <p className="text-sm text-berry-soft">Nothing yet. Buy the first level.</p>
-          ) : (
-            <ul className="mt-1 space-y-0.5 text-sm text-berry">
-              {Object.entries(mods.add ?? {}).map(([key, value]) => (
-                <li key={key}>
-                  +{formatNumber(value as number, format)} {key}
-                </li>
-              ))}
-              {Object.entries(mods.mul ?? {}).map(([key, value]) => (
-                <li key={key}>
-                  x{(value as number).toFixed(3)} {key}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {nextMilestone && (
+        {def.milestones && (
           <p className="rounded-xl bg-blush/50 px-3.5 py-2.5 text-sm text-berry">
-            Milestone at level {nextMilestone}: an extra bonus to every heart you earn.
+            Milestones at {def.milestones.join(", ")}, each an extra boost to everything.
           </p>
         )}
-
-        {def.unlock && (
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-berry-soft">Unlock condition</p>
-            <p className="text-sm text-berry">
-              {def.unlock.lifetimeHearts !== undefined &&
-                `${formatNumber(def.unlock.lifetimeHearts, format)} lifetime hearts. `}
-              {def.unlock.rebirths !== undefined && `${def.unlock.rebirths} rebirths. `}
-              {def.unlock.ascensions !== undefined && `${def.unlock.ascensions} ascensions. `}
-              {meetsUnlock(state, def.unlock) ? "Met." : "Not met yet."}
-            </p>
-          </div>
+        {isOwnTree(state, def) && (
+          <p className="text-xs text-berry-soft">Your own tree, so this is cheaper and stronger for you.</p>
         )}
-
-        {def.synergy && def.synergy.length > 0 && (
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-berry-soft">Works well with</p>
-            <p className="text-sm text-berry">{def.synergy.join(", ")}</p>
-          </div>
-        )}
-
-        <p className="text-xs text-berry-soft">
-          Upgrade levels are not refundable. Rebirth and ascension respecs are available in the shop.
-        </p>
       </div>
     </Sheet>
   );
@@ -254,37 +207,34 @@ function Row({ label, value }: { label: string; value: string }) {
 /* Abilities                                                           */
 /* ------------------------------------------------------------------ */
 
-export function SkillsTab() {
+export function AbilitiesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
   const format = state.settings.numberFormat;
-  const autoUnlocked = hasFlag(state, "auto_skill");
+  const auto = hasFlag(state, "auto_skill");
 
   const rows = useMemo(
     () =>
       SKILLS.map((def) => {
         const skill = state.skills[def.id] ?? { level: 0, lastUsedAt: 0, activeUntil: 0, auto: false };
-        const unlocked = meetsUnlock(state, def.unlock);
-        const cost = skillCost(def, skill.level);
-        const cooldown = def.cooldownMs * derived.skillCooldown;
-        const duration = def.durationMs * derived.skillDuration;
-        return { def, skill, unlocked, cost, cooldown, duration };
+        return {
+          def,
+          skill,
+          unlocked: meetsUnlock(state, def.unlock),
+          cost: skillCost(def, skill.level),
+          cooldown: def.cooldownMs * derived.skillCooldown,
+          duration: def.durationMs * derived.skillDuration,
+        };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version],
   );
 
-  const equipped = rows.filter((r) => r.skill.level > 0).length;
-
   return (
     <div className="flex flex-col gap-4">
-      <Section
-        title="Abilities"
-        hint={`${equipped} learned. You can have ${derived.skillSlots} active at once.`}
-      >
+      <Section title="Abilities" hint={`${formatNumber(state.wallet.pearls, format)} pearls`}>
         <p className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-berry-soft">
-          You have <span className="font-bold text-berry">{formatNumber(state.wallet.skill, format)}</span>{" "}
-          skill points. They come from achievements, missions and challenge clears.
+          Pearls come out of shells the otters crack.
         </p>
       </Section>
 
@@ -297,16 +247,16 @@ export function SkillsTab() {
                   title={def.name}
                   hint={
                     def.unlock.lifetimeHearts
-                      ? `Unlocks at ${formatNumber(def.unlock.lifetimeHearts, format)} lifetime hearts`
-                      : def.unlock.rebirths
-                        ? `Unlocks after ${def.unlock.rebirths} rebirths`
-                        : `Unlocks after ${def.unlock.ascensions} ascensions`
+                      ? `At ${formatNumber(def.unlock.lifetimeHearts, format)} lifetime hearts`
+                      : def.unlock.tideChanges
+                        ? `After ${def.unlock.tideChanges} tide changes`
+                        : `After ${def.unlock.newWaters} changes of water`
                   }
                 />
               </li>
             );
           }
-          const affordable = state.wallet.skill >= cost && skill.level < def.maxLevel;
+          const affordable = state.wallet.pearls >= cost && skill.level < def.maxLevel;
           return (
             <li key={def.id} className="rounded-card border border-line bg-white p-3.5 shadow-soft">
               <div className="flex items-start gap-2">
@@ -317,14 +267,13 @@ export function SkillsTab() {
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-berry">
                     <span className="truncate">{def.name}</span>
                     <span className="shrink-0 rounded-full bg-cream px-2 py-0.5 text-[0.6rem] font-bold text-berry-soft">
-                      lv {skill.level}/{def.maxLevel}
+                      {skill.level}/{def.maxLevel}
                     </span>
                   </p>
                   <p className="mt-0.5 text-xs text-berry-soft">{def.description}</p>
                   <p className="mt-1 text-[0.65rem] text-berry-soft">
-                    Cooldown {formatDurationShort(cooldown)}
-                    {duration > 0 && ` · lasts ${formatDurationShort(duration)}`}
-                    {def.synergy && ` · pairs with ${def.synergy.replace(/_/g, " ")}`}
+                    Every {formatDurationShort(cooldown)}
+                    {duration > 0 && `, lasts ${formatDurationShort(duration)}`}
                   </p>
                 </div>
                 <button
@@ -332,26 +281,22 @@ export function SkillsTab() {
                   onClick={() =>
                     mutate((draft) => {
                       const result = levelSkill(draft, def.id);
-                      toast(result.message ?? "Could not level that");
+                      if (result.message) toast(result.message);
                     })
                   }
                   className={`pressable shrink-0 rounded-xl px-3 py-2 text-center ${
                     affordable ? "bg-rose-dark text-white" : "bg-cream text-berry-soft"
                   }`}
                 >
-                  <span className="block text-xs font-bold">
-                    {skill.level >= def.maxLevel ? "Max" : cost}
-                  </span>
-                  <span className="block text-[0.6rem] opacity-80">
-                    {skill.level >= def.maxLevel ? "" : "points"}
-                  </span>
+                  <span className="block text-xs font-bold">{skill.level >= def.maxLevel ? "Max" : cost}</span>
+                  {skill.level < def.maxLevel && <span className="block text-[0.6rem] opacity-80">pearls</span>}
                 </button>
               </div>
 
               {skill.level > 0 && (
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <Bar value={skill.level} max={def.maxLevel} height="0.25rem" />
-                  {autoUnlocked && skill.level >= def.autoLevel && (
+                  {auto && skill.level >= def.autoLevel && (
                     <button
                       role="switch"
                       aria-checked={skill.auto}
@@ -375,22 +320,14 @@ export function SkillsTab() {
         })}
       </ul>
 
-      {!autoUnlocked && (
-        <p className="text-xs text-berry-soft">
-          Automatic activation is a rebirth upgrade. Until then, abilities are yours to time.
-        </p>
+      {auto && (
+        <Button
+          variant="secondary"
+          onClick={() => mutate((draft) => void (draft.settings.autoSkills = !draft.settings.autoSkills))}
+        >
+          {state.settings.autoSkills ? "Turn automation off" : "Turn automation on"}
+        </Button>
       )}
-
-      <Button
-        variant="secondary"
-        onClick={() =>
-          mutate((draft) => {
-            draft.settings.autoSkills = !draft.settings.autoSkills;
-          })
-        }
-      >
-        {state.settings.autoSkills ? "Turn off ability automation" : "Turn on ability automation"}
-      </Button>
     </div>
   );
 }

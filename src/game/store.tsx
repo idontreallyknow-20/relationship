@@ -30,10 +30,13 @@ import {
   checkAchievements, claimDailyBonus, computeOffline, claimOffline as applyOffline,
   recordDay, tick as engineTick, type OfflineReport,
 } from "./engine";
-import { buyCheapest, grantPartnerReward, refreshMissions, syncEvents as syncEventState } from "./actions";
+import {
+  buyCheapest, collectGift, grantTogether, recordSameEvening, refreshMissions,
+} from "./actions";
 import { drainRewards } from "./rewards-inbox";
 import {
-  claimLegacy, loadLocal, loadServer, queueSync, reconcile, saveLocal,
+  claimLegacy, loadBothSaves, loadLocal, loadServer, partnerIsAround, queueSync,
+  reconcile, saveLocal,
 } from "./persistence";
 
 const TICK_MS = 100;
@@ -88,7 +91,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // The save is created once and then mutated in place. Holding it in state
   // rather than a ref keeps it readable during render without copying a large
   // object on every tap.
-  const [state] = useState<GameState>(createGameState);
+  const [state] = useState<GameState>(() => createGameState(Date.now(), me));
   const [version, setVersion] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [ready, setReady] = useState(false);
@@ -145,7 +148,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       // Merge into the object the rest of the tree already holds a reference
       // to, so nothing ends up pointing at a stale save.
-      const resolved = reconcile(local, server) ?? createGameState();
+      const resolved = reconcile(local, server, me) ?? createGameState(Date.now(), me);
       Object.assign(state, resolved);
 
       // Old love jar taps become starting progress, exactly once.
@@ -160,7 +163,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       const startedAt = Date.now();
       const report = computeOffline(state, startedAt);
-      if (report.hearts > 0 || report.golden > 0) {
+      if (report.hearts > 0 || report.shells > 0) {
         setOfflineReport(report);
       } else {
         state.lastSeenAt = startedAt;
@@ -189,16 +192,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const week = `${date.getUTCFullYear()}-W${String(
         Math.ceil(((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 1)) / 86_400_000 + 1) / 7),
       ).padStart(2, "0")}`;
-      const month = day.slice(0, 7);
-
-      refreshMissions(state, day, week, month);
-      syncEventState(state, new Date(), couple.start_date);
+      refreshMissions(state, day, week);
       const bonus = claimDailyBonus(state, day);
       if (bonus) {
         notify({
           kind: "reward",
           title: `Daily bonus, day ${bonus.streak}`,
-          detail: "Hearts, golden hearts and treats added.",
+          detail: "Hearts, pearls and shells added.",
         });
       }
       dayCounters.current = { hearts: 0, clicks: 0, combo: 0 };
@@ -227,7 +227,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const noteAt = Date.now();
       const granted: string[] = [];
       for (const note of notes) {
-        const result = grantPartnerReward(state, note.action, note.day, noteAt);
+        const result = grantTogether(state, note.action, note.day, noteAt);
         if (result.ok && result.message) granted.push(result.message);
       }
       if (granted.length > 0) {
@@ -247,6 +247,49 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
     };
   }, [ready, bump, notify, state]);
+
+  /* ---------------------------------------------------------------- */
+  /* The other person                                                   */
+  /* ---------------------------------------------------------------- */
+
+  // The only thing in the game that needs them: if you have both been in the
+  // jar in the last few hours, everything doubles for both of you. Checked on
+  // load and then occasionally, never blocking, and silently skipped offline.
+  useEffect(() => {
+    if (!ready || !online) return;
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const saves = await loadBothSaves();
+        if (cancelled || !partnerIsAround(saves, me)) return;
+        const result = recordSameEvening(state, todayIn(couple.timezone), Date.now());
+        if (result.ok) {
+          notify({ kind: "reward", title: "You are both here", detail: result.message });
+          bump();
+        }
+      } catch {
+        // Offline or not migrated yet. Nothing here is required to play.
+      }
+    };
+
+    void check();
+    const interval = setInterval(() => void check(), 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [ready, online, me, couple.timezone, notify, bump, state]);
+
+  // Anything the other person left behind when their tide went out.
+  useEffect(() => {
+    if (!ready || !state.giftWaiting || state.giftWaiting.collected) return;
+    const result = collectGift(state, Date.now());
+    if (result.ok) {
+      notify({ kind: "reward", title: result.message ?? "They left you something" });
+      bump();
+    }
+  }, [ready, version, notify, bump, state]);
 
   /* ---------------------------------------------------------------- */
   /* Saving                                                            */

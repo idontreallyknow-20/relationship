@@ -1,24 +1,18 @@
 // The shape of a Love Jar save, and the vocabulary every system speaks.
 //
 // Content lives in `src/game/config`. Nothing in here knows about a specific
-// upgrade or pet, which is what lets a new reset layer or upgrade tree be
-// added without touching the engine.
+// upgrade or creature.
+
+export type Person = "cami" | "joseph";
 
 export type CurrencyId =
   | "hearts"
-  | "golden"
-  | "dust"
-  | "bond"
-  | "treats"
-  | "shards"
-  | "tokens"
-  | "crystals"
-  | "star"
-  | "eternal"
-  | "event"
-  | "fragments"
-  | "skill"
-  | "mastery";
+  | "pearls"
+  | "shells"
+  | "glass"
+  | "tide"
+  | "moons"
+  | "stars";
 
 /** Stats that contributors add to. Sums across every source. */
 export type AddStat =
@@ -29,23 +23,16 @@ export type AddStat =
   | "comboCap"
   | "comboDurationMs"
   | "comboStart"
-  | "goldenChance"
-  | "treasureChance"
+  | "comboShield"
+  | "critChainChance"
   | "luck"
   | "offlineHours"
-  | "petSlots"
-  | "skillSlots"
-  | "charmSlots"
-  | "jarCapacity"
-  | "freeUpgradeChance"
-  | "doubleRewardChance"
-  | "energyMax"
-  | "focusMax"
-  | "heatMax"
-  | "critChainChance"
-  | "comboShield"
+  | "capacity"
+  | "creatureSlots"
+  | "abilitySlots"
   | "startingUpgrades"
-  | "dailyDeals";
+  | "driftChance"
+  | "freeUpgradeChance";
 
 /** Stats that contributors multiply. Products across every source. */
 export type MulStat =
@@ -56,90 +43,92 @@ export type MulStat =
   | "megaCrit"
   | "comboGain"
   | "comboPower"
-  | "golden"
-  | "treasure"
+  | "chargePower"
+  // The two creature lines.
+  | "crackValue"
+  | "crackSpeed"
+  | "collectValue"
+  | "collectSpeed"
+  | "pairBonus"
+  | "creaturePower"
+  | "creatureXp"
+  // Currencies.
+  | "shellGain"
+  | "glassGain"
+  | "pearlGain"
+  | "tideGain"
+  | "moonGain"
+  | "starGain"
+  // Everything else.
   | "offline"
   | "cost"
-  | "petPower"
-  | "petXp"
   | "skillDuration"
   | "skillCooldown"
-  | "bossDamage"
-  | "bossReward"
   | "missionReward"
-  | "eventReward"
-  | "tokenGain"
-  | "crystalGain"
-  | "dustGain"
-  | "bondGain"
-  | "shardGain"
-  | "fragmentGain"
-  | "treatGain"
-  | "chargeSpeed"
-  | "energyRegen"
-  | "animationSpeed";
+  | "driftReward";
 
 export interface Mods {
   add?: Partial<Record<AddStat, number>>;
   mul?: Partial<Record<MulStat, number>>;
 }
 
-export type Rarity =
-  | "common"
-  | "uncommon"
-  | "rare"
-  | "epic"
-  | "legendary"
-  | "mythic"
-  | "celestial"
-  | "eternal"
-  | "secret";
-
-export type CharmSlot =
-  | "jar"
-  | "heart"
-  | "pet"
-  | "ring"
-  | "necklace"
-  | "bracelet"
-  | "crown"
-  | "wings"
-  | "aura"
-  | "relic";
-
 /* ------------------------------------------------------------------ */
-/* Owned things                                                        */
+/* Things that live in the jar                                         */
 /* ------------------------------------------------------------------ */
 
-export interface PetInstance {
+export interface CreatureInstance {
   id: string;
   defId: string;
   level: number;
   xp: number;
-  happiness: number;
-  /** Rolled once when the pet hatches; two of the same pet play differently. */
+  /** Falls over time, raised by feeding. Never drops a creature to nothing. */
+  fed: number;
+  name: string | null;
   trait: string;
-  personality: string;
-  nickname: string | null;
+  /** Molts for crabs, growth for otters. */
   stars: number;
   locked: boolean;
-  favorite: boolean;
-  fedAt: number;
-  hatchedAt: number;
-  /** Set when the pet is away on an expedition. */
-  expedition: { kind: string; endsAt: number } | null;
+  /** The rock an otter carries, or the shell a crab wears. */
+  itemId: string | null;
+  /** Which slot in the jar, or null when it is out. */
+  slot: number | null;
+  lastActedAt: number;
+  arrivedAt: number;
 }
 
-export interface CharmInstance {
+export interface ItemInstance {
   id: string;
+  kind: "rock" | "shell";
   defId: string;
-  slot: CharmSlot;
-  rarity: Rarity;
+  rarity: ItemRarity;
   level: number;
-  /** Rolled affixes: stat key plus magnitude. */
   affixes: { stat: AddStat | MulStat; kind: "add" | "mul"; value: number }[];
   locked: boolean;
   createdAt: number;
+}
+
+export type ItemRarity = "plain" | "smooth" | "banded" | "opaline" | "moonstone";
+
+/** Something an otter cracked open, sinking toward the floor. */
+export interface Settled {
+  id: string;
+  kind: "shell" | "glass" | "pearl";
+  x: number;
+  /** 0 at the surface, 1 on the floor. */
+  y: number;
+  value: number;
+  droppedAt: number;
+}
+
+/** Something that floated in and needs tapping open. */
+export interface Drifter {
+  defId: string;
+  id: string;
+  taps: number;
+  tapsDone: number;
+  x: number;
+  y: number;
+  arrivedAt: number;
 }
 
 export interface SkillState {
@@ -163,32 +152,8 @@ export interface MissionInstance {
   goal: number;
   progress: number;
   claimed: boolean;
-  /** yyyy-MM-dd the mission belongs to, in the couple's timezone. */
   period: string;
   rerolled: boolean;
-}
-
-export interface BossFight {
-  defId: string;
-  tier: number;
-  hp: number;
-  maxHp: number;
-  startedAt: number;
-  endsAt: number;
-  phase: number;
-  shielded: boolean;
-  weakSpot: { x: number; y: number; expiresAt: number } | null;
-  hitsThisPhase: number;
-}
-
-export interface FloatingHeart {
-  id: string;
-  kind: "golden" | "treasure" | "mimic" | "healing" | "exploding" | "shielded";
-  spawnedAt: number;
-  expiresAt: number;
-  x: number;
-  y: number;
-  hp: number;
 }
 
 export interface ChallengeRun {
@@ -196,7 +161,6 @@ export interface ChallengeRun {
   startedAt: number;
   endsAt: number | null;
   score: number;
-  /** Snapshot of the save taken when the challenge began. */
   restore: string | null;
 }
 
@@ -205,6 +169,16 @@ export interface RewardLogEntry {
   at: number;
   label: string;
   detail: string;
+}
+
+/** Left behind by a tide change for the other person to find. */
+export interface Gift {
+  from: Person;
+  at: number;
+  label: string;
+  mods: Mods;
+  durationMs: number;
+  collected: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -216,55 +190,53 @@ export interface GameStats {
   criticalClicks: number;
   megaCriticalClicks: number;
   perfectClicks: number;
+  chargedClicks: number;
   bestCombo: number;
   comboFinishers: number;
   heartsFromClicks: number;
   heartsFromPassive: number;
   heartsFromCrits: number;
   heartsFromSkills: number;
-  heartsFromPets: number;
+  heartsFromCreatures: number;
   heartsFromOffline: number;
-  heartsFromPartner: number;
-  heartsFromBosses: number;
-  heartsFromGolden: number;
-  goldenCaught: number;
-  treasuresOpened: number;
+  heartsFromTogether: number;
+  heartsFromDrifters: number;
+  cracks: number;
+  collects: number;
+  driftersOpened: number;
   upgradesBought: number;
   skillsUsed: number;
-  eggsOpened: number;
-  petsEvolved: number;
-  petsFused: number;
-  charmsCrafted: number;
-  charmsSalvaged: number;
-  bossesDefeated: number;
+  creaturesArrived: number;
+  creaturesEvolved: number;
+  itemsMade: number;
+  vesselsUnlocked: number;
   challengesCompleted: number;
   missionsCompleted: number;
   achievementsUnlocked: number;
   minigamesPlayed: number;
-  fastestRebirthMs: number | null;
-  fastestAscensionMs: number | null;
+  fastestTideChangeMs: number | null;
+  fastestNewWaterMs: number | null;
   longestSessionMs: number;
   bestSessionHearts: number;
   sessionStartedAt: number;
   sessionHearts: number;
-  /** Per day rollups, newest last, capped so the save stays small. */
   history: { day: string; hearts: number; clicks: number; bestCombo: number }[];
 }
 
 export interface GameSettings {
   sound: boolean;
-  music: boolean;
+  ambient: boolean;
   haptics: boolean;
   screenShake: boolean;
   particles: "full" | "reduced" | "off";
   reducedMotion: boolean;
   batterySaver: boolean;
   numberFormat: "short" | "scientific" | "engineering" | "full";
-  showDamageNumbers: boolean;
   confirmRareSpends: boolean;
   buyAmount: 1 | 10 | 25 | 100 | "max";
-  competitionOptIn: boolean;
+  drifters: boolean;
   autoSkills: boolean;
+  tutorialDone: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -273,6 +245,8 @@ export interface GameSettings {
 
 export interface GameState {
   version: number;
+  /** Whose save this is. Decides which upgrade tree is cheaper. */
+  owner: Person;
   createdAt: number;
   updatedAt: number;
   lastTickAt: number;
@@ -281,35 +255,30 @@ export interface GameState {
   wallet: Record<CurrencyId, number>;
   lifetime: Record<CurrencyId, number>;
 
-  /** Hearts earned since the last rebirth, and since the last ascension. */
+  /** Hearts since the last tide change, and since the last new water. */
   runHearts: number;
   eraHearts: number;
   runStartedAt: number;
   eraStartedAt: number;
-  rebirths: number;
-  ascensions: number;
+  tideChanges: number;
+  newWaters: number;
 
   upgrades: Record<string, number>;
-  rebirthUpgrades: Record<string, number>;
-  ascensionUpgrades: Record<string, number>;
+  moonUpgrades: Record<string, number>;
+  starUpgrades: Record<string, number>;
   skills: Record<string, SkillState>;
 
-  pets: Record<string, PetInstance>;
-  petLoadouts: { name: string; slots: (string | null)[] }[];
-  activeLoadout: number;
-  eggs: Record<string, number>;
-  /** Draws since the last rare or better, per egg type. */
-  pity: Record<string, number>;
-  petCodex: string[];
+  creatures: Record<string, CreatureInstance>;
+  items: Record<string, ItemInstance>;
+  /** Creature ids by jar slot. Adjacency is what makes otters hold hands. */
+  slots: (string | null)[];
+  codex: string[];
 
-  charms: Record<string, CharmInstance>;
-  equipped: Partial<Record<CharmSlot, string | null>>;
+  vessel: string;
+  vesselsUnlocked: string[];
 
-  world: string;
-  worldsUnlocked: string[];
-
-  bosses: Record<string, { defeated: number; bestMs: number | null; tier: number }>;
-  activeBoss: BossFight | null;
+  settled: Settled[];
+  drifter: Drifter | null;
 
   challenges: Record<string, { completed: number; best: number }>;
   activeChallenge: ChallengeRun | null;
@@ -319,34 +288,26 @@ export interface GameState {
 
   achievements: Record<string, { tier: number; at: number }>;
   collections: Record<string, string[]>;
-  titles: string[];
-  activeTitle: string | null;
 
-  events: Record<string, { progress: number; claimed: string[]; currency: number }>;
-  shopPurchases: string[];
+  /** Shared with the other person. */
+  tideLevel: number;
+  giftLeft: Gift | null;
+  giftWaiting: Gift | null;
 
-  /** Live run state, not persisted across a rebirth. */
+  /** Live run state, not persisted across a tide change. */
   combo: number;
   comboExpiresAt: number;
-  heat: number;
-  focus: number;
-  energy: number;
   charge: number;
   buffs: Buff[];
-  floating: FloatingHeart[];
 
   dailyBonus: { day: string | null; streak: number };
-  /** Couple app rewards already granted, keyed by day so caps are honest. */
-  partnerRewards: { day: string; claimed: string[] };
+  togetherRewards: { day: string; claimed: string[] };
 
   stats: GameStats;
   settings: GameSettings;
   log: RewardLogEntry[];
 
   legacyClaimed: boolean;
-  /** Client side ledger of batches already accepted by the server. */
-  syncedLifetime: number;
-  syncedClicks: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -363,27 +324,28 @@ export interface Derived {
   comboCap: number;
   comboDurationMs: number;
   comboMultiplier: number;
-  goldenChancePerSecond: number;
-  treasureChance: number;
+  comboShield: number;
+  critChainChance: number;
+  chargePower: number;
   luck: number;
   offlineHours: number;
   offlineRate: number;
   costMultiplier: number;
-  petSlots: number;
-  skillSlots: number;
-  jarCapacity: number;
-  petPower: number;
-  bossDamage: number;
-  globalMultiplier: number;
-  freeUpgradeChance: number;
-  doubleRewardChance: number;
+  capacity: number;
+  creatureSlots: number;
+  abilitySlots: number;
   skillDuration: number;
   skillCooldown: number;
-  energyMax: number;
-  focusMax: number;
-  heatMax: number;
-  critChainChance: number;
-  comboShield: number;
-  chargeSpeed: number;
+  crackValue: number;
+  crackSpeed: number;
+  collectValue: number;
+  collectSpeed: number;
+  pairBonus: number;
+  globalMultiplier: number;
+  freeUpgradeChance: number;
+  driftChance: number;
+  /** Water depth and floor width of the current vessel. */
+  depth: number;
+  floor: number;
   mods: { add: Record<AddStat, number>; mul: Record<MulStat, number> };
 }

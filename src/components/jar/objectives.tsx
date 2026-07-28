@@ -3,12 +3,10 @@
 // Missions, challenges, achievements and collections.
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Flag, Swords, Trophy } from "lucide-react";
+import { CheckCircle2, Flag, Trophy, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
-import {
-  CHALLENGES, MISSION_BY_ID, METRIC_LABEL, type ChallengeDef, type MissionPeriod,
-} from "@/game/config/objectives";
-import { ACHIEVEMENTS, ACHIEVEMENT_TOTAL, COLLECTIONS, LETTER_TEXT } from "@/game/config/awards";
+import { CHALLENGES, METRIC_LABEL, MISSION_BY_ID, type ChallengeDef, type MetricId, type MissionPeriod } from "@/game/config/objectives";
+import { ACHIEVEMENTS, ACHIEVEMENT_TOTAL, COLLECTIONS, NOTE_TEXT } from "@/game/config/awards";
 import { claimMission, finishChallenge, rerollMission, startChallenge } from "@/game/actions";
 import { metricTotal } from "@/game/engine";
 import { hasFlag } from "@/game/formulas";
@@ -19,9 +17,8 @@ import { Bar, EmptyRow, Section } from "./bits";
 const PERIOD_LABEL: Record<MissionPeriod, string> = {
   daily: "Today",
   weekly: "This week",
-  monthly: "This month",
-  story: "Story",
-  mastery: "Mastery",
+  story: "Next",
+  long: "Long haul",
 };
 
 export function MissionsTab() {
@@ -42,7 +39,7 @@ export function MissionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  const order: MissionPeriod[] = ["story", "daily", "weekly", "monthly", "mastery"];
+  const order: MissionPeriod[] = ["story", "daily", "weekly", "long"];
 
   return (
     <div className="flex flex-col gap-5">
@@ -55,12 +52,10 @@ export function MissionsTab() {
               {missions.map((mission) => {
                 const def = MISSION_BY_ID[mission.defId];
                 if (!def) return null;
-                // Long-lived missions read the lifetime total; short ones
-                // measure what you did during their window.
-                const progress =
-                  period === "story" || period === "mastery" || def.metric === "bestCombo"
-                    ? Math.max(mission.progress, metricTotal(state, def.metric))
-                    : mission.progress;
+                const longLived = period === "story" || period === "long" || def.metric === "bestCombo";
+                const progress = longLived
+                  ? Math.max(mission.progress, metricTotal(state, def.metric as MetricId))
+                  : mission.progress;
                 const complete = progress >= mission.goal;
                 return (
                   <li
@@ -71,11 +66,7 @@ export function MissionsTab() {
                   >
                     <div className="flex items-start gap-2">
                       <span className="mt-0.5 shrink-0 text-rose-dark">
-                        {mission.claimed ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : (
-                          <Flag className="h-4 w-4" />
-                        )}
+                        {mission.claimed ? <CheckCircle2 className="h-4 w-4" /> : <Flag className="h-4 w-4" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-berry">{def.name}</p>
@@ -88,9 +79,9 @@ export function MissionsTab() {
                         </div>
                         <p className="mt-1 text-[0.65rem] text-berry-soft">
                           {Object.entries(def.reward)
-                            .filter(([, value]) => typeof value === "number")
-                            .map(([key, value]) => `${value} ${key}`)
-                            .join(" · ") || "A collectible"}
+                            .filter(([, v]) => typeof v === "number")
+                            .map(([k, v]) => `${v} ${k}`)
+                            .join(" · ")}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col gap-1">
@@ -100,11 +91,11 @@ export function MissionsTab() {
                           onClick={() =>
                             mutate((draft) => {
                               const result = claimMission(draft, mission.id);
-                              toast(result.message ?? "Not finished yet");
+                              toast(result.message ?? "Not yet");
                             })
                           }
                         >
-                          {mission.claimed ? "Claimed" : "Claim"}
+                          {mission.claimed ? "Done" : "Claim"}
                         </Button>
                         {period === "daily" && !mission.claimed && !mission.rerolled && (
                           <Button
@@ -113,11 +104,11 @@ export function MissionsTab() {
                             onClick={() =>
                               mutate((draft) => {
                                 const result = rerollMission(draft, mission.id, today);
-                                toast(result.message ?? "Could not reroll");
+                                toast(result.message ?? "Cannot swap");
                               })
                             }
                           >
-                            Reroll
+                            Swap
                           </Button>
                         )}
                       </div>
@@ -129,10 +120,7 @@ export function MissionsTab() {
           </Section>
         );
       })}
-
-      {state.missions.length === 0 && (
-        <EmptyRow>Missions arrive with the new day. Come back after midnight.</EmptyRow>
-      )}
+      {state.missions.length === 0 && <EmptyRow>New ones arrive with the day.</EmptyRow>}
     </div>
   );
 }
@@ -146,7 +134,6 @@ export function ChallengesTab() {
   const toast = useToast();
   const [confirm, setConfirm] = useState<ChallengeDef | null>(null);
   const format = state.settings.numberFormat;
-  const unlocked = hasFlag(state, "challenges");
   const active = state.activeChallenge;
   const activeDef = active ? CHALLENGES.find((c) => c.id === active.defId) : null;
 
@@ -157,19 +144,14 @@ export function ChallengesTab() {
         record: state.challenges[def.id] ?? { completed: 0, best: 0 },
         available:
           state.lifetime.hearts >= def.unlockLifetime &&
-          (!def.requiresRebirths || state.rebirths >= def.requiresRebirths),
+          (!def.requiresTideChanges || state.tideChanges >= def.requiresTideChanges),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version],
   );
 
-  if (!unlocked) {
-    return (
-      <EmptyRow>
-        Challenge modes unlock with a rebirth upgrade. They are runs with one rule removed and one
-        reward that only comes from there.
-      </EmptyRow>
-    );
+  if (!hasFlag(state, "challenges")) {
+    return <EmptyRow>Challenges unlock with a moon upgrade.</EmptyRow>;
   }
 
   return (
@@ -181,9 +163,7 @@ export function ChallengesTab() {
           <div className="mt-2">
             <div className="flex items-baseline justify-between text-xs text-berry-soft">
               <span>{METRIC_LABEL[activeDef.goal.metric]}</span>
-              <span>
-                {formatNumber(active.score, format)} / {formatNumber(activeDef.goal.amount, format)}
-              </span>
+              <span>{formatNumber(active.score, format)} / {formatNumber(activeDef.goal.amount, format)}</span>
             </div>
             <Bar value={active.score} max={activeDef.goal.amount} />
           </div>
@@ -199,15 +179,12 @@ export function ChallengesTab() {
               onClick={() =>
                 mutate((draft) => {
                   const result = finishChallenge(draft, Date.now(), false);
-                  if (result.cleared) {
-                    notify({ kind: "reward", title: result.message ?? "Cleared", detail: "Rewards added." });
-                  } else {
-                    toast(result.message ?? "Not there yet");
-                  }
+                  if (result.cleared) notify({ kind: "reward", title: result.message ?? "Cleared" });
+                  else toast(result.message ?? "Not there yet");
                 })
               }
             >
-              Finish now
+              Finish
             </Button>
             <Button
               size="sm"
@@ -215,38 +192,29 @@ export function ChallengesTab() {
               onClick={() =>
                 mutate((draft) => {
                   finishChallenge(draft, Date.now(), true);
-                  toast("Challenge abandoned. Your run is back.");
+                  toast("Left it. Your run is back.");
                 })
               }
             >
-              Abandon
+              Leave
             </Button>
           </div>
         </div>
       )}
 
-      <Section
-        title="Challenges"
-        hint="Entering one puts your run aside and gives it back when you finish."
-      >
+      <Section title="Challenges" hint="Your run is put aside and handed straight back afterwards.">
         <ul className="flex flex-col gap-2">
           {rows.map(({ def, record, available }) => (
             <li
               key={def.id}
-              className={`rounded-card border bg-white p-3.5 shadow-soft ${
-                available ? "border-line" : "border-line-soft opacity-60"
-              }`}
+              className={`rounded-card border bg-white p-3.5 shadow-soft ${available ? "border-line" : "border-line-soft opacity-60"}`}
             >
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 shrink-0 text-rose-dark">
-                  <Swords className="h-4 w-4" />
-                </span>
+                <span className="mt-0.5 shrink-0 text-rose-dark"><Waves className="h-4 w-4" /></span>
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-berry">
                     <span className="truncate">{def.name}</span>
-                    <span className="shrink-0 text-[0.65rem] font-bold text-berry-soft">
-                      {"·".repeat(def.difficulty)}
-                    </span>
+                    <span className="shrink-0 text-[0.65rem] font-bold text-berry-soft">{"·".repeat(def.difficulty)}</span>
                     {record.completed > 0 && (
                       <span className="shrink-0 rounded-full bg-blush px-2 py-0.5 text-[0.6rem] font-bold text-rose-dark">
                         {record.completed}x
@@ -255,25 +223,14 @@ export function ChallengesTab() {
                   </p>
                   <p className="mt-0.5 text-xs text-berry-soft">{def.description}</p>
                   <p className="mt-1 text-[0.65rem] text-berry-soft">
-                    Goal: {formatNumber(def.goal.amount, format)} {METRIC_LABEL[def.goal.metric]}
-                    {def.timeLimit ? ` in ${Math.round(def.timeLimit / 60)} minutes` : ", no timer"}
+                    {formatNumber(def.goal.amount, format)} {METRIC_LABEL[def.goal.metric]}
+                    {def.timeLimit ? ` in ${Math.round(def.timeLimit / 60)} minutes` : ", untimed"}
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  disabled={!available || Boolean(active)}
-                  onClick={() => setConfirm(def)}
-                >
+                <Button size="sm" disabled={!available || Boolean(active)} onClick={() => setConfirm(def)}>
                   Start
                 </Button>
               </div>
-              {!available && (
-                <p className="mt-1.5 text-[0.65rem] text-berry-soft">
-                  {def.requiresRebirths && state.rebirths < def.requiresRebirths
-                    ? `Needs ${def.requiresRebirths} rebirths.`
-                    : `Needs ${formatNumber(def.unlockLifetime, format)} lifetime hearts.`}
-                </p>
-              )}
             </li>
           ))}
         </ul>
@@ -282,17 +239,13 @@ export function ChallengesTab() {
       <ConfirmDialog
         open={Boolean(confirm)}
         title={confirm ? `Start ${confirm.name}?` : ""}
-        message={
-          confirm
-            ? `${confirm.description} Your current run is saved and handed back when the challenge ends, so this costs you nothing but time.`
-            : ""
-        }
+        message={confirm ? `${confirm.description} Your run is saved and returned when it ends.` : ""}
         confirmLabel="Start"
         onConfirm={() => {
           if (!confirm) return;
           mutate((draft) => {
             const result = startChallenge(draft, confirm.id, Date.now());
-            toast(result.message ?? "Could not start that");
+            toast(result.message ?? "Cannot start");
           });
           setConfirm(null);
         }}
@@ -308,7 +261,7 @@ export function ChallengesTab() {
 
 export function AchievementsTab() {
   const { state, version } = useGame();
-  const [showHidden, setShowHidden] = useState<"all" | "earned" | "remaining">("all");
+  const [filter, setFilter] = useState<"all" | "earned" | "left">("all");
   const format = state.settings.numberFormat;
 
   const rows = useMemo(
@@ -316,39 +269,39 @@ export function AchievementsTab() {
       ACHIEVEMENTS.map((def) => {
         const tier = state.achievements[def.id]?.tier ?? 0;
         const total = metricTotal(state, def.metric);
-        const nextGoal = tier < def.tiers.length ? def.tiers[tier] : def.tiers[def.tiers.length - 1];
-        return { def, tier, total, nextGoal, done: tier >= def.tiers.length };
+        const goal = tier < def.tiers.length ? def.tiers[tier] : def.tiers[def.tiers.length - 1];
+        return { def, tier, total, goal, done: tier >= def.tiers.length };
       }).filter((row) => {
         if (row.def.hidden && row.tier === 0) return false;
-        if (showHidden === "earned") return row.tier > 0;
-        if (showHidden === "remaining") return !row.done;
+        if (filter === "earned") return row.tier > 0;
+        if (filter === "left") return !row.done;
         return true;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, showHidden],
+    [version, filter],
   );
 
   const earned = ACHIEVEMENTS.reduce((sum, def) => sum + (state.achievements[def.id]?.tier ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Achievements" hint={`${earned} of ${ACHIEVEMENT_TOTAL} unlocked`}>
+      <Section title="Achievements" hint={`${earned} of ${ACHIEVEMENT_TOTAL}`}>
         <Bar value={earned} max={ACHIEVEMENT_TOTAL} />
       </Section>
 
       <SegmentedControl
-        label="Achievement filter"
-        value={showHidden}
-        onChange={setShowHidden}
+        label="Filter"
+        value={filter}
+        onChange={setFilter}
         options={[
           { value: "all", label: "All" },
           { value: "earned", label: "Earned" },
-          { value: "remaining", label: "Remaining" },
+          { value: "left", label: "Left" },
         ]}
       />
 
       <ul className="flex flex-col gap-2">
-        {rows.map(({ def, tier, total, nextGoal, done }) => (
+        {rows.map(({ def, tier, total, goal, done }) => (
           <li key={def.id} className="rounded-card border border-line bg-white p-3.5 shadow-soft">
             <div className="flex items-start gap-2">
               <span className={`mt-0.5 shrink-0 ${tier > 0 ? "text-rose-dark" : "text-line"}`}>
@@ -359,31 +312,26 @@ export function AchievementsTab() {
                   <span className="truncate">{def.name}</span>
                   {tier > 0 && (
                     <span className="shrink-0 rounded-full bg-blush px-2 py-0.5 text-[0.6rem] font-bold text-rose-dark">
-                      tier {tier}/{def.tiers.length}
+                      {tier}/{def.tiers.length}
                     </span>
                   )}
                 </p>
                 <p className="text-xs text-berry-soft">{def.description}</p>
-                {!done && (
+                {!done ? (
                   <>
-                    <div className="mt-1.5">
-                      <Bar value={total} max={nextGoal} height="0.25rem" />
-                    </div>
+                    <div className="mt-1.5"><Bar value={total} max={goal} height="0.25rem" /></div>
                     <p className="mt-0.5 text-[0.65rem] text-berry-soft">
-                      {formatNumber(total, format)} / {formatNumber(nextGoal, format)}
+                      {formatNumber(total, format)} / {formatNumber(goal, format)}
                     </p>
                   </>
+                ) : (
+                  <p className="mt-1 text-[0.65rem] font-semibold text-success">All of them</p>
                 )}
-                {done && <p className="mt-1 text-[0.65rem] font-semibold text-success">Every tier earned</p>}
               </div>
             </div>
           </li>
         ))}
       </ul>
-
-      <p className="text-xs text-berry-soft">
-        Hidden achievements only appear here once you have found them.
-      </p>
     </div>
   );
 }
@@ -394,7 +342,8 @@ export function AchievementsTab() {
 
 export function CollectionsTab() {
   const { state, mutate, version } = useGame();
-  const [letter, setLetter] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const water = (state as { water?: string }).water ?? "default";
 
   const rows = useMemo(
     () =>
@@ -417,37 +366,27 @@ export function CollectionsTab() {
           <ul className="grid grid-cols-2 gap-2">
             {collection.items.map((item) => {
               const has = owned.includes(item.id);
-              const isTitle = collection.id === "titles";
-              const isLetter = collection.id === "letters";
+              const isWater = collection.id === "waters";
+              const isNote = collection.id === "notes";
               return (
                 <li key={item.id}>
                   <button
-                    disabled={!has || (!isTitle && !isLetter)}
+                    disabled={!has || (!isWater && !isNote)}
                     onClick={() => {
-                      if (isLetter) setLetter(item.id);
-                      if (isTitle) mutate((draft) => void (draft.activeTitle = item.name));
+                      if (isNote) setNote(item.id);
+                      if (isWater) mutate((draft) => void ((draft as { water?: string }).water = item.id));
                     }}
                     className={`flex w-full flex-col gap-0.5 rounded-xl border p-3 text-left ${
                       has ? "border-line bg-white" : "border-dashed border-line bg-white/50"
-                    } ${state.activeTitle === item.name ? "ring-2 ring-rose-dark" : ""}`}
+                    } ${isWater && water === item.id ? "ring-2 ring-rose-dark" : ""}`}
                   >
                     <span className="flex items-center gap-1.5">
                       <span
                         aria-hidden="true"
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor: has
-                            ? item.rarity === "legendary"
-                              ? "#c99a3f"
-                              : item.rarity === "rare"
-                                ? "#4f7bd0"
-                                : "#8a7f86"
-                            : "var(--color-line)",
-                        }}
+                        style={{ backgroundColor: has ? (item.rare ? "#c99a3f" : "#8a7f86") : "var(--color-line)" }}
                       />
-                      <span className="truncate text-xs font-bold text-berry">
-                        {has ? item.name : "Not found"}
-                      </span>
+                      <span className="truncate text-xs font-bold text-berry">{has ? item.name : "Not found"}</span>
                     </span>
                     <span className="text-[0.65rem] text-berry-soft">{item.source}</span>
                   </button>
@@ -457,19 +396,14 @@ export function CollectionsTab() {
           </ul>
           {complete && (
             <p className="rounded-xl bg-blush/50 px-3.5 py-2 text-xs font-semibold text-rose-dark">
-              Set complete. Reward:{" "}
-              {Object.entries(collection.completion)
-                .map(([key, value]) => `${value} ${key}`)
-                .join(", ")}
+              Complete: {Object.entries(collection.completion).map(([k, v]) => `${v} ${k}`).join(", ")}
             </p>
           )}
         </Section>
       ))}
 
-      <Sheet open={Boolean(letter)} onClose={() => setLetter(null)} title="A love letter">
-        <p className="pt-2 font-display text-lg leading-relaxed text-plum">
-          {letter ? LETTER_TEXT[letter] : ""}
-        </p>
+      <Sheet open={Boolean(note)} onClose={() => setNote(null)} title="A note">
+        <p className="pt-2 font-display text-lg leading-relaxed text-plum">{note ? NOTE_TEXT[note] : ""}</p>
       </Sheet>
     </div>
   );

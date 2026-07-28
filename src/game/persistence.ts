@@ -2,7 +2,11 @@
 
 // Saving. Local first, always: the game writes to IndexedDB after every
 // meaningful action and never waits for the network. The server copy is a
-// durable backup plus the referee for anything permanent or comparable.
+// backup and the way the two of you see each other's jar.
+//
+// There is no validation layer any more. This is a game for two people who
+// share an account boundary; the only person anyone could cheat is
+// themselves, and the tables that used to police it were pure overhead.
 
 import { supabase } from "@/lib/supabase";
 import { idbGet, idbPut, STORE_META } from "@/lib/offline/db";
@@ -30,18 +34,17 @@ interface StoredSave {
 export async function loadLocal(person: Person): Promise<GameState | null> {
   const stored = await idbGet<StoredSave>(STORE_META, localKey(person));
   if (!stored?.state) return null;
-  return migrateSave(stored.state);
+  return migrateSave(stored.state, person);
 }
 
 export async function saveLocal(person: Person, state: GameState): Promise<void> {
-  const payload: StoredSave = {
+  await idbPut(STORE_META, {
     key: localKey(person),
     person,
     version: SAVE_VERSION,
     state,
     savedAt: Date.now(),
-  };
-  await idbPut(STORE_META, payload);
+  } satisfies StoredSave);
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,54 +52,59 @@ export async function saveLocal(person: Person, state: GameState): Promise<void>
 /* ------------------------------------------------------------------ */
 
 export interface ServerSave {
+  person: Person;
   state: unknown;
   hearts: number;
   lifetime_hearts: number;
-  total_clicks: number;
-  rebirths: number;
-  ascensions: number;
+  tide_changes: number;
+  new_waters: number;
+  creatures: number;
   legacy_claimed: boolean;
-  suspicious_batches: number;
   updated_at: string;
 }
 
 export async function loadServer(person: Person): Promise<ServerSave | null> {
   const { data, error } = await supabase()
     .from("game_saves")
-    .select("state, hearts, lifetime_hearts, total_clicks, rebirths, ascensions, legacy_claimed, suspicious_batches, updated_at")
+    .select("person, state, hearts, lifetime_hearts, tide_changes, new_waters, creatures, legacy_claimed, updated_at")
     .eq("person", person)
     .maybeSingle();
   if (error) throw error;
   return (data as ServerSave | null) ?? null;
 }
 
+/** Both partners' rows, for the shared jar and the same-evening check. */
+export async function loadBothSaves(): Promise<ServerSave[]> {
+  const { data, error } = await supabase()
+    .from("game_saves")
+    .select("person, state, hearts, lifetime_hearts, tide_changes, new_waters, creatures, legacy_claimed, updated_at");
+  if (error) throw error;
+  return (data ?? []) as ServerSave[];
+}
+
 /**
  * Pick between the local save and the server save.
  *
- * Both are the same person on different devices, so the rule is simply
- * "whichever has seen more life". Permanent counters are then floored to the
- * server's values, because the server never lets them go backwards.
+ * Same person, different devices, so the rule is simply "whichever has seen
+ * more life". Permanent counters are then floored to the larger of the two.
  */
-export function reconcile(local: GameState | null, server: ServerSave | null): GameState | null {
+export function reconcile(local: GameState | null, server: ServerSave | null, person: Person): GameState | null {
   if (!local && !server) return null;
-  if (!local) return migrateSave(server!.state);
+  if (!local) return migrateSave(server!.state, person);
   if (!server) return local;
 
-  const serverState = migrateSave(server.state);
-  const chosen = server.lifetime_hearts > local.lifetime.hearts ? serverState : local;
+  const serverState = migrateSave(server.state, person);
+  const chosen = Number(server.lifetime_hearts) > local.lifetime.hearts ? serverState : local;
 
-  chosen.lifetime.hearts = Math.max(chosen.lifetime.hearts, server.lifetime_hearts);
-  chosen.stats.totalClicks = Math.max(chosen.stats.totalClicks, server.total_clicks);
-  chosen.rebirths = Math.max(chosen.rebirths, server.rebirths);
-  chosen.ascensions = Math.max(chosen.ascensions, server.ascensions);
+  chosen.lifetime.hearts = Math.max(chosen.lifetime.hearts, Number(server.lifetime_hearts) || 0);
+  chosen.tideChanges = Math.max(chosen.tideChanges, Number(server.tide_changes) || 0);
+  chosen.newWaters = Math.max(chosen.newWaters, Number(server.new_waters) || 0);
   chosen.legacyClaimed = chosen.legacyClaimed || server.legacy_claimed;
-  chosen.syncedLifetime = server.lifetime_hearts;
-  chosen.syncedClicks = server.total_clicks;
   return chosen;
 }
 
 /* ------------------------------------------------------------------ */
-/* The sync operation                                                  */
+/* Sync                                                                */
 /* ------------------------------------------------------------------ */
 
 export interface SyncPayload {
@@ -105,56 +113,40 @@ export interface SyncPayload {
   day: string;
 }
 
-let lastAcceptedSave: ServerSave | null = null;
-
-export function lastServerSave(): ServerSave | null {
-  return lastAcceptedSave;
-}
-
-registerOp<SyncPayload>("game.sync", async (payload, op) => {
+registerOp<SyncPayload>("game.sync", async (payload) => {
   const { state } = payload;
-  const { data, error } = await supabase().rpc("game_sync", {
-    p_batch_id: op.id,
+  const { error } = await supabase().rpc("game_save", {
     p_state: state,
     p_hearts: Math.min(state.wallet.hearts, 1e300),
     p_lifetime: Math.min(state.lifetime.hearts, 1e300),
-    p_clicks: Math.floor(state.stats.totalClicks),
-    p_best_combo: Math.floor(state.stats.bestCombo),
-    p_rebirths: state.rebirths,
-    p_ascensions: state.ascensions,
-    p_pets: Object.keys(state.pets).length,
-    p_achievements: state.stats.achievementsUnlocked,
-    p_bosses: Math.floor(state.stats.bossesDefeated),
+    p_tide_changes: state.tideChanges,
+    p_new_waters: state.newWaters,
+    p_creatures: Object.keys(state.creatures).length,
     p_day: payload.day,
+    p_day_hearts: Math.max(0, state.stats.history.at(-1)?.hearts ?? 0),
   });
-
   if (error) {
     if (isTransportError(error)) throw error;
-    // A duplicate batch id means this exact batch already landed.
-    if (error.code === "23505") throw new AlreadyAppliedError("batch already applied");
+    if (error.code === "23505") throw new AlreadyAppliedError("already saved");
     throw new PermanentOpError(error.message);
   }
-  lastAcceptedSave = (data as ServerSave | null) ?? null;
 });
 
-/** Queue a progress batch. Safe to call while offline. */
+/** Queue a save. Safe to call while offline. */
 export async function queueSync(person: Person, state: GameState, day: string): Promise<void> {
   await enqueue<SyncPayload>(
     "game.sync",
     { person, state: JSON.parse(JSON.stringify(state)) as GameState, day },
-    { label: "Love Jar progress" },
+    // One pending save at a time: a newer one replaces an older one rather
+    // than queueing a backlog of stale snapshots.
+    { id: `game.sync:${person}`, label: "Love Jar progress" },
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Legacy claim                                                        */
+/* Legacy                                                              */
 /* ------------------------------------------------------------------ */
 
-/**
- * Convert the old `love_taps` rows into starting progress. The server records
- * that it happened, so this is safe to call on every load: it only ever does
- * something once.
- */
 export async function claimLegacy(state: GameState): Promise<number> {
   if (state.legacyClaimed) return 0;
   const { data, error } = await supabase().rpc("game_claim_legacy");
@@ -169,59 +161,28 @@ export async function claimLegacy(state: GameState): Promise<number> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Leaderboard reads                                                   */
+/* The shared view                                                     */
 /* ------------------------------------------------------------------ */
-
-export interface LeaderRow {
-  person: Person;
-  lifetime_hearts: number;
-  best_combo: number;
-  rebirths: number;
-  ascensions: number;
-  pets_collected: number;
-  bosses_defeated: number;
-  achievements: number;
-}
-
-export async function loadLeaderboard(): Promise<LeaderRow[]> {
-  const { data, error } = await supabase()
-    .from("game_saves")
-    .select("person, lifetime_hearts, best_combo, rebirths, ascensions, pets_collected, bosses_defeated, achievements");
-  if (error) throw error;
-  return (data ?? []) as LeaderRow[];
-}
 
 export interface DailyRow {
   person: Person;
   day: string;
   hearts: number;
-  clicks: number;
-  best_combo: number;
 }
 
 export async function loadDailyScores(since: string): Promise<DailyRow[]> {
   const { data, error } = await supabase()
     .from("game_daily")
-    .select("person, day, hearts, clicks, best_combo")
+    .select("person, day, hearts")
     .gte("day", since)
     .order("day", { ascending: false });
   if (error) throw error;
   return (data ?? []) as DailyRow[];
 }
 
-export async function recordPersonalBest(
-  metric: string,
-  value: number,
-  lowerIsBetter = false,
-): Promise<void> {
-  try {
-    await supabase().rpc("game_record", {
-      p_metric: metric,
-      p_value: value,
-      p_lower_is_better: lowerIsBetter,
-      p_detail: null,
-    });
-  } catch {
-    // Personal bests are decoration; never block play on them.
-  }
+/** True when the other person has been in the jar in the last few hours. */
+export function partnerIsAround(saves: ServerSave[], me: Person, withinMs = 4 * 3_600_000): boolean {
+  const theirs = saves.find((s) => s.person !== me);
+  if (!theirs?.updated_at) return false;
+  return Date.now() - Date.parse(theirs.updated_at) < withinMs;
 }

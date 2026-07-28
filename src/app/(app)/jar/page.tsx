@@ -12,34 +12,32 @@ import { Button, TopBar, useToast } from "@/components/ui";
 import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { SyncBadge } from "@/components/sync-status";
 import { JarScreen } from "@/components/jar/jar-screen";
-import { SkillsTab, UpgradesTab } from "@/components/jar/progress";
-import { CharmsTab, PetsTab } from "@/components/jar/creatures";
-import { ResetsTab, WorldsTab } from "@/components/jar/resets";
+import { AbilitiesTab, UpgradesTab } from "@/components/jar/progress";
+import { CreaturesTab } from "@/components/jar/creatures";
+import { ResetsTab, VesselsTab } from "@/components/jar/resets";
 import {
   AchievementsTab, ChallengesTab, CollectionsTab, MissionsTab,
 } from "@/components/jar/objectives";
 import {
-  CodexTab, EventsTab, LeaderboardTab, MinigamesTab, SettingsTab, ShopTab, StatsTab, WalletStrip,
+  CodexTab, MinigamesTab, SettingsTab, StatsTab, UsTab, WalletStrip,
 } from "@/components/jar/extras";
+import { Tour } from "@/components/jar/tour";
 
 const TABS = [
   { id: "jar", label: "Jar" },
   { id: "upgrades", label: "Upgrades" },
-  { id: "skills", label: "Skills" },
-  { id: "pets", label: "Pets" },
-  { id: "charms", label: "Charms" },
-  { id: "worlds", label: "Worlds" },
-  { id: "rebirth", label: "Rebirth" },
-  { id: "ascension", label: "Ascension" },
-  { id: "challenges", label: "Challenges" },
+  { id: "abilities", label: "Abilities" },
+  { id: "creatures", label: "Creatures" },
+  { id: "vessels", label: "Vessels" },
+  { id: "tide", label: "Tide" },
+  { id: "water", label: "New Water" },
+  { id: "us", label: "Us" },
   { id: "missions", label: "Missions" },
+  { id: "challenges", label: "Challenges" },
   { id: "achievements", label: "Achievements" },
   { id: "collections", label: "Collections" },
   { id: "minigames", label: "Mini-games" },
-  { id: "events", label: "Events" },
-  { id: "shop", label: "Shop" },
   { id: "stats", label: "Statistics" },
-  { id: "leaderboard", label: "Together" },
   { id: "codex", label: "Codex" },
   { id: "settings", label: "Settings" },
 ] as const;
@@ -98,7 +96,7 @@ function JarApp() {
 
       <div className="sticky top-0 z-20 border-b border-line-soft bg-cream/95 px-4 pb-1.5 pt-1 backdrop-blur-sm">
         <WalletStrip />
-        <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
+        <div data-tour="tabs" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
           {TABS.map((entry) => (
             <button
               key={entry.id}
@@ -117,21 +115,18 @@ function JarApp() {
       <main className="flex flex-col gap-4 px-4 py-4">
         {tab === "jar" && <JarScreen onOpenTab={setTab} />}
         {tab === "upgrades" && <UpgradesTab />}
-        {tab === "skills" && <SkillsTab />}
-        {tab === "pets" && <PetsTab />}
-        {tab === "charms" && <CharmsTab />}
-        {tab === "worlds" && <WorldsTab />}
-        {tab === "rebirth" && <ResetsTab layer="rebirth" />}
-        {tab === "ascension" && <ResetsTab layer="ascension" />}
-        {tab === "challenges" && <ChallengesTab />}
+        {tab === "abilities" && <AbilitiesTab />}
+        {tab === "creatures" && <CreaturesTab />}
+        {tab === "vessels" && <VesselsTab />}
+        {tab === "tide" && <ResetsTab layer="tide" />}
+        {tab === "water" && <ResetsTab layer="water" />}
+        {tab === "us" && <UsTab />}
         {tab === "missions" && <MissionsTab />}
+        {tab === "challenges" && <ChallengesTab />}
         {tab === "achievements" && <AchievementsTab />}
         {tab === "collections" && <CollectionsTab />}
         {tab === "minigames" && <MinigamesTab />}
-        {tab === "events" && <EventsTab />}
-        {tab === "shop" && <ShopTab />}
         {tab === "stats" && <StatsTab />}
-        {tab === "leaderboard" && <LeaderboardTab />}
         {tab === "codex" && <CodexTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
@@ -139,10 +134,10 @@ function JarApp() {
       <OfflineDialog />
       <LegacyDialog />
       <NoticeStack />
+      <Tour onOpenTab={setTab} />
 
       <p className="px-4 pb-6 text-center text-[0.65rem] text-berry-soft">
-        Save version {state.version}. Everything you do is stored on this device first and synced
-        when there is a connection.
+        Save {state.version}. Stored on this device, synced when there is a connection.
       </p>
     </>
   );
@@ -171,8 +166,8 @@ function OfflineDialog() {
         </p>
         <ul className="mt-3 space-y-1 text-sm text-berry">
           <li>{formatNumber(offlineReport.hearts, format)} hearts</li>
-          {offlineReport.golden > 0 && <li>{offlineReport.golden} golden hearts</li>}
-          {offlineReport.treats > 0 && <li>{offlineReport.treats} pet treats</li>}
+          {offlineReport.shells > 0 && <li>{formatNumber(offlineReport.shells, format)} shells</li>}
+          {offlineReport.glass > 0 && <li>{formatNumber(offlineReport.glass, format)} sea glass</li>}
         </ul>
         {offlineReport.clockSuspicious && (
           <p className="mt-2 rounded-xl bg-cream px-3 py-2 text-xs text-berry-soft">
@@ -206,12 +201,8 @@ function LegacyDialog() {
       <div className="rise-in relative w-full max-w-sm rounded-card border border-line bg-white p-5 shadow-lift">
         <h2 className="font-display text-xl font-semibold text-plum">Your old jar came with you</h2>
         <p className="mt-2 text-sm text-berry-soft">
-          Every heart the two of you dropped in before today has been carried over:{" "}
-          <span className="font-semibold text-berry">{legacyTaps.toLocaleString()}</span> of them.
-          They count toward your lifetime total, and the Founding Jar skin is yours.
-        </p>
-        <p className="mt-2 text-xs text-berry-soft">
-          Nothing was deleted. The old jar history is still on the home screen.
+          <span className="font-semibold text-berry">{legacyTaps.toLocaleString()}</span> hearts
+          carried over. The old jar history is still on the home screen.
         </p>
         <Button className="mt-4 w-full" onClick={dismissLegacy}>
           Open the new jar
@@ -226,8 +217,10 @@ function LegacyDialog() {
 /* ------------------------------------------------------------------ */
 
 function NoticeStack() {
-  const { notices, dismissNotice } = useGame();
+  const { notices, dismissNotice, state } = useGame();
   const toast = useToast();
+  // The tour already owns the screen; notices behind it only read as clutter.
+  const hidden = !state.settings.tutorialDone;
 
   // Auto-dismiss so the stack never grows without bound.
   useEffect(() => {
@@ -236,7 +229,7 @@ function NoticeStack() {
     return () => clearTimeout(timer);
   }, [notices, dismissNotice]);
 
-  if (notices.length === 0) return null;
+  if (notices.length === 0 || hidden) return null;
 
   return (
     <div

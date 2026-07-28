@@ -1,11 +1,12 @@
 import type {
-  Buff, CurrencyId, Derived, FloatingHeart, GameState, Mods,
+  Buff, CurrencyId, Derived, Drifter, GameState, Settled,
 } from "./types";
-import { derive, hasFlag } from "./formulas";
-import { safe, seededRandom } from "./numbers";
+import { creaturesInJar, derive, fedFactor, hasFlag, heldHands } from "./formulas";
+import { safe } from "./numbers";
 import { CHALLENGE_BY_ID, MISSION_BY_ID, type MetricId } from "./config/objectives";
 import { ACHIEVEMENTS } from "./config/awards";
-import { WORLD_BY_ID } from "./config/worlds";
+import { CREATURE_BY_ID, actionInterval, creatureScale, xpFor } from "./config/creatures";
+import { DRIFTERS, DRIFTER_BY_ID, VESSEL_BY_ID } from "./config/vessels";
 import { SKILL_BY_ID } from "./config/skills";
 
 /* ------------------------------------------------------------------ */
@@ -13,19 +14,19 @@ import { SKILL_BY_ID } from "./config/skills";
 /* ------------------------------------------------------------------ */
 
 export type HeartSource =
-  | "click" | "passive" | "crit" | "skill" | "pet" | "offline"
-  | "partner" | "boss" | "golden" | "treasure" | "event" | "mission";
+  | "click" | "charge" | "crit" | "passive" | "creature" | "skill"
+  | "offline" | "together" | "drifter";
 
 const STAT_FOR_SOURCE: Partial<Record<HeartSource, keyof GameState["stats"]>> = {
   click: "heartsFromClicks",
-  passive: "heartsFromPassive",
+  charge: "heartsFromClicks",
   crit: "heartsFromCrits",
+  passive: "heartsFromPassive",
+  creature: "heartsFromCreatures",
   skill: "heartsFromSkills",
-  pet: "heartsFromPets",
   offline: "heartsFromOffline",
-  partner: "heartsFromPartner",
-  boss: "heartsFromBosses",
-  golden: "heartsFromGolden",
+  together: "heartsFromTogether",
+  drifter: "heartsFromDrifters",
 };
 
 export function addCurrency(state: GameState, currency: CurrencyId, amount: number): void {
@@ -48,23 +49,26 @@ export function earnHearts(state: GameState, amount: number, source: HeartSource
   state.runHearts = safe(state.runHearts + value);
   state.eraHearts = safe(state.eraHearts + value);
   state.stats.sessionHearts = safe(state.stats.sessionHearts + value);
+
   const key = STAT_FOR_SOURCE[source];
-  if (key) {
-    (state.stats[key] as number) = safe((state.stats[key] as number) + value);
-  }
-  // A critical is also a tap, so it counts toward both breakdowns.
+  if (key) (state.stats[key] as number) = safe((state.stats[key] as number) + value);
+  // A critical is a tap too, so it shows in both breakdowns.
   if (source === "crit") {
     state.stats.heartsFromClicks = safe(state.stats.heartsFromClicks + value);
   }
+
   recordMetric(state, "hearts", value);
-  if (source === "click" || source === "crit") recordMetric(state, "heartsFromClicks", value);
-  if (source === "passive") recordMetric(state, "heartsFromPassive", value);
+  if (source === "click" || source === "charge" || source === "crit") {
+    recordMetric(state, "heartsFromClicks", value);
+  }
+  if (source === "passive" || source === "creature") recordMetric(state, "heartsFromPassive", value);
+  if (source === "creature") recordMetric(state, "heartsFromCreatures", value);
   if (source === "skill") recordMetric(state, "heartsFromSkills", value);
   return value;
 }
 
 /* ------------------------------------------------------------------ */
-/* Metrics: one place that missions, events and achievements read      */
+/* Metrics                                                             */
 /* ------------------------------------------------------------------ */
 
 export function recordMetric(state: GameState, metric: MetricId, value: number, mode: "add" | "max" = "add"): void {
@@ -73,9 +77,7 @@ export function recordMetric(state: GameState, metric: MetricId, value: number, 
   for (const mission of state.missions) {
     const def = MISSION_BY_ID[mission.defId];
     if (!def || def.metric !== metric || mission.claimed) continue;
-    mission.progress = mode === "max"
-      ? Math.max(mission.progress, value)
-      : safe(mission.progress + value);
+    mission.progress = mode === "max" ? Math.max(mission.progress, value) : safe(mission.progress + value);
   }
 
   if (state.activeChallenge) {
@@ -88,7 +90,6 @@ export function recordMetric(state: GameState, metric: MetricId, value: number, 
   }
 }
 
-/** Cumulative totals, used by achievements and the codex. */
 export function metricTotal(state: GameState, metric: MetricId): number {
   const s = state.stats;
   switch (metric) {
@@ -96,44 +97,34 @@ export function metricTotal(state: GameState, metric: MetricId): number {
     case "criticals": return s.criticalClicks;
     case "megaCriticals": return s.megaCriticalClicks;
     case "perfectClicks": return s.perfectClicks;
+    case "chargedClicks": return s.chargedClicks;
     case "hearts": return state.lifetime.hearts;
     case "heartsFromClicks": return s.heartsFromClicks;
     case "heartsFromPassive": return s.heartsFromPassive;
     case "heartsFromSkills": return s.heartsFromSkills;
+    case "heartsFromCreatures": return s.heartsFromCreatures;
     case "bestCombo": return s.bestCombo;
     case "comboFinishers": return s.comboFinishers;
-    case "golden": return s.goldenCaught;
-    case "treasures": return s.treasuresOpened;
+    case "cracks": return s.cracks;
+    case "collects": return s.collects;
+    case "driftersOpened": return s.driftersOpened;
     case "upgrades": return s.upgradesBought;
     case "skillsUsed": return s.skillsUsed;
-    case "eggs": return s.eggsOpened;
-    case "petLevels": return Object.values(state.pets).reduce((sum, p) => sum + p.level - 1, 0);
-    case "petsEvolved": return s.petsEvolved;
-    case "petsFused": return s.petsFused;
-    case "charmsCrafted": return s.charmsCrafted;
-    case "bosses": return s.bossesDefeated;
+    case "creaturesArrived": return state.codex.length;
+    case "creaturesEvolved": return s.creaturesEvolved;
+    case "creatureLevels": return Object.values(state.creatures).reduce((sum, c) => sum + c.level - 1, 0);
+    case "itemsMade": return s.itemsMade;
+    case "vessels": return state.vesselsUnlocked.length;
     case "challenges": return s.challengesCompleted;
     case "minigames": return s.minigamesPlayed;
-    case "rebirths": return state.rebirths;
-    case "ascensions": return state.ascensions;
-    case "offlineClaims": return offlineClaimCount(state);
-    case "questionAnswered": return questionCount(state);
-    case "partnerActions": return partnerActionCount(state);
-    case "worldsVisited": return state.worldsUnlocked.length;
+    case "tideChanges": return state.tideChanges;
+    case "newWaters": return state.newWaters;
+    case "offlineClaims": return state.storyProgress["offline"] ?? 0;
+    case "questionAnswered": return state.storyProgress["questions"] ?? 0;
+    case "togetherActions": return state.storyProgress["together"] ?? 0;
+    case "sameEvening": return state.storyProgress["evenings"] ?? 0;
     default: return 0;
   }
-}
-
-// These three live in the log rather than a dedicated counter, because they
-// are driven by the rest of the couples app rather than by the game loop.
-function offlineClaimCount(state: GameState): number {
-  return state.log.filter((l) => l.label === "Offline").length + (state.stats.heartsFromOffline > 0 ? 1 : 0);
-}
-function questionCount(state: GameState): number {
-  return state.partnerRewards.claimed.filter((c) => c.startsWith("question")).length + (state.storyProgress["questions"] ?? 0);
-}
-function partnerActionCount(state: GameState): number {
-  return state.storyProgress["partner"] ?? 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -151,22 +142,16 @@ export function addBuff(state: GameState, buff: Omit<Buff, "id">): void {
   state.buffs.push({ ...buff, id: crypto.randomUUID() });
 }
 
-export function pruneBuffs(state: GameState, now: number): void {
-  if (state.buffs.length === 0) return;
-  state.buffs = state.buffs.filter((b) => b.expiresAt > now);
-}
-
 /* ------------------------------------------------------------------ */
 /* Clicking                                                            */
 /* ------------------------------------------------------------------ */
 
 export interface ClickOptions {
-  /** 0..1 position inside the timing ring; 1 is dead centre. */
+  /** 0..1 inside the timing ring; 1 is dead centre. */
   precision: number;
-  /** Charge accumulated by holding, 0..1. */
+  /** 0..1 held before release. At 1 the tap becomes a charged drop. */
   charge: number;
   now: number;
-  /** Screen position, so the UI can place the popup. */
   x: number;
   y: number;
 }
@@ -176,38 +161,47 @@ export interface ClickOutcome {
   crit: boolean;
   mega: boolean;
   perfect: boolean;
+  charged: boolean;
   chained: number;
   combo: number;
   comboBroken: boolean;
-  overflow: boolean;
-  x: number;
-  y: number;
+  dropped: Settled | null;
 }
 
+/** A charged tap counts as this many combo steps instead of one. */
+export const CHARGE_COMBO_STEPS = 5;
+/** Held at least this far counts as charged. */
+export const CHARGE_THRESHOLD = 0.85;
+
 /**
- * One tap. Everything that makes a tap interesting lives here: the combo, the
- * timing ring, criticals, critical chains, heat and the charge bonus.
+ * One tap.
+ *
+ * Tapping is rate: many small hits, fast combo growth. Charging is feeding:
+ * one heavy hit that counts as five combo steps and drops a shell to the
+ * floor for the crabs. Both are correct, at different moments, which is what
+ * makes holding a decision rather than a trap.
  */
 export function performClick(state: GameState, derived: Derived, opts: ClickOptions): ClickOutcome {
   const { now } = opts;
   const challenge = state.activeChallenge ? CHALLENGE_BY_ID[state.activeChallenge.defId] : null;
+  const charged = opts.charge >= CHARGE_THRESHOLD;
 
-  // Combo bookkeeping.
   let comboBroken = false;
   if (state.comboExpiresAt > 0 && now > state.comboExpiresAt) {
     if (state.combo > 0 && derived.comboShield >= 1) {
-      // A shield absorbs the break and restarts partway up.
       state.combo = Math.floor(state.combo * 0.5);
     } else {
       comboBroken = state.combo > 0;
-      if (comboBroken) state.stats.comboFinishers += state.combo >= derived.comboCap ? 1 : 0;
+      if (comboBroken && state.combo >= derived.comboCap) state.stats.comboFinishers += 1;
       state.combo = Math.floor(derived.mods.add.comboStart);
     }
   }
-  const decayFactor = challenge?.rule === "fast_decay" ? 0.25 : 1;
-  const gain = Math.max(1, Math.round(derived.mods.mul.comboGain));
+
+  const decay = challenge?.rule === "fast_decay" ? 0.25 : 1;
+  const steps = charged ? CHARGE_COMBO_STEPS : 1;
+  const gain = Math.max(1, Math.round(derived.mods.mul.comboGain)) * steps;
   state.combo = Math.min(derived.comboCap, state.combo + gain);
-  state.comboExpiresAt = now + derived.comboDurationMs * decayFactor;
+  state.comboExpiresAt = now + derived.comboDurationMs * decay;
   if (state.combo > state.stats.bestCombo) {
     state.stats.bestCombo = state.combo;
     recordMetric(state, "bestCombo", state.combo, "max");
@@ -216,37 +210,29 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
   state.stats.totalClicks += 1;
   recordMetric(state, "clicks", 1);
 
-  // Meters.
-  state.heat = Math.min(derived.heatMax, state.heat + 4);
-  state.focus = Math.min(derived.focusMax, state.focus + opts.precision * 6);
-  state.energy = Math.min(derived.energyMax, state.energy + 0.35);
-
   const perfect = opts.precision >= 0.8;
   if (perfect) {
     state.stats.perfectClicks += 1;
     recordMetric(state, "perfectClicks", 1);
   }
+  if (charged) {
+    state.stats.chargedClicks += 1;
+    recordMetric(state, "chargedClicks", 1);
+  }
 
-  // Base payout. Recomputed rather than read from `derived` because the combo
-  // just changed.
   const comboMultiplier = 1 + Math.min(state.combo, derived.comboCap) * 0.03 * derived.mods.mul.comboPower;
   let hearts = derived.mods.add.clickFlat * derived.mods.mul.click * derived.mods.mul.all * comboMultiplier;
-
-  // Timing ring: a perfect tap is worth up to 75% more.
   hearts *= 1 + opts.precision * 0.75;
-  // Charge: holding before releasing is worth up to double.
-  hearts *= 1 + Math.min(1, opts.charge) * derived.chargeSpeed;
-  // Heat: sustained tapping ramps up to +50%.
-  hearts *= 1 + (state.heat / Math.max(1, derived.heatMax)) * 0.5;
+  if (charged) hearts *= 1.6 * derived.chargePower;
 
-  const noCrit = challenge?.rule === "no_crit" || challenge?.rule === "hardcore";
+  const noCrit = challenge?.rule === "no_crit";
   let crit = false;
   let mega = false;
   let chained = 0;
 
   if (!noCrit) {
-    const critChance = perfect ? Math.min(1, derived.critChance * 1.5) : derived.critChance;
-    if (Math.random() < critChance) {
+    const chance = perfect ? Math.min(1, derived.critChance * 1.5) : derived.critChance;
+    if (Math.random() < chance) {
       crit = true;
       hearts *= derived.critMultiplier;
       state.stats.criticalClicks += 1;
@@ -257,173 +243,177 @@ export function performClick(state: GameState, derived: Derived, opts: ClickOpti
         state.stats.megaCriticalClicks += 1;
         recordMetric(state, "megaCriticals", 1);
       }
-      // Critical chains: each extra link is worth a little less.
       let chainChance = derived.critChainChance;
       while (chainChance > 0 && Math.random() < chainChance && chained < 8) {
         chained += 1;
         hearts *= 1 + derived.critMultiplier * 0.35;
         chainChance *= 0.6;
       }
-      state.energy = Math.min(derived.energyMax, state.energy + 1.5);
     }
   }
 
   if (challenge?.rule === "combo_only" && state.combo < 20) hearts = 0;
-  if (challenge?.rule === "golden_only") hearts = 0;
-  if (challenge?.rule === "pet_only") hearts = 0;
-  if (challenge?.rule === "offline_only") hearts = 0;
+  if (challenge?.rule === "creatures_only") hearts = 0;
+  if (challenge?.rule === "charge_only" && !charged) hearts = 0;
 
-  const overflow = state.wallet.hearts > derived.jarCapacity;
-  if (overflow) {
-    // Overflow does not waste hearts; it pays a bonus instead.
-    hearts *= 1.2;
+  // Overflow is a bonus, not waste.
+  if (state.wallet.hearts > derived.capacity) hearts *= 1.2;
+
+  const earned = earnHearts(state, hearts, crit ? "crit" : charged ? "charge" : "click");
+
+  // The charged drop: a shell for the crabs, straight to the floor.
+  let dropped: Settled | null = null;
+  if (charged) {
+    dropped = dropSettled(state, "shell", Math.max(1, earned * 0.15), opts.x, 0.15);
   }
 
-  const earned = earnHearts(state, hearts, crit ? "crit" : "click");
-
   return {
-    hearts: earned,
-    crit,
-    mega,
-    perfect,
-    chained,
-    combo: state.combo,
-    comboBroken,
-    overflow,
-    x: opts.x,
-    y: opts.y,
+    hearts: earned, crit, mega, perfect, charged, chained,
+    combo: state.combo, comboBroken, dropped,
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Floating hearts                                                     */
+/* The floor                                                           */
 /* ------------------------------------------------------------------ */
 
-export function spawnFloating(
+const MAX_SETTLED = 24;
+
+export function dropSettled(
   state: GameState,
-  kind: FloatingHeart["kind"],
-  now: number,
-  lifetimeMs = 9_000,
-): FloatingHeart {
-  const heart: FloatingHeart = {
+  kind: Settled["kind"],
+  value: number,
+  x: number,
+  y = 0.05,
+): Settled {
+  const item: Settled = {
     id: crypto.randomUUID(),
     kind,
-    spawnedAt: now,
-    expiresAt: now + lifetimeMs,
-    x: 8 + Math.random() * 84,
-    y: 12 + Math.random() * 62,
-    hp: kind === "shielded" ? 4 : 1,
+    x: Math.max(4, Math.min(96, x)),
+    y,
+    value: safe(value),
+    droppedAt: Date.now(),
   };
-  // Hard cap so a long session cannot accumulate an unbounded list.
-  if (state.floating.length >= 12) state.floating.shift();
-  state.floating.push(heart);
-  return heart;
+  // Oldest falls out rather than letting the floor grow without bound.
+  if (state.settled.length >= MAX_SETTLED) state.settled.shift();
+  state.settled.push(item);
+  return item;
 }
 
-export interface FloatingReward {
-  label: string;
+export interface CollectResult {
+  kind: Settled["kind"];
   hearts: number;
-  currencies: Partial<Record<CurrencyId, number>>;
-  collectible?: [string, string];
-  buff?: { label: string; mods: Mods; durationMs: number };
+  currency: CurrencyId | null;
+  amount: number;
 }
 
-export function collectFloating(
+/** A crab picking something up, or you tapping it yourself. */
+export function collectSettled(
   state: GameState,
   derived: Derived,
   id: string,
-  now: number,
-): FloatingReward | null {
-  const index = state.floating.findIndex((f) => f.id === id);
+  byCreature: boolean,
+): CollectResult | null {
+  const index = state.settled.findIndex((s) => s.id === id);
   if (index < 0) return null;
-  const heart = state.floating[index];
-  heart.hp -= 1;
-  if (heart.hp > 0) return null;
-  state.floating.splice(index, 1);
+  const item = state.settled[index];
+  state.settled.splice(index, 1);
 
-  const luck = 1 + derived.luck;
-  const perSecond = Math.max(1, derived.heartsPerSecond);
-  const perClick = Math.max(1, derived.heartsPerClick);
+  const value = item.value * derived.collectValue * (1 + derived.luck);
+  state.stats.collects += 1;
+  recordMetric(state, "collects", 1);
 
-  switch (heart.kind) {
-    case "golden": {
-      const value = safe((perSecond * 90 + perClick * 40) * derived.mods.mul.golden * luck);
-      earnHearts(state, value, "golden");
-      state.stats.goldenCaught += 1;
-      recordMetric(state, "golden", 1);
-      const golden = 1 + (Math.random() < 0.25 ? 1 : 0);
-      addCurrency(state, "golden", golden);
-      return { label: "Golden heart", hearts: value, currencies: { golden } };
+  const hearts = earnHearts(state, value, byCreature ? "creature" : "click");
+
+  switch (item.kind) {
+    case "shell": {
+      const amount = Math.max(1, Math.ceil(value * 0.02 * derived.mods.mul.shellGain));
+      addCurrency(state, "shells", amount);
+      return { kind: item.kind, hearts, currency: "shells", amount };
     }
-    case "treasure": {
-      state.stats.treasuresOpened += 1;
-      recordMetric(state, "treasures", 1);
-      const mult = derived.mods.mul.treasure * luck;
-      const currencies: Partial<Record<CurrencyId, number>> = {
-        fragments: Math.ceil(40 * mult),
-        dust: Math.ceil(30 * mult),
-        treats: Math.ceil(10 * mult),
-      };
-      if (Math.random() < 0.3) currencies.shards = Math.ceil(4 * mult);
-      for (const [currency, amount] of Object.entries(currencies)) {
-        addCurrency(state, currency as CurrencyId, amount as number);
-      }
-      const value = safe(perSecond * 240 * mult);
-      earnHearts(state, value, "treasure");
-      // Treasure hearts are how the love letters collection fills up.
-      const letters = ["l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"];
-      const owned = state.collections["letters"] ?? [];
-      const missing = letters.filter((l) => !owned.includes(l));
-      let collectible: [string, string] | undefined;
-      if (missing.length > 0 && Math.random() < 0.25) {
-        collectible = ["letters", missing[Math.floor(Math.random() * missing.length)]];
-      }
-      return { label: "Treasure heart", hearts: value, currencies, collectible };
+    case "glass": {
+      const amount = Math.max(1, Math.ceil(value * 0.02 * derived.mods.mul.glassGain));
+      addCurrency(state, "glass", amount);
+      return { kind: item.kind, hearts, currency: "glass", amount };
     }
-    case "mimic": {
-      // Costs you the combo, but pays well if you have one to lose.
-      const value = safe(perClick * state.combo * 12 * luck);
-      earnHearts(state, value, "golden");
-      state.combo = 0;
-      state.comboExpiresAt = 0;
-      return { label: "Mimic heart", hearts: value, currencies: {} };
-    }
-    case "healing": {
-      state.combo = Math.min(derived.comboCap, state.combo + 15);
-      state.comboExpiresAt = now + derived.comboDurationMs * 2;
-      state.energy = derived.energyMax;
-      return { label: "Healing heart", hearts: 0, currencies: {} };
-    }
-    case "exploding": {
-      const value = safe(perClick * 400 * luck);
-      earnHearts(state, value, "golden");
-      return {
-        label: "Exploding heart",
-        hearts: value,
-        currencies: {},
-        buff: { label: "Blast", mods: { mul: { click: 2 } }, durationMs: 12_000 },
-      };
-    }
-    case "shielded": {
-      const value = safe(perSecond * 300 * luck);
-      earnHearts(state, value, "golden");
-      addCurrency(state, "fragments", Math.ceil(80 * luck));
-      return { label: "Shielded heart", hearts: value, currencies: { fragments: Math.ceil(80 * luck) } };
+    case "pearl": {
+      const amount = Math.max(1, Math.ceil(1 * derived.mods.mul.pearlGain));
+      addCurrency(state, "pearls", amount);
+      return { kind: item.kind, hearts, currency: "pearls", amount };
     }
     default:
-      return null;
+      return { kind: item.kind, hearts, currency: null, amount: 0 };
   }
 }
 
-function rollFloatingKind(state: GameState, derived: Derived): FloatingHeart["kind"] {
-  const roll = Math.random();
-  const treasure = derived.treasureChance * 12;
-  if (roll < treasure) return "treasure";
-  if (roll < treasure + 0.06) return "exploding";
-  if (roll < treasure + 0.1) return "shielded";
-  if (roll < treasure + 0.13 && state.combo > 20) return "mimic";
-  if (roll < treasure + 0.17 && state.combo === 0) return "healing";
-  return "golden";
+/* ------------------------------------------------------------------ */
+/* Drifters                                                            */
+/* ------------------------------------------------------------------ */
+
+export function spawnDrifter(state: GameState, now: number, defId?: string): Drifter | null {
+  if (state.drifter) return null;
+  const def = defId ? DRIFTER_BY_ID[defId] : DRIFTERS[Math.floor(Math.random() * DRIFTERS.length)];
+  if (!def) return null;
+  const drifter: Drifter = {
+    id: crypto.randomUUID(),
+    defId: def.id,
+    taps: def.taps,
+    tapsDone: 0,
+    x: 20 + Math.random() * 60,
+    y: 25 + Math.random() * 40,
+    arrivedAt: now,
+  };
+  state.drifter = drifter;
+  return drifter;
+}
+
+export interface DrifterHit {
+  opened: boolean;
+  remaining: number;
+  reward?: { hearts: number; pearls: number; shells: number; glass: number };
+  note?: string;
+}
+
+export function tapDrifter(state: GameState, derived: Derived): DrifterHit | null {
+  const drifter = state.drifter;
+  if (!drifter) return null;
+  const def = DRIFTER_BY_ID[drifter.defId];
+  if (!def) {
+    state.drifter = null;
+    return null;
+  }
+
+  // Coconut crabs open things much faster.
+  const help = creaturesInJar(state).some((c) => c.defId === "coconut_crab") ? 3 : 1;
+  drifter.tapsDone += help;
+  if (drifter.tapsDone < drifter.taps) {
+    return { opened: false, remaining: drifter.taps - drifter.tapsDone };
+  }
+
+  state.drifter = null;
+  state.stats.driftersOpened += 1;
+  recordMetric(state, "driftersOpened", 1);
+
+  const scale = Math.max(1, derived.heartsPerSecond * 30) * derived.mods.mul.driftReward;
+  const hearts = earnHearts(state, def.reward.hearts * scale, "drifter");
+  const pearls = def.reward.pearls ?? 0;
+  const shells = def.reward.shells ?? 0;
+  const glass = def.reward.glass ?? 0;
+  if (pearls) addCurrency(state, "pearls", pearls);
+  if (shells) addCurrency(state, "shells", shells);
+  if (glass) addCurrency(state, "glass", glass);
+
+  // Notes turn up inside things that drift in.
+  const notes = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
+  const owned = state.collections["notes"] ?? [];
+  const missing = notes.filter((n) => !owned.includes(n));
+  let note: string | undefined;
+  if (missing.length > 0 && Math.random() < 0.2) {
+    note = missing[Math.floor(Math.random() * missing.length)];
+    grantCollectible(state, "notes", note);
+  }
+
+  return { opened: true, remaining: 0, reward: { hearts, pearls, shells, glass }, note };
 }
 
 /* ------------------------------------------------------------------ */
@@ -431,25 +421,81 @@ function rollFloatingKind(state: GameState, derived: Derived): FloatingHeart["ki
 /* ------------------------------------------------------------------ */
 
 export interface TickResult {
-  earned: number;
-  spawned: FloatingHeart[];
-  expired: number;
+  cracked: number;
+  collected: number;
   comboBroken: boolean;
+  drifted: boolean;
 }
 
-/** Advance the simulation by `dtMs`. Called about ten times a second. */
+const SINK_PER_SECOND = 0.28;
+
+/** Advance the simulation. Called about ten times a second. */
 export function tick(state: GameState, dtMs: number, now: number): TickResult {
   const dt = Math.max(0, Math.min(dtMs, 5_000)) / 1000;
   const derived = derive(state, now);
   const challenge = state.activeChallenge ? CHALLENGE_BY_ID[state.activeChallenge.defId] : null;
 
-  pruneBuffs(state, now);
+  state.buffs = state.buffs.filter((b) => b.expiresAt > now);
 
-  // Passive hearts.
-  let earned = 0;
-  const passiveOff = challenge?.rule === "no_passive" || challenge?.rule === "active_only" || challenge?.rule === "hardcore";
-  if (!passiveOff && derived.heartsPerSecond > 0) {
-    earned = earnHearts(state, derived.heartsPerSecond * dt, "passive");
+  // Whatever is in the water sinks toward the floor.
+  for (const item of state.settled) {
+    item.y = Math.min(1, item.y + SINK_PER_SECOND * dt);
+  }
+
+  let cracked = 0;
+  let collected = 0;
+  const noCreatures = challenge?.rule === "no_creatures";
+  const noPassive = challenge?.rule === "no_passive";
+  const paired = heldHands(state);
+
+  if (!noCreatures) {
+    for (const creature of creaturesInJar(state)) {
+      const def = CREATURE_BY_ID[creature.defId];
+      if (!def) continue;
+      const speed = def.line === "otter" ? derived.crackSpeed : derived.collectSpeed;
+      const interval = actionInterval(def, creature.level, speed) * 1000;
+      // A clock that jumped backwards would otherwise leave a creature waiting
+      // for a moment that has already passed, forever.
+      if (creature.lastActedAt > now) creature.lastActedAt = now - interval;
+      if (now - creature.lastActedAt < interval) continue;
+      creature.lastActedAt = now;
+
+      const scale = def.power * creatureScale(creature.level, creature.stars) * fedFactor(creature);
+      const pairBoost = paired.has(creature.id) ? 1.25 * derived.pairBonus : 1;
+
+      if (def.line === "otter") {
+        // Crack: pay out, and drop what came out of the shell.
+        const value = scale * derived.crackValue * derived.mods.mul.creaturePower
+          * derived.globalMultiplier * pairBoost;
+        if (!noPassive) earnHearts(state, value * 8, "creature");
+        state.stats.cracks += 1;
+        recordMetric(state, "cracks", 1);
+        cracked += 1;
+
+        const roll = Math.random();
+        const kind: Settled["kind"] = roll < 0.06 * (1 + derived.luck) ? "pearl" : roll < 0.35 ? "glass" : "shell";
+        dropSettled(state, kind, value, 10 + Math.random() * 80);
+      } else {
+        // Collect: take the nearest thing that has reached the floor.
+        const ready = state.settled.filter((s) => s.y > 0.75);
+        if (ready.length === 0) continue;
+        // Ghost crabs sweep everything at once, everyone else takes one.
+        const take = creature.defId === "ghost_crab" ? ready : [ready[0]];
+        for (const item of take) {
+          collectSettled(state, derived, item.id, true);
+          collected += 1;
+        }
+      }
+
+      // Creatures get a little hungrier and a little more experienced.
+      creature.fed = Math.max(0, creature.fed - 0.35);
+      addXpSilently(state, creature.id, 1 * derived.mods.mul.creatureXp);
+    }
+  }
+
+  // Whatever the trees add on top of the creatures.
+  if (!noPassive && derived.mods.add.cpsFlat > 0) {
+    earnHearts(state, derived.mods.add.cpsFlat * derived.mods.mul.cps * derived.globalMultiplier * dt, "passive");
   }
 
   // Combo decay.
@@ -467,29 +513,19 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
     }
   }
 
-  // Meters drift back down when you stop.
-  state.heat = Math.max(0, state.heat - dt * 8);
-  state.focus = Math.max(0, state.focus - dt * 4);
-  state.energy = Math.min(derived.energyMax, state.energy + dt * 0.8 * derived.mods.mul.energyRegen);
+  // Tide goes out slowly. Playing puts it back.
+  state.tideLevel = Math.max(0, state.tideLevel - dt * 0.05);
 
-  // Floating hearts.
-  const spawned: FloatingHeart[] = [];
-  const chance = derived.goldenChancePerSecond * dt;
-  if (Math.random() < chance) {
-    spawned.push(spawnFloating(state, rollFloatingKind(state, derived), now));
-  }
-  const before = state.floating.length;
-  state.floating = state.floating.filter((f) => f.expiresAt > now);
-  const expired = before - state.floating.length;
-
-  // Automatic golden collection, once ascension unlocks it.
-  if (hasFlag(state, "auto_golden")) {
-    for (const heart of [...state.floating]) {
-      if (heart.kind === "golden") collectFloating(state, derived, heart.id, now);
+  // Something drifts in now and then.
+  let drifted = false;
+  if (state.settings.drifters && !state.drifter) {
+    const chance = (0.0025 + derived.driftChance) * dt;
+    if (Math.random() < chance) {
+      spawnDrifter(state, now);
+      drifted = true;
     }
   }
 
-  // Automatic ability activation.
   if (state.settings.autoSkills && hasFlag(state, "auto_skill")) {
     for (const [id, skill] of Object.entries(state.skills)) {
       const def = SKILL_BY_ID[id];
@@ -498,10 +534,32 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
     }
   }
 
+  if (hasFlag(state, "auto_feed")) autoFeed(state);
+
   state.lastTickAt = now;
   state.updatedAt = now;
+  return { cracked, collected, comboBroken, drifted };
+}
 
-  return { earned, spawned, expired, comboBroken };
+/** Experience without the level-up message; the tick calls this constantly. */
+function addXpSilently(state: GameState, creatureId: string, xp: number): void {
+  const creature = state.creatures[creatureId];
+  const def = creature ? CREATURE_BY_ID[creature.defId] : null;
+  if (!creature || !def) return;
+  creature.xp += Math.max(0, xp);
+  while (creature.level < def.maxLevel && creature.xp >= xpFor(creature.level)) {
+    creature.xp -= xpFor(creature.level);
+    creature.level += 1;
+    recordMetric(state, "creatureLevels", 1);
+  }
+}
+
+function autoFeed(state: GameState): void {
+  for (const creature of creaturesInJar(state)) {
+    if (creature.fed > 40) continue;
+    if (state.wallet.shells < 8) return;
+    if (spendCurrency(state, "shells", 8)) creature.fed = Math.min(100, creature.fed + 20);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -512,18 +570,15 @@ export interface SkillActivation {
   ok: boolean;
   reason?: string;
   instantHearts?: number;
-  spawned?: number;
   label?: string;
 }
 
-/** A skill that has never been used is ready, whatever the clock says. */
 function cooldownRemaining(state: GameState, id: string, now: number): number {
   const def = SKILL_BY_ID[id];
   const skill = state.skills[id];
   if (!def || !skill) return Infinity;
   if (skill.lastUsedAt <= 0) return 0;
-  const cooldown = def.cooldownMs * derive(state, now).skillCooldown;
-  return Math.max(0, cooldown - (now - skill.lastUsedAt));
+  return Math.max(0, def.cooldownMs * derive(state, now).skillCooldown - (now - skill.lastUsedAt));
 }
 
 export function skillReady(state: GameState, id: string, now: number): boolean {
@@ -537,15 +592,9 @@ export function activateSkill(state: GameState, id: string, now: number): SkillA
   const skill = state.skills[id];
   if (!def || !skill) return { ok: false, reason: "Unknown ability" };
   if (skill.level <= 0) return { ok: false, reason: "Not learned yet" };
-
-  const challenge = state.activeChallenge ? CHALLENGE_BY_ID[state.activeChallenge.defId] : null;
-  if (challenge?.rule === "active_only" || challenge?.rule === "hardcore") {
-    return { ok: false, reason: "Abilities are disabled in this challenge" };
-  }
-
-  const derived = derive(state, now);
   if (cooldownRemaining(state, id, now) > 0) return { ok: false, reason: "Still recovering" };
 
+  const derived = derive(state, now);
   skill.lastUsedAt = now;
   state.stats.skillsUsed += 1;
   recordMetric(state, "skillsUsed", 1);
@@ -569,24 +618,36 @@ export function activateSkill(state: GameState, id: string, now: number): SkillA
       earnHearts(state, value, "skill");
       return { ok: true, instantHearts: value, label: def.name };
     }
-    case "spawn_golden": {
-      for (let i = 0; i < power; i++) spawnFloating(state, "golden", now, 12_000);
-      return { ok: true, spawned: power, label: def.name };
+    case "crack_all": {
+      let total = 0;
+      for (const creature of creaturesInJar(state)) {
+        const cdef = CREATURE_BY_ID[creature.defId];
+        if (cdef?.line !== "otter") continue;
+        const value = cdef.power * creatureScale(creature.level, creature.stars)
+          * derived.crackValue * derived.globalMultiplier * power;
+        total += earnHearts(state, value * 8, "skill");
+        state.stats.cracks += 1;
+        recordMetric(state, "cracks", 1);
+        dropSettled(state, "shell", value, 10 + Math.random() * 80);
+      }
+      return { ok: true, instantHearts: total, label: def.name };
     }
-    case "spawn_treasure": {
-      for (let i = 0; i < power; i++) spawnFloating(state, "treasure", now, 12_000);
-      return { ok: true, spawned: power, label: def.name };
+    case "collect_all": {
+      let total = 0;
+      for (const item of [...state.settled]) {
+        const result = collectSettled(state, derived, item.id, true);
+        if (result) total += result.hearts * power;
+      }
+      return { ok: true, instantHearts: total, label: def.name };
+    }
+    case "spawn_drifter": {
+      for (let i = 0; i < power; i++) spawnDrifter(state, now);
+      return { ok: true, label: def.name };
     }
     case "reset_cooldowns": {
       for (const [otherId, other] of Object.entries(state.skills)) {
         if (otherId !== id) other.lastUsedAt = 0;
       }
-      state.energy = derived.energyMax;
-      return { ok: true, label: def.name };
-    }
-    case "fill_energy": {
-      state.energy = derived.energyMax;
-      state.focus = derived.focusMax;
       return { ok: true, label: def.name };
     }
     case "max_combo": {
@@ -594,36 +655,14 @@ export function activateSkill(state: GameState, id: string, now: number): SkillA
       state.comboExpiresAt = now + derived.comboDurationMs * 3;
       return { ok: true, label: def.name };
     }
-    case "boss_strike": {
-      if (!state.activeBoss) return { ok: false, reason: "No boss in front of you" };
-      state.activeBoss.hp = Math.max(0, state.activeBoss.hp - state.activeBoss.maxHp * power);
+    case "feed_all": {
+      for (const creature of creaturesInJar(state)) creature.fed = 100;
       return { ok: true, label: def.name };
-    }
-    case "free_upgrade": {
-      return { ok: true, spawned: power, label: def.name };
-    }
-    case "offline_recall": {
-      const value = safe(derived.heartsPerSecond * (power / 1000) * derived.offlineRate);
-      earnHearts(state, value, "offline");
-      return { ok: true, instantHearts: value, label: def.name };
     }
     case "mission_progress": {
       for (const mission of state.missions) {
-        if (mission.claimed) continue;
-        mission.progress = safe(mission.progress + mission.goal * power);
+        if (!mission.claimed) mission.progress = safe(mission.progress + mission.goal * power);
       }
-      return { ok: true, label: def.name };
-    }
-    case "challenge_progress": {
-      if (state.activeChallenge) {
-        const cdef = CHALLENGE_BY_ID[state.activeChallenge.defId];
-        if (cdef) state.activeChallenge.score = safe(state.activeChallenge.score + cdef.goal.amount * power);
-      }
-      return { ok: true, label: def.name };
-    }
-    case "pet_treats": {
-      addCurrency(state, "treats", power);
-      addCurrency(state, "shards", Math.ceil(power / 5));
       return { ok: true, label: def.name };
     }
     default:
@@ -639,20 +678,18 @@ export interface OfflineReport {
   awayMs: number;
   countedMs: number;
   hearts: number;
-  golden: number;
-  treats: number;
+  shells: number;
+  glass: number;
   cappedByWindow: boolean;
-  /** True when the device clock moved backwards, which we ignore. */
   clockSuspicious: boolean;
 }
 
 /**
- * Work out what the jar produced while the app was closed.
+ * What the jar produced while the app was closed.
  *
- * The elapsed time is taken from the device clock but bounded on both sides:
- * negative elapsed time is discarded, and the total is capped by the offline
- * window, so winding a phone forward buys at most one full window rather than
- * unlimited hearts. The server independently rejects impossible progress.
+ * Elapsed time comes from the device clock but is bounded on both sides:
+ * time that ran backwards is discarded, and the total is capped by the
+ * offline window, so a wound-forward clock buys one window and no more.
  */
 export function computeOffline(state: GameState, now: number): OfflineReport {
   const derived = derive(state, now);
@@ -664,29 +701,28 @@ export function computeOffline(state: GameState, now: number): OfflineReport {
   const cappedByWindow = awayMs > windowMs;
 
   if (countedMs < 60_000 || clockSuspicious) {
-    return { awayMs, countedMs: 0, hearts: 0, golden: 0, treats: 0, cappedByWindow, clockSuspicious };
+    return { awayMs, countedMs: 0, hearts: 0, shells: 0, glass: 0, cappedByWindow, clockSuspicious };
   }
 
   const seconds = countedMs / 1000;
   const hearts = safe(derived.heartsPerSecond * seconds * derived.offlineRate);
-  // A trickle of the other currencies too, so time away is never dead time.
-  const golden = Math.floor(seconds / 3_600) * (1 + Math.floor(derived.luck * 4));
-  const treats = Math.floor(seconds / 900);
-
-  return { awayMs, countedMs, hearts, golden, treats, cappedByWindow, clockSuspicious };
+  const shells = Math.floor(seconds / 240 * derived.mods.mul.shellGain);
+  const glass = Math.floor(seconds / 300 * derived.mods.mul.glassGain);
+  return { awayMs, countedMs, hearts, shells, glass, cappedByWindow, clockSuspicious };
 }
 
 export function claimOffline(state: GameState, report: OfflineReport, now: number): void {
   if (report.hearts > 0) earnHearts(state, report.hearts, "offline");
-  if (report.golden > 0) addCurrency(state, "golden", report.golden);
-  if (report.treats > 0) addCurrency(state, "treats", report.treats);
+  if (report.shells > 0) addCurrency(state, "shells", report.shells);
+  if (report.glass > 0) addCurrency(state, "glass", report.glass);
   state.lastSeenAt = now;
+  state.storyProgress["offline"] = (state.storyProgress["offline"] ?? 0) + 1;
   recordMetric(state, "offlineClaims", 1);
-  pushLog(state, "Offline", `${Math.round(report.countedMs / 60_000)} minutes away`);
+  pushLog(state, "Back", `${Math.round(report.countedMs / 60_000)} minutes away`);
 }
 
 /* ------------------------------------------------------------------ */
-/* Achievements                                                        */
+/* Achievements and rewards                                            */
 /* ------------------------------------------------------------------ */
 
 export interface AchievementUnlock {
@@ -716,51 +752,24 @@ export function checkAchievements(state: GameState, now: number): AchievementUnl
         tier: t + 1,
         description: `${def.description} (${def.tiers[t].toLocaleString()})`,
       });
-      if (def.titleAt && def.titleAt.tier === t + 1) {
-        grantTitle(state, def.titleAt.title);
-      }
     }
   }
   return unlocked;
 }
 
-/* ------------------------------------------------------------------ */
-/* Rewards                                                             */
-/* ------------------------------------------------------------------ */
-
-export function grantReward(
-  state: GameState,
-  reward: Record<string, unknown> | undefined,
-  multiplier = 1,
-): void {
+export function grantReward(state: GameState, reward: Record<string, unknown> | undefined, multiplier = 1): void {
   if (!reward) return;
   for (const [key, value] of Object.entries(reward)) {
-    if (key === "eggs" && value && typeof value === "object") {
-      for (const [eggId, count] of Object.entries(value as Record<string, number>)) {
-        state.eggs[eggId] = (state.eggs[eggId] ?? 0) + count;
-      }
-      continue;
-    }
-    if (key === "title" && typeof value === "string") {
-      grantTitle(state, value);
-      continue;
-    }
     if (key === "collectible" && Array.isArray(value)) {
       const [collection, item] = value as [string, string];
       grantCollectible(state, collection, item);
       continue;
     }
-    if (key === "pet") continue; // handled by the caller, which needs to roll a trait
+    if (key === "food") continue;
     if (typeof value === "number") {
       addCurrency(state, key as CurrencyId, Math.max(1, Math.floor(value * multiplier)));
     }
   }
-}
-
-export function grantTitle(state: GameState, title: string): void {
-  const id = title.toLowerCase().replace(/[^a-z]+/g, "_");
-  if (!state.titles.includes(title)) state.titles.push(title);
-  grantCollectible(state, "titles", id);
 }
 
 export function grantCollectible(state: GameState, collection: string, item: string): boolean {
@@ -771,17 +780,14 @@ export function grantCollectible(state: GameState, collection: string, item: str
 }
 
 export function pushLog(state: GameState, label: string, detail: string): void {
-  state.log = [
-    ...state.log.slice(-39),
-    { id: crypto.randomUUID(), at: Date.now(), label, detail },
-  ];
+  state.log = [...state.log.slice(-39), { id: crypto.randomUUID(), at: Date.now(), label, detail }];
 }
 
 /* ------------------------------------------------------------------ */
-/* Daily bonus and the day rollover                                    */
+/* Daily and day rollover                                              */
 /* ------------------------------------------------------------------ */
 
-export function claimDailyBonus(state: GameState, day: string): { hearts: number; golden: number; streak: number } | null {
+export function claimDailyBonus(state: GameState, day: string): { hearts: number; pearls: number; streak: number } | null {
   if (state.dailyBonus.day === day) return null;
   const yesterday = new Date(`${day}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -791,22 +797,18 @@ export function claimDailyBonus(state: GameState, day: string): { hearts: number
 
   const derived = derive(state);
   const hearts = safe(Math.max(1_000, derived.heartsPerSecond * 900) * (1 + streak * 0.15));
-  const golden = 3 + Math.min(20, streak);
-  earnHearts(state, hearts, "event");
-  addCurrency(state, "golden", golden);
-  addCurrency(state, "treats", 10 + streak * 2);
-  pushLog(state, "Daily bonus", `Day ${streak} of your streak`);
-  return { hearts, golden, streak };
+  const pearls = 2 + Math.min(15, streak);
+  earnHearts(state, hearts, "together");
+  addCurrency(state, "pearls", pearls);
+  addCurrency(state, "shells", 20 + streak * 3);
+  pushLog(state, "Daily", `Day ${streak}`);
+  return { hearts, pearls, streak };
 }
 
-/** Roll the statistics history over into a new day. */
 export function rollDay(state: GameState, day: string): void {
   const last = state.stats.history[state.stats.history.length - 1];
   if (last && last.day === day) return;
-  state.stats.history = [
-    ...state.stats.history.slice(-59),
-    { day, hearts: 0, clicks: 0, bestCombo: 0 },
-  ];
+  state.stats.history = [...state.stats.history.slice(-59), { day, hearts: 0, clicks: 0, bestCombo: 0 }];
 }
 
 export function recordDay(state: GameState, day: string, hearts: number, clicks: number, combo: number): void {
@@ -818,27 +820,6 @@ export function recordDay(state: GameState, day: string, hearts: number, clicks:
   entry.bestCombo = Math.max(entry.bestCombo, combo);
 }
 
-/* ------------------------------------------------------------------ */
-/* Seeded daily challenge                                              */
-/* ------------------------------------------------------------------ */
-
-/** The daily seeded challenge picks the same modifiers for both partners. */
-export function dailySeed(day: string): { multiplier: number; rule: string } {
-  const roll = seededRandom(`seed:${day}`);
-  const rules = [
-    "Criticals are twice as strong",
-    "Combos never decay below ten",
-    "Golden hearts appear constantly",
-    "Passive output is doubled",
-    "Every tap counts as perfectly timed",
-  ];
-  return {
-    multiplier: 2 + Math.floor(roll * 4),
-    rule: rules[Math.floor(roll * rules.length) % rules.length],
-  };
-}
-
-/** Which world the player is standing in, resolved safely. */
-export function currentWorld(state: GameState) {
-  return WORLD_BY_ID[state.world] ?? WORLD_BY_ID["bedroom"];
+export function currentVessel(state: GameState) {
+  return VESSEL_BY_ID[state.vessel] ?? VESSEL_BY_ID["jam_jar"];
 }

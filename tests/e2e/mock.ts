@@ -106,7 +106,7 @@ export async function mockSupabase(page: Page): Promise<void> {
         await route.fulfill({ json: (fixtures.daily_questions ?? [])[0] ?? null });
       } else if (fn === "game_claim_legacy") {
         await route.fulfill({ json: { claimed: false, taps: 0 } });
-      } else if (fn === "game_sync") {
+      } else if (fn === "game_save") {
         await route.fulfill({ json: null });
       } else {
         await route.fulfill({ json: null });

@@ -10,14 +10,14 @@
 // used at all.
 
 import { idbGet, idbPut, STORE_META } from "@/lib/offline/db";
-import type { PartnerAction } from "./actions";
+import type { TogetherAction } from "./actions";
 
 const KEY = "game:rewards-inbox";
 const MAX_ENTRIES = 60;
 
 export interface RewardNote {
   id: string;
-  action: PartnerAction;
+  action: TogetherAction;
   day: string;
   at: number;
 }
@@ -42,7 +42,7 @@ async function write(notes: RewardNote[]): Promise<void> {
  * `id` makes it idempotent: answering the same question twice in one day, or
  * a screen re-rendering, will not produce two notes.
  */
-export async function noteRewardable(action: PartnerAction, day: string, id: string): Promise<void> {
+export async function noteRewardable(action: TogetherAction, day: string, id: string): Promise<void> {
   const notes = await read();
   if (notes.some((n) => n.id === id)) return;
   await write([...notes, { id, action, day, at: Date.now() }]);

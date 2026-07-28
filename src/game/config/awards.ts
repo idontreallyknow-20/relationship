@@ -1,29 +1,11 @@
 import type { MetricId, Reward } from "./objectives";
 
-// Achievements are tiered: one definition produces several unlocks, each with
-// its own reward, so the list stays readable while the count stays high.
+// Achievements are tiered: one definition produces several unlocks. Every
+// threshold is something the metric genuinely measures.
 
 export type AchievementCategory =
-  | "clicking"
-  | "hearts"
-  | "criticals"
-  | "combos"
-  | "upgrades"
-  | "skills"
-  | "pets"
-  | "charms"
-  | "rebirth"
-  | "ascension"
-  | "challenges"
-  | "bosses"
-  | "collections"
-  | "events"
-  | "offline"
-  | "active"
-  | "questions"
-  | "couple"
-  | "hidden"
-  | "funny";
+  | "tapping" | "hearts" | "criticals" | "combos" | "upgrades" | "abilities"
+  | "otters" | "crabs" | "jar" | "tides" | "challenges" | "together" | "hidden";
 
 export interface AchievementDef {
   id: string;
@@ -32,107 +14,80 @@ export interface AchievementDef {
   description: string;
   metric: MetricId;
   tiers: number[];
-  /** Reward for tier n, scaled by the tier index. */
   reward: Reward;
   hidden?: boolean;
-  titleAt?: { tier: number; title: string };
 }
 
 const t = (
-  id: string,
-  category: AchievementCategory,
-  name: string,
-  description: string,
-  metric: MetricId,
-  tiers: number[],
-  reward: Reward,
-  extra: Partial<AchievementDef> = {},
+  id: string, category: AchievementCategory, name: string, description: string,
+  metric: MetricId, tiers: number[], reward: Reward, extra: Partial<AchievementDef> = {},
 ): AchievementDef => ({ id, category, name, description, metric, tiers, reward, ...extra });
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  t("ach_clicks", "clicking", "Tapping Away", "Tap the heart.", "clicks",
-    [100, 1_000, 10_000, 50_000, 250_000, 1_000_000], { golden: 3, skill: 1 },
-    { titleAt: { tier: 5, title: "Devoted" } }),
-  t("ach_perfect", "clicking", "Right On Time", "Land perfectly timed taps.", "perfectClicks",
-    [50, 500, 5_000, 25_000, 100_000], { golden: 4, skill: 1 }),
-  t("ach_hearts", "hearts", "Filling Up", "Earn hearts, in total.", "hearts",
-    [1_000, 100_000, 1e7, 1e9, 1e12, 1e15, 1e18], { golden: 5, star: 1 },
-    { titleAt: { tier: 6, title: "Jarkeeper" } }),
-  t("ach_hearts_click", "active", "By Hand", "Earn hearts by tapping.", "heartsFromClicks",
-    [10_000, 1e6, 1e8, 1e10, 1e13], { golden: 4, skill: 1 }),
-  t("ach_hearts_passive", "offline", "While You Were Out", "Earn hearts from generators.", "heartsFromPassive",
-    [10_000, 1e6, 1e8, 1e10, 1e13], { dust: 200, golden: 3 }),
-  t("ach_offline", "offline", "Welcome Back", "Collect offline earnings.", "offlineClaims",
-    [1, 10, 50, 200, 1_000], { golden: 3, treats: 30 }),
-  t("ach_crit", "criticals", "Sharp", "Land critical hits.", "criticals",
-    [50, 1_000, 25_000, 200_000, 2_000_000], { golden: 4, fragments: 200 }),
-  t("ach_mega", "criticals", "Overwhelming", "Land mega criticals.", "megaCriticals",
-    [10, 250, 5_000, 50_000], { golden: 6, skill: 2 }),
-  t("ach_combo", "combos", "In Rhythm", "Reach a combo.", "bestCombo",
-    [25, 75, 150, 300, 600, 1_200], { golden: 5, skill: 1 },
-    { titleAt: { tier: 5, title: "Metronome" } }),
-  t("ach_finisher", "combos", "Big Finish", "Land combo finishers.", "comboFinishers",
-    [10, 100, 1_000, 10_000], { golden: 5, dust: 300 }),
-  t("ach_upgrades", "upgrades", "Collector of Levels", "Buy upgrades.", "upgrades",
-    [25, 250, 2_500, 25_000, 150_000], { golden: 4, dust: 250 }),
-  t("ach_skills", "skills", "Well Practised", "Use abilities.", "skillsUsed",
-    [10, 200, 2_000, 20_000], { skill: 2, golden: 4 }),
-  t("ach_eggs", "pets", "Hatchling", "Open pet eggs.", "eggs",
-    [1, 25, 150, 600, 2_000], { treats: 60, shards: 10 }),
-  t("ach_pet_levels", "pets", "Good Company", "Raise pet levels.", "petLevels",
-    [10, 200, 2_000, 15_000], { treats: 120, shards: 20 }),
-  t("ach_evolve", "pets", "Grown Up", "Evolve pets.", "petsEvolved",
-    [1, 5, 20, 60], { shards: 60, star: 1 }),
-  t("ach_fuse", "pets", "Two Into One", "Fuse pets.", "petsFused",
-    [1, 10, 50, 200], { shards: 80, treats: 200 }),
-  t("ach_charms", "charms", "Adorned", "Craft charms.", "charmsCrafted",
-    [1, 25, 150, 600], { fragments: 300, dust: 400 }),
-  t("ach_bosses", "bosses", "Heartbreaker", "Defeat bosses.", "bosses",
-    [1, 10, 60, 250, 1_000], { shards: 80, fragments: 500 },
-    { titleAt: { tier: 4, title: "Unbeaten" } }),
-  t("ach_challenges", "challenges", "Willing", "Complete challenges.", "challenges",
-    [1, 10, 40, 120], { tokens: 3, skill: 3 }),
-  t("ach_rebirth", "rebirth", "Again From The Top", "Rebirth.", "rebirths",
-    [1, 5, 25, 100, 500], { tokens: 5, star: 1 },
-    { titleAt: { tier: 3, title: "Reborn" } }),
-  t("ach_ascension", "ascension", "Higher", "Ascend.", "ascensions",
-    [1, 3, 10, 30], { crystals: 2, star: 2 },
-    { titleAt: { tier: 2, title: "Ascended" } }),
-  t("ach_golden", "hearts", "Gold Rush", "Catch golden hearts.", "golden",
-    [10, 250, 2_500, 20_000], { golden: 20, dust: 300 }),
-  t("ach_treasure", "collections", "Finders Keepers", "Open treasure hearts.", "treasures",
-    [5, 100, 1_000, 8_000], { fragments: 400, star: 1 }),
-  t("ach_worlds", "collections", "Somewhere Else", "Visit worlds.", "worldsVisited",
-    [2, 4, 7, 10], { star: 1, golden: 30 }),
-  t("ach_minigames", "events", "Side Quest", "Play mini-games.", "minigames",
-    [5, 50, 300, 1_500], { golden: 10, treats: 80 }),
-  t("ach_questions", "questions", "Still Curious", "Answer the daily question.", "questionAnswered",
-    [1, 10, 50, 200, 1_000], { bond: 20, star: 1 },
-    { titleAt: { tier: 3, title: "Still Curious" } }),
-  t("ach_partner", "couple", "Two Of You", "Share moments in the app.", "partnerActions",
-    [5, 50, 300, 1_500], { bond: 25, golden: 10 }),
-  // Hidden ones. They stay out of the list until the first tier is earned, so
-  // every threshold here has to be something the metric genuinely measures.
-  t("ach_secret_precise", "hidden", "Nothing But Net", "Land ten thousand perfectly timed taps.", "perfectClicks",
-    [10_000], { golden: 25, title: "Night Owl" }, { hidden: true }),
-  t("ach_secret_mimic", "hidden", "Wise To It", "Beat twenty five boss hearts.", "bosses",
-    [25], { shards: 150 }, { hidden: true }),
-  t("ach_secret_patient", "hidden", "Patience", "Come back to twenty five lots of offline earnings.", "offlineClaims",
-    [25], { golden: 40, dust: 500 }, { hidden: true }),
-  // Funny ones, which are real achievements with real rewards.
-  t("ach_funny_slow", "funny", "Taking It Slow", "Let the jar earn a million hearts without your help.", "heartsFromPassive",
-    [1_000_000], { golden: 5 }),
-  t("ach_funny_burst", "funny", "Somebody Is Excited", "Tap five thousand times.", "clicks",
-    [5_000], { golden: 10, title: "Enthusiastic" }),
-  t("ach_funny_broke", "funny", "Spent It All", "Buy five hundred upgrade levels.", "upgrades",
-    [500], { golden: 15 }),
+  t("a_clicks", "tapping", "Tapping Away", "Tap the heart.", "clicks",
+    [100, 1_000, 10_000, 50_000, 250_000, 1_000_000], { pearls: 3 }),
+  t("a_perfect", "tapping", "Right On Time", "Land perfectly timed taps.", "perfectClicks",
+    [50, 500, 5_000, 25_000, 100_000], { pearls: 4 }),
+  t("a_charged", "tapping", "Worth The Wait", "Charge a tap all the way and let go.", "chargedClicks",
+    [25, 250, 2_500, 20_000], { pearls: 4, shells: 60 }),
+  t("a_hearts", "hearts", "Filling Up", "Earn hearts, in total.", "hearts",
+    [1_000, 100_000, 1e7, 1e9, 1e12, 1e15, 1e18], { pearls: 6 }),
+  t("a_passive", "hearts", "While You Were Out", "Earn hearts without touching it.", "heartsFromPassive",
+    [10_000, 1e6, 1e8, 1e10, 1e13], { glass: 200 }),
+  t("a_offline", "hearts", "Welcome Back", "Come back to a full jar.", "offlineClaims",
+    [1, 10, 50, 200, 1_000], { pearls: 3, shells: 40 }),
+  t("a_crit", "criticals", "Sharp", "Land critical taps.", "criticals",
+    [50, 1_000, 25_000, 200_000, 2_000_000], { pearls: 4, glass: 150 }),
+  t("a_mega", "criticals", "Overwhelming", "Land mega criticals.", "megaCriticals",
+    [10, 250, 5_000, 50_000], { pearls: 6 }),
+  t("a_combo", "combos", "In Rhythm", "Reach a combo.", "bestCombo",
+    [25, 75, 150, 300, 600, 1_200], { pearls: 5 }),
+  t("a_finisher", "combos", "Big Finish", "Take a combo all the way to the cap.", "comboFinishers",
+    [10, 100, 1_000, 10_000], { pearls: 5, glass: 250 }),
+  t("a_upgrades", "upgrades", "Collector Of Levels", "Buy upgrades.", "upgrades",
+    [25, 250, 2_500, 25_000, 150_000], { pearls: 4, glass: 200 }),
+  t("a_abilities", "abilities", "Well Practised", "Use abilities.", "skillsUsed",
+    [10, 200, 2_000, 20_000], { pearls: 5 }),
+  t("a_cracks", "otters", "Crack", "Watch a shell come open.", "cracks",
+    [10, 500, 10_000, 150_000, 2_000_000], { shells: 120 }),
+  t("a_collects", "crabs", "Found It", "Watch something get picked up.", "collects",
+    [10, 500, 10_000, 150_000, 2_000_000], { glass: 150 }),
+  t("a_creatures", "jar", "Full Jar", "Meet creatures.", "creaturesArrived",
+    [2, 4, 7, 10, 14], { pearls: 10, shells: 200 }),
+  t("a_levels", "jar", "Well Fed", "Raise creature levels.", "creatureLevels",
+    [10, 200, 2_000, 15_000], { shells: 250, glass: 200 }),
+  t("a_evolved", "jar", "Grown", "Grow a creature into the next one.", "creaturesEvolved",
+    [1, 5, 20, 60], { glass: 400, pearls: 8 }),
+  t("a_items", "jar", "Keepsakes", "Make rocks and shells.", "itemsMade",
+    [1, 25, 150, 600], { glass: 350 }),
+  t("a_vessels", "jar", "Somewhere Bigger", "Move to a new vessel.", "vessels",
+    [2, 4, 6, 8, 10], { pearls: 15, stars: 1 }),
+  t("a_drifters", "jar", "Something Drifted In", "Open whatever floats in.", "driftersOpened",
+    [5, 100, 1_000, 8_000], { glass: 400, pearls: 6 }),
+  t("a_tides", "tides", "Out And Back", "Change the tide.", "tideChanges",
+    [1, 5, 25, 100, 500], { moons: 5 }),
+  t("a_waters", "tides", "All Of It", "Change the water.", "newWaters",
+    [1, 3, 10, 30], { stars: 2 }),
+  t("a_challenges", "challenges", "Rough Water", "Complete challenges.", "challenges",
+    [1, 10, 40, 120], { moons: 3, pearls: 20 }),
+  t("a_questions", "together", "Still Curious", "Answer the daily question.", "questionAnswered",
+    [1, 10, 50, 200, 1_000], { tide: 25 }),
+  t("a_shared", "together", "Two Of You", "Share moments in the app.", "togetherActions",
+    [5, 50, 300, 1_500], { tide: 30 }),
+  t("a_evenings", "together", "The Same Evening", "Play within a few hours of each other.", "sameEvening",
+    [1, 10, 50, 200, 1_000], { tide: 60, pearls: 10 }),
+  t("a_hidden_deep", "hidden", "Down There", "Land ten thousand perfectly timed taps.", "perfectClicks",
+    [10_000], { pearls: 40 }, { hidden: true }),
+  t("a_hidden_patient", "hidden", "Patience", "Come back twenty five times.", "offlineClaims",
+    [25], { glass: 800 }, { hidden: true }),
+  t("a_hidden_both", "hidden", "Always The Same Evening", "Fifty evenings in the same few hours.", "sameEvening",
+    [50], { tide: 300, stars: 1 }, { hidden: true }),
 ];
 
 export const ACHIEVEMENT_BY_ID: Record<string, AchievementDef> = Object.fromEntries(
   ACHIEVEMENTS.map((a) => [a.id, a]),
 );
 
-/** Total number of individual unlocks across every tier. */
 export const ACHIEVEMENT_TOTAL = ACHIEVEMENTS.reduce((sum, a) => sum + a.tiers.length, 0);
 
 /* ------------------------------------------------------------------ */
@@ -142,144 +97,81 @@ export const ACHIEVEMENT_TOTAL = ACHIEVEMENTS.reduce((sum, a) => sum + a.tiers.l
 export interface CollectibleDef {
   id: string;
   name: string;
-  /** Plain language description of how it is obtained. */
   source: string;
-  rarity: "common" | "rare" | "legendary";
+  rare?: boolean;
 }
 
 export interface CollectionDef {
   id: string;
   name: string;
-  description: string;
   items: CollectibleDef[];
-  /** Reward for completing the whole set. */
   completion: Reward;
 }
 
-const c = (id: string, name: string, source: string, rarity: CollectibleDef["rarity"] = "common"): CollectibleDef =>
-  ({ id, name, source, rarity });
+const c = (id: string, name: string, source: string, rare = false): CollectibleDef =>
+  ({ id, name, source, rare });
 
 export const COLLECTIONS: CollectionDef[] = [
   {
-    id: "heart_designs",
-    name: "Heart designs",
-    description: "The heart you tap.",
-    completion: { star: 2, mastery: 1 },
+    id: "waters",
+    name: "Water",
+    completion: { stars: 2 },
     items: [
-      c("classic", "Classic", "Yours from the start."),
-      c("paper", "Paper Heart", "Buy from the shop."),
-      c("crystal", "Crystal Heart", "Defeat the Frozen Heart."),
-      c("golden", "Golden Heart", "Defeat the Golden Heart King.", "rare"),
-      c("clockwork", "Clockwork Heart", "Defeat the Broken Clock Heart.", "rare"),
-      c("ember", "Ember Heart", "Reach a combo of six hundred.", "rare"),
-      c("cosmic", "Cosmic Heart", "Defeat the Cosmic Heart.", "legendary"),
-      c("eternal", "Eternal Heart", "Ascend three times.", "legendary"),
+      c("default", "Plain", "The vessel's own."),
+      c("her_pink", "Hers, Pink", "Yours from the start."),
+      c("her_purple", "Hers, Purple", "Yours from the start."),
+      c("deep", "Deep", "Reach the Aquarium.", true),
+      c("dawn", "Dawn", "Fifty tide changes.", true),
+      c("dragon", "Dragon", "Buy The Dragon.", true),
+      c("moonstone", "Moonstone", "Change the water three times.", true),
     ],
   },
   {
-    id: "jar_skins",
-    name: "Jar skins",
-    description: "The jar itself.",
-    completion: { star: 2, mastery: 1 },
+    id: "memories",
+    name: "Memories",
+    completion: { stars: 4, tide: 200 },
     items: [
-      c("plain", "Plain Jar", "Yours from the start."),
-      c("founding", "Founding Jar", "For everyone who used the old love jar.", "rare"),
-      c("rose", "Rose Jar", "Unlock the Rose Garden."),
-      c("candy", "Candy Jar", "Unlock the Candy Heart Factory."),
-      c("crystal_jar", "Crystal Jar", "Unlock the Crystal Heart Cave."),
-      c("golden_jar", "Golden Jar", "Unlock the Golden Love Palace.", "rare"),
-      c("starlit", "Starlit Jar", "Unlock Starry Date Night.", "rare"),
-      c("cosmic_jar", "Cosmic Jar", "Unlock the Cosmic Heart Realm.", "legendary"),
-      c("eternal_jar", "Eternal Jar", "Unlock the Eternal Garden.", "legendary"),
+      c("the_mall", "The Mall", "Where it started."),
+      c("photo_booth", "The Photo Booth", "Four pictures, one strip."),
+      c("crawfish_boil", "The Crawfish", "Her favourite."),
+      c("first_drive", "The Long Drive", "Nowhere in particular."),
+      c("the_song", "The Song", "It came on and neither of you said anything."),
+      c("bad_weather", "The Bad Weather Day", "The plan fell through.", true),
+      c("the_purple_one", "The Purple One", "Her colour.", true),
+      c("the_dragon", "The Dragon", "His.", true),
+      c("every_ordinary_tuesday", "Every Ordinary Tuesday", "The rest of them.", true),
     ],
   },
   {
-    id: "click_effects",
-    name: "Click effects",
-    description: "What happens when you tap.",
-    completion: { golden: 60 },
+    id: "vessels",
+    name: "Vessels",
+    completion: { stars: 3 },
     items: [
-      c("ripple", "Ripple", "Yours from the start."),
-      c("petals", "Petals", "Buy from the shop."),
-      c("steady_hand", "Steady Hand", "Complete the Cold Hands challenge.", "rare"),
-      c("sparks", "Sparks", "Land ten thousand criticals."),
-      c("bloom", "Bloom", "Complete the Rose Garden collection.", "rare"),
-      c("starfall", "Starfall", "Reach ascension.", "legendary"),
+      c("jam_jar", "Jam Jar", "Already on the shelf."),
+      c("mason_jar", "Mason Jar", "Taller, and it seals."),
+      c("apothecary", "Apothecary Jar", "Older than both of you."),
+      c("fishbowl", "Fishbowl", "Enough water to float in."),
+      c("tidepool", "Tidepool", "A dent in a rock."),
+      c("terrarium", "Terrarium", "Kelp took hold."),
+      c("reef_tank", "Reef Tank", "It has a schedule.", true),
+      c("aquarium", "Aquarium", "People stop and look.", true),
+      c("cove", "Cove", "You stopped calling it a jar.", true),
+      c("ocean", "Ocean", "There is no lid.", true),
     ],
   },
   {
-    id: "combo_effects",
-    name: "Combo effects",
-    description: "What a long combo looks like.",
-    completion: { golden: 60 },
+    id: "notes",
+    name: "Notes",
+    completion: { stars: 3, tide: 150 },
     items: [
-      c("glow", "Glow", "Yours from the start."),
-      c("metronome", "Metronome", "Complete the Rhythm Run challenge.", "rare"),
-      c("chain", "Chain", "Reach a combo of three hundred."),
-      c("firestorm", "Firestorm", "Reach a combo of twelve hundred.", "legendary"),
-    ],
-  },
-  {
-    id: "auras",
-    name: "Auras",
-    description: "Worn around the jar.",
-    completion: { star: 1 },
-    items: [
-      c("none", "None", "Yours from the start."),
-      c("warm", "Warm", "Buy from the shop."),
-      c("frost", "Frost", "Defeat the Frozen Heart twenty times."),
-      c("dusk", "Dusk", "Unlock the Moonlit Balcony."),
-      c("nova", "Nova", "Defeat the Eternal Heart.", "legendary"),
-    ],
-  },
-  {
-    id: "trophies",
-    name: "Boss trophies",
-    description: "One for every boss, on first clear.",
-    completion: { star: 5, mastery: 3 },
-    items: [
-      c("t_stone", "Stone Fragment", "Defeat the Stone Heart."),
-      c("t_frozen", "Frozen Shard", "Defeat the Frozen Heart."),
-      c("t_mimic", "False Lid", "Defeat the Mimic Jar."),
-      c("t_clock", "Stopped Hand", "Defeat the Broken Clock Heart.", "rare"),
-      c("t_king", "Golden Crown", "Defeat the Golden Heart King.", "rare"),
-      c("t_shadow", "Quiet Shadow", "Defeat the Jealousy Shadow.", "rare"),
-      c("t_guardian", "Guardian's Key", "Defeat the Memory Guardian.", "rare"),
-      c("t_dragon", "Dragon Scale", "Defeat the Heart Dragon.", "legendary"),
-      c("t_cosmic", "Cosmic Ember", "Defeat the Cosmic Heart.", "legendary"),
-      c("t_eternal", "Eternal Ember", "Defeat the Eternal Heart.", "legendary"),
-    ],
-  },
-  {
-    id: "letters",
-    name: "Love letters",
-    description: "Found inside treasure hearts. Each one is a short note.",
-    completion: { star: 3, mastery: 2 },
-    items: [
-      c("l1", "The first one", "Open a treasure heart."),
-      c("l2", "The one about mornings", "Open a treasure heart."),
-      c("l3", "The one about the drive home", "Open a treasure heart."),
-      c("l4", "The one you almost threw away", "Open a treasure heart.", "rare"),
-      c("l5", "The one written badly on purpose", "Open a treasure heart."),
-      c("l6", "The one about the kitchen", "Open a treasure heart."),
-      c("l7", "The one nobody has read yet", "Open a treasure heart.", "rare"),
-      c("l8", "The last one", "Open a treasure heart.", "legendary"),
-    ],
-  },
-  {
-    id: "titles",
-    name: "Titles",
-    description: "Shown next to your name on the couple leaderboard.",
-    completion: { mastery: 3 },
-    items: [
-      c("newcomer", "Newcomer", "Yours from the start."),
-      c("handmade", "Handmade", "Complete the Nothing Automatic challenge.", "rare"),
-      c("stonebreaker", "Stonebreaker", "Defeat the Stone Heart."),
-      c("kingtoppler", "Kingtoppler", "Defeat the Golden Heart King.", "rare"),
-      c("keeper", "Keeper of Memory", "Defeat the Memory Guardian.", "rare"),
-      c("unbroken", "Unbroken", "Complete the One Life challenge.", "legendary"),
-      c("hardcore", "Hardcore", "Complete the Hardcore challenge.", "legendary"),
-      c("eternal_title", "Eternal", "Defeat the Eternal Heart.", "legendary"),
+      c("n1", "The first one", "Found in a drifter."),
+      c("n2", "The one about mornings", "Found in a drifter."),
+      c("n3", "The one about the drive home", "Found in a drifter."),
+      c("n4", "The one you almost threw away", "Found in a drifter.", true),
+      c("n5", "The one written badly on purpose", "Found in a drifter."),
+      c("n6", "The one about the kitchen", "Found in a drifter."),
+      c("n7", "The one nobody has read yet", "Found in a drifter.", true),
+      c("n8", "The last one", "Found in a drifter.", true),
     ],
   },
 ];
@@ -288,25 +180,20 @@ export const COLLECTION_BY_ID: Record<string, CollectionDef> = Object.fromEntrie
   COLLECTIONS.map((col) => [col.id, col]),
 );
 
-/** Items every player owns from the first second. */
 export const STARTING_COLLECTIBLES: Record<string, string[]> = {
-  heart_designs: ["classic"],
-  jar_skins: ["plain"],
-  click_effects: ["ripple"],
-  combo_effects: ["glow"],
-  auras: ["none"],
-  trophies: [],
-  letters: [],
-  titles: ["newcomer"],
+  waters: ["default", "her_pink", "her_purple"],
+  memories: [],
+  vessels: ["jam_jar"],
+  notes: [],
 };
 
-export const LETTER_TEXT: Record<string, string> = {
-  l1: "I kept this one because it was the first thing you ever wrote down for me.",
-  l2: "You are impossible before nine in the morning and I would not change it.",
-  l3: "The drive home is my favourite part of any day that ends with you in it.",
-  l4: "I almost threw this away. I am glad I am the kind of person who does not.",
-  l5: "This one is written badly on purpose so you would know it was really me.",
-  l6: "Half of everything I know about you, I learned standing in a kitchen.",
-  l7: "I have not shown you this one yet. I will, eventually.",
-  l8: "If this is the last one, it is only because we ran out of paper.",
+export const NOTE_TEXT: Record<string, string> = {
+  n1: "I kept this because it was the first thing you ever wrote down for me.",
+  n2: "You are impossible before nine in the morning and I would not change it.",
+  n3: "The drive home is my favourite part of any day that ends with you in it.",
+  n4: "I almost threw this away. I am glad I am not the kind of person who does.",
+  n5: "This one is written badly on purpose so you would know it was really me.",
+  n6: "Half of what I know about you I learned standing in a kitchen.",
+  n7: "I have not shown you this one yet. I will, eventually.",
+  n8: "If this is the last one, it is only because we ran out of paper.",
 };

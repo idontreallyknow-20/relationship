@@ -1,13 +1,11 @@
 "use client";
 
-// Small shared pieces for the Love Jar screens. Everything here is presentation
-// only: no game rules live in this file.
+// Small shared pieces. Presentation only: no game rules live here.
 
 import { useState } from "react";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import { formatNumber } from "@/game/numbers";
 import type { CurrencyId, GameState } from "@/game/types";
-import { HeartIcon } from "@/components/hearts";
 import { ConfirmDialog, Sheet } from "@/components/ui";
 
 export function Section({
@@ -35,38 +33,22 @@ export function Section({
   );
 }
 
-export function Stat({
-  label,
-  value,
-  tone = "default",
-}: {
+export function Stat({ label, value, tone = "default" }: {
   label: string;
   value: string;
   tone?: "default" | "accent";
 }) {
   return (
     <div className="min-w-0 rounded-xl border border-line bg-white px-2.5 py-1.5">
-      <p className="truncate text-[0.6rem] font-semibold uppercase tracking-wide text-berry-soft">
-        {label}
-      </p>
-      <p
-        className={`truncate font-display text-base font-semibold ${
-          tone === "accent" ? "text-rose-dark" : "text-plum"
-        }`}
-      >
+      <p className="truncate text-[0.6rem] font-semibold uppercase tracking-wide text-berry-soft">{label}</p>
+      <p className={`truncate font-display text-base font-semibold ${tone === "accent" ? "text-rose-dark" : "text-plum"}`}>
         {value}
       </p>
     </div>
   );
 }
 
-export function Bar({
-  value,
-  max,
-  color = "var(--color-rose-dark)",
-  height = "0.5rem",
-  label,
-}: {
+export function Bar({ value, max, color = "var(--color-rose-dark)", height = "0.5rem", label }: {
   value: number;
   max: number;
   color?: string;
@@ -89,13 +71,7 @@ export function Bar({
   );
 }
 
-/** A currency balance with an explanation behind a tap. */
-export function CurrencyPill({
-  currency,
-  amount,
-  format,
-  compact = false,
-}: {
+export function CurrencyPill({ currency, amount, format, compact = false }: {
   currency: CurrencyId;
   amount: number;
   format: GameState["settings"]["numberFormat"];
@@ -109,16 +85,12 @@ export function CurrencyPill({
     <>
       <button
         onClick={() => setOpen(true)}
-        aria-label={`${def.name}: ${formatNumber(amount, "full")}. What is this?`}
+        aria-label={`${def.name}: ${formatNumber(amount, "full")}`}
         className={`pressable flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-white font-semibold ${
           compact ? "px-2 py-0.5 text-[0.7rem]" : "px-2.5 py-1 text-xs"
         }`}
       >
-        <span
-          aria-hidden="true"
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: def.color }}
-        />
+        <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: def.color }} />
         <span className="text-berry">{formatNumber(amount, format)}</span>
         {!compact && <span className="text-berry-soft">{def.short}</span>}
       </button>
@@ -128,36 +100,15 @@ export function CurrencyPill({
           <p className="font-display text-3xl font-semibold" style={{ color: def.color }}>
             {formatNumber(amount, "full")}
           </p>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-berry-soft">Where it comes from</p>
-            <p className="text-sm text-berry">{def.source}</p>
-          </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-berry-soft">What it is for</p>
-            <p className="text-sm text-berry">{def.purpose}</p>
-          </div>
-          {def.rare && (
-            <p className="rounded-xl bg-blush/60 px-3.5 py-2.5 text-sm text-berry">
-              This one is rare. The game asks before you spend it.
-            </p>
-          )}
+          <p className="text-sm text-berry">{def.source}</p>
+          <p className="text-sm text-berry-soft">{def.purpose}</p>
         </div>
       </Sheet>
     </>
   );
 }
 
-/** Buy button that confirms first when a rare currency is involved. */
-export function SpendButton({
-  currency,
-  amount,
-  format,
-  disabled,
-  confirm,
-  label,
-  onSpend,
-  className = "",
-}: {
+export function SpendButton({ currency, amount, format, disabled, confirm, label, onSpend, className = "" }: {
   currency: CurrencyId;
   amount: number;
   format: GameState["settings"]["numberFormat"];
@@ -169,7 +120,9 @@ export function SpendButton({
 }) {
   const def = CURRENCY_BY_ID[currency];
   const [asking, setAsking] = useState(false);
-  const needsConfirm = confirm && def?.rare;
+  // Moons and stars are slow to earn, so spending them asks first.
+  const rare = currency === "moons" || currency === "stars";
+  const needsConfirm = confirm && rare;
 
   return (
     <>
@@ -180,18 +133,13 @@ export function SpendButton({
           disabled ? "bg-cream text-berry-soft" : "bg-rose-dark text-white"
         } ${className}`}
       >
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: disabled ? "var(--color-line)" : "#ffffff" }}
-        />
         {formatNumber(amount, format)}
       </button>
 
       <ConfirmDialog
         open={asking}
         title={label}
-        message={`This spends ${formatNumber(amount, "full")} ${def?.name}. That currency is rare and slow to earn.`}
+        message={`Spends ${formatNumber(amount, "full")} ${def?.name}.`}
         confirmLabel="Spend"
         onConfirm={() => {
           setAsking(false);
@@ -203,13 +151,13 @@ export function SpendButton({
   );
 }
 
-export function RarityTag({ rarity, color }: { rarity: string; color: string }) {
+export function Tag({ label, color }: { label: string; color: string }) {
   return (
     <span
       className="shrink-0 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white"
       style={{ backgroundColor: color }}
     >
-      {rarity}
+      {label}
     </span>
   );
 }
@@ -231,28 +179,47 @@ export function EmptyRow({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function JarGlyph({ className = "h-5 w-5" }: { className?: string }) {
+/* ------------------------------------------------------------------ */
+/* Creature shapes. Drawn rather than iconographic, so an otter reads    */
+/* as an otter at 32 pixels.                                            */
+/* ------------------------------------------------------------------ */
+
+export function OtterGlyph({ className = "h-8 w-8", color = "#a87f6a" }: { className?: string; color?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="none">
-      <path
-        d="M7 4h10v2c1.6 1.4 2.4 3 2.4 5v8a3 3 0 0 1-3 3H7.6a3 3 0 0 1-3-3v-8c0-2 .8-3.6 2.4-5V4z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path d="M6 2.6h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path
-        d="M12 17c-.3-.3-4-2.8-4-5.3A2.2 2.2 0 0 1 12 10a2.2 2.2 0 0 1 4 1.7c0 2.5-3.7 5-4 5.3z"
-        fill="currentColor"
-      />
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <ellipse cx="16" cy="19" rx="9" ry="7" fill={color} />
+      <circle cx="16" cy="10" r="6" fill={color} />
+      <circle cx="12.5" cy="7" r="2" fill={color} />
+      <circle cx="19.5" cy="7" r="2" fill={color} />
+      <circle cx="13.8" cy="10" r="1.1" fill="#2f2620" />
+      <circle cx="18.2" cy="10" r="1.1" fill="#2f2620" />
+      <ellipse cx="16" cy="12.6" rx="1.6" ry="1.1" fill="#2f2620" />
+      <ellipse cx="16" cy="19" rx="4.5" ry="3.4" fill="#ffffff" opacity="0.35" />
     </svg>
   );
 }
 
-export function HeartTag({ children }: { children: React.ReactNode }) {
+export function CrabGlyph({ className = "h-8 w-8", color = "#8a5a4a" }: { className?: string; color?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-dark">
-      <HeartIcon className="h-3 w-3" />
-      {children}
-    </span>
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <ellipse cx="16" cy="18" rx="9" ry="6.5" fill={color} />
+      <circle cx="12.5" cy="16" r="1.3" fill="#ffffff" />
+      <circle cx="19.5" cy="16" r="1.3" fill="#ffffff" />
+      <circle cx="12.5" cy="16" r="0.6" fill="#2f2620" />
+      <circle cx="19.5" cy="16" r="0.6" fill="#2f2620" />
+      <path d="M6 12c-2 0-3 1.5-2.5 3S6 17 7 15.5" stroke={color} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+      <path d="M26 12c2 0 3 1.5 2.5 3S26 17 25 15.5" stroke={color} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+      <path d="M9 23l-3 3M14 24.5v3.5M18 24.5v3.5M23 23l3 3" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
+}
+
+export function CreatureGlyph({ line, color, className }: {
+  line: "otter" | "crab";
+  color: string;
+  className?: string;
+}) {
+  return line === "otter"
+    ? <OtterGlyph className={className} color={color} />
+    : <CrabGlyph className={className} color={color} />;
 }
