@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Clock, Mail, Send, Star } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { queueInsert } from "@/lib/offline/ops";
 import { useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
@@ -13,6 +13,7 @@ import { Button, Input, Label, Textarea, useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import type { LetterKind } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/format";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 interface LetterDraft {
   title: string;
@@ -94,25 +95,19 @@ export function ComposeLetter({
     }
 
     setSaving(true);
-    const { data, error: insertError } = await supabase()
-      .from("letters")
-      .insert({
-        author: me,
-        kind,
-        title: draft.title.trim() || null,
-        body: draft.body.trim(),
-        open_when_label: kind === "open_when" ? draft.whenLabel.trim() : null,
-        unlock_at: unlockIso,
-      })
-      .select("id")
-      .single();
+    const id = crypto.randomUUID();
+    await queueInsert("letters", {
+      id,
+      author: me,
+      kind,
+      title: draft.title.trim() || null,
+      body: draft.body.trim(),
+      open_when_label: kind === "open_when" ? draft.whenLabel.trim() : null,
+      unlock_at: unlockIso,
+    }, "Letter");
     setSaving(false);
-    if (insertError || !data) {
-      toast("Could not send the letter, try again");
-      return;
-    }
 
-    const id = (data as { id: string }).id;
+    void noteRewardable("letter_sent", new Date().toISOString().slice(0, 10), `letter:${id}`);
     // Scheduled letters are announced by the server at unlock time, not here.
     if (kind === "open_when") {
       void notifyPartner("letters", id, {

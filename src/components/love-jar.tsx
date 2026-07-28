@@ -1,13 +1,20 @@
 "use client";
 
-// The love jar. Tap your heart and it drops into the shared jar. Joseph's
-// hearts are purple, Cami's are pink. Tapping the jar shows the daily count.
+// The home screen jar. Tapping your heart still drops one into the shared jar
+// exactly as it always did, and the history is unchanged. What is new is the
+// doorway into the full Love Jar game, and that a tap now works offline.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
+import { isTransportError } from "@/lib/offline/net";
+import { AlreadyAppliedError, PermanentOpError, enqueue, registerOp } from "@/lib/offline/outbox";
+import { readCache, writeCache } from "@/lib/offline/cache";
 import { displayName, type Person } from "@/lib/types";
+import { loadLocal } from "@/game/persistence";
+import { formatNumber } from "@/game/numbers";
 import { Card, Sheet } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 
@@ -31,6 +38,22 @@ function seeded(id: string, salt: number): number {
 }
 
 const JAR_CAP = 60;
+const CACHE_KEY = "love-jar:recent";
+
+registerOp<{ id: string; person: Person }>("lovejar.tap", async (payload) => {
+  const { error } = await supabase().from("love_taps").insert(payload);
+  if (!error) return;
+  if (isTransportError(error)) throw error;
+  if (error.code === "23505") throw new AlreadyAppliedError("tap already recorded");
+  throw new PermanentOpError(error.message);
+});
+
+interface CachedJar {
+  taps: Tap[];
+  total: number;
+  mine: number;
+  theirs: number;
+}
 
 export function LoveJar() {
   const { me, partner } = useWho();
@@ -38,30 +61,67 @@ export function LoveJar() {
   const [total, setTotal] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [dropping, setDropping] = useState(0);
-  const pending = useRef(0);
+  const [gameHearts, setGameHearts] = useState<number | null>(null);
   const seen = useRef(new Set<string>());
 
   const [today, setToday] = useState({ mine: 0, theirs: 0 });
 
   const load = useCallback(async () => {
-    const sb = supabase();
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const [recent, count, mineToday, theirsToday] = await Promise.all([
-      sb.from("love_taps").select("*").order("created_at", { ascending: false }).limit(JAR_CAP),
-      sb.from("love_taps").select("id", { count: "exact", head: true }),
-      sb.from("love_taps").select("id", { count: "exact", head: true }).eq("person", me).gte("created_at", dayStart.toISOString()),
-      sb.from("love_taps").select("id", { count: "exact", head: true }).eq("person", partner).gte("created_at", dayStart.toISOString()),
-    ]);
-    const rows = ((recent.data ?? []) as Tap[]).reverse();
-    for (const t of rows) seen.current.add(t.id);
-    setTaps(rows);
-    setTotal(count.count ?? 0);
-    setToday({ mine: mineToday.count ?? 0, theirs: theirsToday.count ?? 0 });
+    // Paint from cache first so the jar is never blank offline.
+    const cached = await readCache<CachedJar>(CACHE_KEY);
+    if (cached) {
+      setTaps(cached.data.taps);
+      setTotal(cached.data.total);
+      setToday({ mine: cached.data.mine, theirs: cached.data.theirs });
+      for (const tap of cached.data.taps) seen.current.add(tap.id);
+    }
+
+    try {
+      const sb = supabase();
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const [recent, count, mineToday, theirsToday] = await Promise.all([
+        sb.from("love_taps").select("*").order("created_at", { ascending: false }).limit(JAR_CAP),
+        sb.from("love_taps").select("id", { count: "exact", head: true }),
+        sb.from("love_taps").select("id", { count: "exact", head: true }).eq("person", me).gte("created_at", dayStart.toISOString()),
+        sb.from("love_taps").select("id", { count: "exact", head: true }).eq("person", partner).gte("created_at", dayStart.toISOString()),
+      ]);
+      if (recent.error) throw recent.error;
+      const rows = ((recent.data ?? []) as Tap[]).reverse();
+      for (const t of rows) seen.current.add(t.id);
+      const next: CachedJar = {
+        taps: rows,
+        total: count.count ?? 0,
+        mine: mineToday.count ?? 0,
+        theirs: theirsToday.count ?? 0,
+      };
+      setTaps(next.taps);
+      setTotal(next.total);
+      setToday({ mine: next.mine, theirs: next.theirs });
+      await writeCache(CACHE_KEY, next);
+    } catch {
+      // Offline: the cached copy above is what we show.
+    }
   }, [me, partner]);
 
+  // The game's own lifetime total, read straight from its local save so the
+  // home card can link into it without mounting the whole game.
   useEffect(() => {
+    let cancelled = false;
+    void loadLocal(me).then((save) => {
+      if (!cancelled) setGameHearts(save?.lifetime.hearts ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [me]);
+
+  useEffect(() => {
+    // `load` paints from the IndexedDB cache first and only then touches the
+    // network, so both of its state updates happen after an await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+
     const sb = supabase();
     const channel = sb
       .channel("love-jar")
@@ -81,7 +141,7 @@ export function LoveJar() {
     return () => {
       void sb.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, me]);
 
   const press = async () => {
     const id = crypto.randomUUID();
@@ -91,22 +151,14 @@ export function LoveJar() {
     setTotal((t) => t + 1);
     setToday((c) => ({ ...c, mine: c.mine + 1 }));
     setDropping((d) => d + 1);
-    pending.current += 1;
 
-    const { error } = await supabase().from("love_taps").insert({ id, person: me });
-    pending.current -= 1;
-    if (error) {
-      seen.current.delete(id);
-      setTaps((prev) => prev.filter((t) => t.id !== id));
-      setTotal((t) => t - 1);
-      setToday((c) => ({ ...c, mine: Math.max(0, c.mine - 1) }));
-      return;
-    }
+    // Queued rather than sent directly, so a tap with no signal is not lost.
+    await enqueue("lovejar.tap", { id, person: me }, { id, label: "A heart for the jar" });
+
     // One gentle notification per person per day, no matter how many taps.
     const day = new Date().toISOString().slice(0, 10);
     void notifyPartner("thinking_of_you", `love-jar-${me}-${day}`, { url: "/home" });
   };
-
 
   return (
     <>
@@ -148,13 +200,20 @@ export function LoveJar() {
               {today.theirs}
             </span>
           </div>
+          <Link
+            href="/jar"
+            className="pressable rounded-full bg-blush px-3.5 py-1.5 text-xs font-bold text-rose-dark"
+          >
+            {gameHearts && gameHearts > 0
+              ? `Play the jar · ${formatNumber(gameHearts)} hearts`
+              : "Play the Love Jar"}
+          </Link>
         </div>
       </Card>
 
       <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Love jar">
         <JarHistory me={me} partner={partner} total={total} />
       </Sheet>
-
     </>
   );
 }
@@ -259,6 +318,9 @@ function JarHistory({ me, partner, total }: { me: Person; partner: Person; total
           {displayName(partner)}
         </span>
       </div>
+      <p className="text-center text-xs text-berry-soft">
+        Every one of these carried over into the Love Jar game as a lifetime heart.
+      </p>
     </div>
   );
 }

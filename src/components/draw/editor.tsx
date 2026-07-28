@@ -32,6 +32,7 @@ import { HeartIcon, HeartSpinner } from "@/components/hearts";
 import { DrawCanvas } from "./canvas";
 import { StrokeThumb } from "./thumb";
 import { type DrawBackground, PALETTE, PEN_SIZES, renderPngBlob } from "./render";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 export interface DrawDraft {
   strokes: Stroke[];
@@ -430,6 +431,7 @@ export function DrawEditor({
         isSharedRef.current = true;
         clearDraft(draftKey(id));
         clearLastPointer(id);
+        void noteRewardable("drawing_shared", new Date().toISOString().slice(0, 10), `drawing:${id}`);
 
         if (mode === "chat") {
           const { error: msgErr } = await sb.from("messages").insert({

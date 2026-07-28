@@ -7,16 +7,80 @@ two people: Cami and Joseph.
 
 A Progressive Web App with real-time chat, shared drawings, mood check-ins,
 daily couple questions, a shared memory timeline, letters, planning tools,
-consent-based location sharing, and web push notifications. There is no
-public registration, no user search, and no third-party trackers. Every row
-in the database is protected by Row Level Security that only the two members
-can pass.
+consent-based location sharing, web push notifications, and the Love Jar: a
+full clicking and incremental game with pets, upgrades, rebirths and
+ascensions. There is no public registration, no user search, and no
+third-party trackers. Every row in the database is protected by Row Level
+Security that only the two members can pass.
 
 ## Stack
 
 - Next.js (App Router, TypeScript) + Tailwind CSS 4, deployed on Vercel
 - Supabase: Postgres + RLS, Realtime, Storage, Auth, Edge Functions, pg_cron
 - Web Push with VAPID (no third-party push service)
+
+## Offline
+
+The app is local-first. Reads go through an IndexedDB cache that paints the
+last known good data immediately and reconciles with the server afterwards,
+so a screen you have opened before still works with no connection. Writes go
+into a durable outbox (also IndexedDB) that survives reloads and crashes,
+retries with backoff, and carries a client generated id so a retry after a
+dropped response can never apply the same action twice. The sync state is
+visible in a single badge in the top bar; nothing appears at all while
+everything is synced.
+
+Who the two of you are is cached too. Every screen sits behind
+`CoupleProvider`, so without that the whole app waits on a spinner however
+well each screen caches its own data.
+
+A request that reaches the server resolves with an error; one that cannot
+reach it at all rejects, and one over a dead socket does neither. All three
+go through `settled()`, which flattens them into one shape and puts a
+deadline on the third, because a screen that gates its render on a request
+that never finishes has no way out.
+
+Works offline:
+
+| Screen | Reads | Writes |
+| --- | --- | --- |
+| Love Jar | yes | yes, in full |
+| Questions | yes | answer, edit, favourite, write questions and packs |
+| Chat | yes | send text, edit, delete, react |
+| Moods | yes | share a mood, clear it, send support or space |
+| Memories | yes | add a written memory, edit, delete, favourite |
+| Letters | yes | write and send, delete, add gratitude |
+| Plans | yes | events, bucket list, to-dos, votes, replies |
+| Home, Us | yes | signals |
+
+Needs a connection: uploading photos, videos and voice notes; swapping the
+daily question, because it changes shared state; and anything else the server
+has to arbitrate. A memory or message whose text is written offline is queued
+and sent later, but one carrying a photo waits for a connection.
+
+## The Love Jar
+
+`src/game` is a self-contained incremental game. It has no dependency on the
+rest of the app: the couples features drop notes into a small inbox
+(`src/game/rewards-inbox.ts`) and the game grants a capped daily bonus for
+them the next time it opens. Nothing in the game requires the other person to
+have played.
+
+- `config/` is data: seven currencies, three upgrade trees, abilities, seven
+  otters and seven crabs, the rocks and shells they carry, ten vessels,
+  drifters, memories and trips, challenges, missions, achievements and
+  collections.
+- `formulas.ts` turns everything owned into one `Derived` stat block.
+- `engine.ts` and `actions.ts` are pure functions over a save.
+- `store.tsx` is the only React-aware file: it runs the tick loop, saves
+  locally every few seconds, and queues a server batch every minute.
+- `persistence.ts` reconciles the local save with the server's copy.
+
+The server owns anything permanent or comparable. `game_sync` is idempotent
+per batch, measures elapsed time from its own clock, rejects impossible click
+rates and any counter that moves backwards, and writes an audit row when it
+does. Old `love_taps` rows are preserved and converted into starting progress
+exactly once per person by `game_claim_legacy`.
 
 ## Architecture notes
 
@@ -81,3 +145,14 @@ The service role key is never used outside Supabase's own infrastructure.
 - Location sharing only updates while the app is open. A web app cannot and
   should not track anyone in the background, and this one never tries to.
 - "Share until tonight" and similar windows expire automatically server-side.
+- Media uploads need a connection. Text, drawings-in-progress and game
+  actions are queued offline; photos, videos and voice notes are not.
+- The Love Jar simulates on the client, because it has to in order to play
+  offline, and the server stores the result without checking it. There are
+  two accounts and no leaderboard, so the only person anyone could cheat is
+  themselves.
+- A request that hangs rather than failing is given eight seconds before the
+  cached copy is shown instead. On a genuinely slow connection that means a
+  screen can go stale for a moment before refreshing.
+- Numbers are IEEE doubles with a hard ceiling of 1e300. The progression is
+  tuned so that is end-of-content rather than something you trip over.

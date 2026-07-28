@@ -8,9 +8,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Sparkle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { readCache, settled, writeCache } from "@/lib/offline/cache";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { formatRelative, formatTime, relationshipDays } from "@/lib/format";
+import { todayIn } from "@/lib/day";
 import { displayName, partnerOf } from "@/lib/types";
 import type { DailyQuestion, Message, MoodEntry, Question, Signal } from "@/lib/types";
 import { Button, Card, useToast } from "@/components/ui";
@@ -51,6 +53,8 @@ function greeting(): string {
   return "Good evening";
 }
 
+const CACHE_KEY = "home:dashboard";
+
 export default function HomePage() {
   const { me, partner, couple } = useCouple();
   const toast = useToast();
@@ -65,16 +69,18 @@ export default function HomePage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    // The shared day, not this device's day: a partner in another timezone
+    // must see the same daily question as the person at home.
+    const localDate = todayIn(couple.timezone);
 
     const [moods, msgs, unreadRes, dq, locations, signals] =
       await Promise.all([
-        sb.from("moods").select("*").is("cleared_at", null).order("created_at", { ascending: false }).limit(10),
-        sb.from("messages").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(1),
-        sb.from("messages").select("id", { count: "exact", head: true }).eq("sender", partnerPerson).is("read_at", null).is("deleted_at", null),
-        sb.from("daily_questions").select("*, questions(*), answers(person)").eq("for_date", localDate).maybeSingle(),
-        sb.from("locations").select("person, expires_at").gt("expires_at", now).order("shared_at", { ascending: false }).limit(10),
-        sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(5),
+        settled(sb.from("moods").select("*").is("cleared_at", null).order("created_at", { ascending: false }).limit(10)),
+        settled(sb.from("messages").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(1)),
+        settled(sb.from("messages").select("id", { count: "exact", head: true }).eq("sender", partnerPerson).is("read_at", null).is("deleted_at", null)),
+        settled(sb.from("daily_questions").select("*, questions(*), answers(person)").eq("for_date", localDate).maybeSingle()),
+        settled(sb.from("locations").select("person, expires_at").gt("expires_at", now).order("shared_at", { ascending: false }).limit(10)),
+        settled(sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(5)),
       ]);
 
     const moodRows = (moods.data ?? []) as MoodEntry[];
@@ -90,7 +96,16 @@ export default function HomePage() {
       | (DailyQuestion & { questions: Question | null; answers: { person: string }[] })
       | null;
 
-    setData({
+    // Every one of these can fail together when there is no connection, in
+    // which case the dashboard shows the last state it saw rather than blank
+    // cards. Home is read-only, so a stale copy is always safe.
+    if (moods.error && msgs.error && dq.error) {
+      const cached = await readCache<HomeData>(CACHE_KEY);
+      if (cached) setData(cached.data);
+      return;
+    }
+
+    const next: HomeData = {
       myMood: activeMood(moodRows, me.person, false),
       partnerMood: activeMood(moodRows, partnerPerson, true),
       lastMessage: (msgs.data?.[0] as Message | undefined) ?? null,
@@ -106,8 +121,10 @@ export default function HomePage() {
       mySharing: (locations.data ?? []).some((l) => l.person === me.person),
       partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
       recentSignals: (signals.data ?? []) as Signal[],
-    });
-  }, [me.person, partnerPerson]);
+    };
+    setData(next);
+    void writeCache(CACHE_KEY, next);
+  }, [me.person, partnerPerson, couple.timezone]);
 
   useEffect(() => {
     void load();

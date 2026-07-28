@@ -108,7 +108,7 @@ function genericBody(category: string): string {
   }
 }
 
-async function rotateDailyQuestion(admin: Admin, today: string) {
+async function rotateDailyQuestion(admin: Admin, today: string, timezone: string) {
   const { data: existing } = await admin
     .from("daily_questions")
     .select("id")
@@ -116,19 +116,13 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
     .maybeSingle();
   if (existing) return;
 
-  // Prefer questions that have never been used.
-  const { data: used } = await admin.from("daily_questions").select("question_id");
-  const usedIds = new Set((used ?? []).map((r) => r.question_id));
-  const { data: all } = await admin.from("questions").select("id");
-  if (!all || all.length === 0) return;
-  const unused = all.filter((q) => !usedIds.has(q.id));
-  const pool = unused.length > 0 ? unused : all;
-  const pick = pool[Math.floor(Math.random() * pool.length)];
-
-  const { error } = await admin
-    .from("daily_questions")
-    .insert({ question_id: pick.id, for_date: today });
-  if (error) return; // lost a race; another tick inserted it
+  // Selection lives in the database so the cron and either client pick the
+  // same way, avoid the same question twice, and cannot race into duplicates.
+  const { error } = await admin.rpc("ensure_daily_question", {
+    p_date: today,
+    p_timezone: timezone,
+  });
+  if (error) return; // lost a race; another tick or a client inserted it
 
   for (const person of PEOPLE) {
     await sendToPerson(
@@ -136,6 +130,24 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
       "Cami & Joseph", "Today's question is ready", "/questions",
     );
   }
+}
+
+// One partner answering is worth a nudge on its own: the other should know
+// there is something waiting, not only once both are done.
+async function notifyPartnerAnswered(admin: Admin, today: string) {
+  const { data: dq } = await admin
+    .from("daily_questions")
+    .select("id, answers(person)")
+    .eq("for_date", today)
+    .maybeSingle();
+  if (!dq) return;
+  const answered = ((dq.answers ?? []) as { person: Person }[]).map((a) => a.person);
+  if (answered.length !== 1) return;
+  const waiting: Person = answered[0] === "cami" ? "joseph" : "cami";
+  await sendToPerson(
+    admin, waiting, "answers", `partner-answered-${dq.id}`,
+    "Cami & Joseph", "Your partner answered today's question", "/questions",
+  );
 }
 
 async function notifyBothAnswered(admin: Admin) {
@@ -271,11 +283,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: couple } = await admin.from("couple").select("timezone").eq("id", 1).maybeSingle();
-  const today = todayIn(couple?.timezone ?? "America/New_York");
+  const timezone = couple?.timezone ?? "America/New_York";
+  const today = todayIn(timezone);
 
   const results: Record<string, string> = {};
   const jobs: [string, () => Promise<void>][] = [
-    ["daily_question", () => rotateDailyQuestion(admin, today)],
+    ["daily_question", () => rotateDailyQuestion(admin, today, timezone)],
+    ["partner_answered", () => notifyPartnerAnswered(admin, today)],
     ["both_answered", () => notifyBothAnswered(admin)],
     ["letters", () => unlockLetters(admin)],
     ["events", () => remindEvents(admin)],

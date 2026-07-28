@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { House, Images, MessageCircle, Pencil, Smile, Camera, Mail, CalendarHeart, ListChecks } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useWho } from "@/lib/couple-context";
+import { useFocusMode, setFocusMode } from "@/lib/focus";
 import { HeartIcon } from "./hearts";
 import { Sheet } from "./ui";
 
@@ -63,7 +64,7 @@ function NavLink({
       href={href}
       aria-label={badge > 0 ? `${label}, ${badge} unread` : label}
       aria-current={active ? "page" : undefined}
-      className={`pressable relative flex min-w-14 flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 text-[0.68rem] font-semibold ${
+      className={`pressable relative flex min-w-11 flex-col items-center gap-0.5 rounded-2xl px-1.5 py-1.5 text-[0.62rem] font-semibold ${
         active ? "text-rose-dark" : "text-berry-soft"
       }`}
     >
@@ -81,6 +82,23 @@ function NavLink({
   );
 }
 
+function JarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="none">
+      <path
+        d="M7 4h10v2c1.6 1.4 2.4 3 2.4 5v8a3 3 0 0 1-3 3H7.6a3 3 0 0 1-3-3v-8c0-2 .8-3.6 2.4-5V4z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path d="M6 2.6h12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      <path
+        d="M12 17.5c-.3-.3-4.2-3-4.2-5.6A2.3 2.3 0 0 1 12 10.2a2.3 2.3 0 0 1 4.2 1.7c0 2.6-3.9 5.3-4.2 5.6z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 const CREATE_ACTIONS = [
   { href: "/draw", label: "Drawing", icon: Pencil },
   { href: "/moods?new=1", label: "Mood", icon: Smile },
@@ -95,6 +113,32 @@ export function BottomNav() {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const unread = useUnreadCount();
+  const focus = useFocusMode();
+
+  // Focus mode: the jar and nothing else. The way back is deliberately here
+  // rather than buried in the game's settings, so it can never strand anyone
+  // who turned it on without meaning to.
+  if (focus) {
+    return (
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur-sm"
+        style={{ paddingBottom: "var(--safe-bottom)" }}
+      >
+        <div className="mx-auto flex h-16 max-w-lg items-center justify-center gap-3 px-4">
+          <NavLink href="/jar" label="Jar" active={pathname.startsWith("/jar")}>
+            <JarIcon className="h-5 w-5" />
+          </NavLink>
+          <button
+            onClick={() => setFocusMode(false)}
+            className="pressable rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-berry-soft"
+          >
+            Show everything
+          </button>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <>
@@ -103,25 +147,28 @@ export function BottomNav() {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur-sm"
         style={{ paddingBottom: "var(--safe-bottom)" }}
       >
-        <div className="mx-auto flex h-16 max-w-lg items-center justify-around px-2">
+        <div className="mx-auto flex h-16 max-w-lg items-center justify-around px-1">
           <NavLink href="/home" label="Home" active={pathname === "/home"}>
-            <House className="h-5.5 w-5.5" />
+            <House className="h-5 w-5" />
           </NavLink>
           <NavLink href="/chat" label="Chat" active={pathname === "/chat"} badge={unread}>
-            <MessageCircle className="h-5.5 w-5.5" />
+            <MessageCircle className="h-5 w-5" />
+          </NavLink>
+          <NavLink href="/jar" label="Jar" active={pathname.startsWith("/jar")}>
+            <JarIcon className="h-5 w-5" />
           </NavLink>
           <button
             aria-label="Create"
             onClick={() => setCreateOpen(true)}
-            className="pressable -mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-rose-dark text-white shadow-lift"
+            className="pressable -mt-6 flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-rose-dark text-white shadow-lift"
           >
             <HeartIcon className="h-6 w-6" />
           </button>
           <NavLink href="/memories" label="Memories" active={pathname.startsWith("/memories")}>
-            <Images className="h-5.5 w-5.5" />
+            <Images className="h-5 w-5" />
           </NavLink>
           <NavLink href="/us" label="Us" active={pathname.startsWith("/us")}>
-            <svg viewBox="0 0 28 24" className="h-5.5 w-5.5" aria-hidden="true">
+            <svg viewBox="0 0 28 24" className="h-5 w-5" aria-hidden="true">
               <path
                 d="M9 19c-.5-.4-7-5-7-9.4A3.9 3.9 0 0 1 9 6.7a3.9 3.9 0 0 1 7 2.9C16 14 9.5 18.6 9 19z"
                 fill="currentColor"

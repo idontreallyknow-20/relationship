@@ -4,7 +4,7 @@
 // accidental close never loses what was typed.
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { queueInsert } from "@/lib/offline/ops";
 import { useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
@@ -12,6 +12,7 @@ import { Button, Input, Label, Select, Sheet, Textarea, useToast } from "@/compo
 import { HeartIcon } from "@/components/hearts";
 import type { Mood } from "@/lib/types";
 import { MOOD_OPTIONS } from "./meta";
+import { noteRewardable } from "@/game/rewards-inbox";
 
 type ExpireOption = "never" | "1h" | "tonight" | "24h";
 
@@ -84,27 +85,22 @@ export function MoodComposer({
   const submit = async () => {
     if (!valid || !draft.mood || saving) return;
     setSaving(true);
-    const { data, error } = await supabase()
-      .from("moods")
-      .insert({
-        person: me,
-        mood: draft.mood,
-        custom_label: draft.mood === "custom" ? draft.customLabel.trim() : null,
-        intensity: draft.intensity,
-        note: draft.note.trim() || null,
-        would_help: draft.wouldHelp.trim() || null,
-        visible: draft.visible,
-        expires_at: expiresAt(draft.expire),
-      })
-      .select("id")
-      .single();
+    const id = crypto.randomUUID();
+    await queueInsert("moods", {
+      id,
+      person: me,
+      mood: draft.mood,
+      custom_label: draft.mood === "custom" ? draft.customLabel.trim() : null,
+      intensity: draft.intensity,
+      note: draft.note.trim() || null,
+      would_help: draft.wouldHelp.trim() || null,
+      visible: draft.visible,
+      expires_at: expiresAt(draft.expire),
+    }, "Mood");
     setSaving(false);
-    if (error || !data) {
-      toast("Could not save your mood, try again");
-      return;
-    }
     if (draft.visible) {
-      void notifyPartner("moods", (data as { id: string }).id, { url: "/moods" });
+      void notifyPartner("moods", id, { url: "/moods" });
+      void noteRewardable("mood_shared", new Date().toISOString().slice(0, 10), `mood:${id}`);
     }
     clearDraft(DRAFT_KEY);
     setDraft(EMPTY);

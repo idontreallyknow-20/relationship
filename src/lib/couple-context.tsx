@@ -6,6 +6,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { readCache, settled, writeCache } from "./offline/cache";
 import { storedDeviceId, signOutDevice } from "./pairing";
 import type { Couple, Person, Profile } from "./types";
 import { partnerOf } from "./types";
@@ -20,6 +21,13 @@ interface CoupleState {
 }
 
 const CoupleContext = createContext<CoupleState | null>(null);
+
+const IDENTITY_KEY = "couple:identity";
+
+interface CachedIdentity {
+  profiles: Profile[];
+  couple: Couple;
+}
 
 export function useCouple(): CoupleState {
   const ctx = useContext(CoupleContext);
@@ -50,13 +58,31 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
     deviceId.current = storedDeviceId();
 
     const [profilesRes, coupleRes] = await Promise.all([
-      sb.from("profiles").select("*"),
-      sb.from("couple").select("*").eq("id", 1).maybeSingle(),
+      settled(sb.from("profiles").select("*")),
+      settled(sb.from("couple").select("*").eq("id", 1).maybeSingle()),
     ]);
+
+    // Who the two of you are barely changes, and every screen in the app is
+    // behind this provider. Without a cached copy a lost connection leaves
+    // the whole app on a spinner, however well each screen caches its own
+    // data. The session itself comes from local storage, so it still works.
     if (profilesRes.error || coupleRes.error || !coupleRes.data) {
+      const cached = await readCache<CachedIdentity>(IDENTITY_KEY);
+      const me = cached?.data.profiles.find((p) => p.id === session.user.id);
+      if (cached && me) {
+        setState({
+          session,
+          me,
+          partner: cached.data.profiles.find((p) => p.id !== session.user.id) ?? null,
+          couple: cached.data.couple,
+          deviceId: deviceId.current,
+        });
+        return;
+      }
       setFailed(true);
       return;
     }
+
     const profiles = (profilesRes.data ?? []) as Profile[];
     const me = profiles.find((p) => p.id === session.user.id);
     if (!me) {
@@ -65,14 +91,10 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
       router.replace("/welcome");
       return;
     }
+    const couple = coupleRes.data as Couple;
     const partner = profiles.find((p) => p.id !== session.user.id) ?? null;
-    setState({
-      session,
-      me,
-      partner,
-      couple: coupleRes.data as Couple,
-      deviceId: deviceId.current,
-    });
+    void writeCache<CachedIdentity>(IDENTITY_KEY, { profiles, couple });
+    setState({ session, me, partner, couple, deviceId: deviceId.current });
   }, [router]);
 
   useEffect(() => {
