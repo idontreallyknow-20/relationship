@@ -16,6 +16,7 @@ import { AbilitiesTab, UpgradesTab } from "@/components/jar/progress";
 import { AutomationTab, DepthsTab } from "@/components/jar/depths";
 import { CreaturesTab } from "@/components/jar/creatures";
 import { ResetsTab, VesselsTab } from "@/components/jar/resets";
+import { DilationTab } from "@/components/jar/dilation";
 import {
   AchievementsTab, ChallengesTab, CollectionsTab, MissionsTab,
 } from "@/components/jar/objectives";
@@ -74,6 +75,7 @@ const GROUPS = [
       { id: "tide", label: "Rebirth", needs: "tideChange" },
       { id: "water", label: "Deep rebirth", needs: "newWater" },
       { id: "sea", label: "Last rebirth", needs: "sea" },
+      { id: "dilation", label: "Dilation", needs: "dilation" },
       { id: "stats", label: "Statistics", needs: "tideChange" },
     ],
   },
@@ -220,6 +222,7 @@ function JarApp() {
         {current === "tide" && <ResetsTab layer="tide" />}
         {current === "water" && <ResetsTab layer="water" />}
         {current === "sea" && <ResetsTab layer="sea" />}
+        {current === "dilation" && <DilationTab />}
         {current === "us" && <UsTab />}
         {current === "missions" && <MissionsTab />}
         {current === "challenges" && <ChallengesTab />}

@@ -8,7 +8,24 @@ import { STARTER } from "./config/creatures";
 import { LEGACY_WORLD_MAP, VESSELS } from "./config/vessels";
 import { DEPTHS } from "./config/depths";
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
+
+/**
+ * Saves older than this are not migrated, they are thrown away.
+ *
+ * Asked for directly, and the right call anyway. Version six and earlier were
+ * played on a curve where a rebirth did not clear the chain, so those saves
+ * carry counts that the current game could not have produced: hundreds of
+ * deepenings, moon balances that took a broken feedback loop to earn, and in
+ * the worst case a lifetime total sitting on the floating point ceiling.
+ * Carrying that across would have meant the new balance never actually
+ * applying to the two people it was rebalanced for.
+ *
+ * Everything outside the jar is untouched. Messages, memories, letters, moods,
+ * plans, drawings and the question history live in their own tables and are
+ * not part of a game save.
+ */
+export const RESET_SAVES_BEFORE = 7;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   sound: true,
@@ -121,6 +138,9 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
     seaStartedAt: now,
     dropUpgrades: {},
 
+    dilation: { active: false, startedAt: now, hearts: 0, runs: 0 },
+    dilationUpgrades: {},
+
     auto: { tap: true, tapCredit: 0 },
     autobuyers: freshAutobuyers(),
 
@@ -180,6 +200,11 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
   const old = raw as Record<string, unknown> & { version?: number };
   const version = old.version ?? 0;
 
+  // The clean slate. See `RESET_SAVES_BEFORE` for why, and note that it comes
+  // before every other branch below on purpose: a save this old must not be
+  // half converted, because half of it is the thing being thrown away.
+  if (version < RESET_SAVES_BEFORE) return fresh;
+
   const merged: GameState = {
     ...fresh,
     ...(old as Partial<GameState>),
@@ -190,6 +215,7 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     upgrades: {},
     moonUpgrades: { ...((old.moonUpgrades as Record<string, number>) ?? {}) },
     starUpgrades: { ...((old.starUpgrades as Record<string, number>) ?? {}) },
+    dilationUpgrades: { ...((old.dilationUpgrades as Record<string, number>) ?? {}) },
     skills: { ...fresh.skills, ...((old.skills as GameState["skills"]) ?? {}) },
     creatures: { ...((old.creatures as GameState["creatures"]) ?? {}) },
     items: { ...((old.items as GameState["items"]) ?? {}) },

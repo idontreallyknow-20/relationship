@@ -9,7 +9,7 @@ export interface CurrencyDef {
   color: string;
 }
 
-// Seven, down from fourteen. Every one is themed to the jar and has exactly
+// Eight, down from fourteen. Every one is themed to the jar and has exactly
 // one place it comes from and one place it goes.
 
 export const CURRENCIES: CurrencyDef[] = [
@@ -76,6 +76,14 @@ export const CURRENCIES: CurrencyDef[] = [
     source: "Letting the whole sea go, once you have one.",
     purpose: "The deepest tree. It changes what the jar is.",
     color: "#3b6ea5",
+  },
+  {
+    id: "hours",
+    name: "Hours",
+    short: "Hours",
+    source: "Playing on with the jar deliberately slowed down.",
+    purpose: "The last tree, and the only one that makes dilation bearable.",
+    color: "#7a6ba8",
   },
 ];
 

@@ -7,6 +7,14 @@ import type { Feature } from "./config/stages";
 
 export type Person = "cami" | "joseph";
 
+export interface DilationState {
+  active: boolean;
+  startedAt: number;
+  hearts: number;
+  /** How many stretches have been finished, which sets the bar for the next. */
+  runs: number;
+}
+
 export type CurrencyId =
   | "hearts"
   | "pearls"
@@ -15,7 +23,8 @@ export type CurrencyId =
   | "tide"
   | "moons"
   | "stars"
-  | "drops";
+  | "drops"
+  | "hours";
 
 /** Stats that contributors add to. Sums across every source. */
 export type AddStat =
@@ -76,7 +85,8 @@ export type MulStat =
   | "depthPower"
   | "tideSpeed"
   | "deepenGain"
-  | "dropGain";
+  | "dropGain"
+  | "hourGain";
 
 export interface Mods {
   add?: Partial<Record<AddStat, number>>;
@@ -331,6 +341,17 @@ export interface GameState {
   seaStartedAt: number;
   dropUpgrades: Record<string, number>;
 
+  /**
+   * Time dilation: the jar running slowly on purpose.
+   *
+   * `active` is the switch, `hearts` is what this dilated stretch has earned
+   * so far, and `startedAt` is when it began. All three live in the save
+   * because a dilated run has to survive being closed, and the whole point of
+   * the layer is that it takes a long time.
+   */
+  dilation: DilationState;
+  dilationUpgrades: Record<string, number>;
+
   auto: AutoState;
   autobuyers: Record<string, AutobuyerState>;
 
@@ -386,6 +407,10 @@ export interface GameState {
 export interface Derived {
   heartsPerClick: number;
   heartsPerSecond: number;
+  /** True while the jar is deliberately running slowly. */
+  dilated: boolean;
+  /** The exponent dilation applies, whether or not it is switched on. */
+  dilationPower: number;
   critChance: number;
   critMultiplier: number;
   megaCritChance: number;

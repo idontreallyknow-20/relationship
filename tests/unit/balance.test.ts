@@ -339,6 +339,45 @@ describe("rebirth is the loop", () => {
   }, 60_000);
 });
 
+describe("the creatures are a side thing", () => {
+  it("never make hearts, however many are in the jar", () => {
+    // The complaint this answers: the pets were the spine of the game rather
+    // than something you keep. They were the largest single source of passive
+    // hearts, so the fastest route to more hearts was more otters and the jar
+    // was scenery.
+    const empty = createGameState(0);
+    empty.slots = empty.slots.map(() => null);
+    const stocked = createGameState(0);
+
+    expect(Object.keys(stocked.creatures).length).toBeGreaterThan(0);
+    expect(derive(stocked, 0).heartsPerSecond).toBe(derive(empty, 0).heartsPerSecond);
+  });
+
+  it("still pay, in the currencies that are theirs", () => {
+    const state = createGameState(0);
+    state.wallet.shells = 0;
+    state.wallet.glass = 0;
+    state.wallet.pearls = 0;
+
+    let now = 0;
+    for (let second = 0; second < 600; second++) {
+      for (let t = 0; t < TICKS_PER_SECOND; t++) {
+        now += TICK_MS;
+        tick(state, TICK_MS, now);
+      }
+    }
+    const earned = state.wallet.shells + state.wallet.glass + state.wallet.pearls;
+    expect(earned, "ten minutes with a creature in the jar paid nothing").toBeGreaterThan(0);
+  });
+
+  it("are worth having, because what they carry multiplies the jar", () => {
+    const bare = createGameState(0);
+    bare.slots = bare.slots.map(() => null);
+    const kept = createGameState(0);
+    expect(derive(kept, 0).globalMultiplier).toBeGreaterThanOrEqual(derive(bare, 0).globalMultiplier);
+  });
+});
+
 describe("the moon tree is worth buying", () => {
   it("makes the next run meaningfully faster", () => {
     const plain = createGameState(0);

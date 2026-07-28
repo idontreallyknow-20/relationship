@@ -359,13 +359,15 @@ describe("rocks and shells", () => {
     expect(state.stats.itemsMade).toBe(1);
 
     // Affixes are rolled, so pin one down to make the effect measurable.
-    state.items[made.item!.id].affixes = [{ kind: "mul", stat: "crackValue", value: 0.5 }];
+    // Creatures do not make hearts any more, so the thing to measure is the
+    // multiplier the item carries rather than passive income.
+    state.items[made.item!.id].affixes = [{ kind: "mul", stat: "all", value: 0.5 }];
 
     const creature = starterOf(state);
-    const before = derive(state, 0).heartsPerSecond;
+    const before = derive(state, 0).globalMultiplier;
     expect(giveItem(state, creature.id, made.item!.id).ok).toBe(true);
     expect(creature.itemId).toBe(made.item!.id);
-    expect(derive(state, 0).heartsPerSecond).toBeGreaterThan(before);
+    expect(derive(state, 0).globalMultiplier).toBeGreaterThan(before);
   });
 
   it("only lets one creature carry a given item", () => {
@@ -409,18 +411,30 @@ describe("the loop", () => {
     expect(state.settled.every((s) => s.y <= 1)).toBe(true);
   });
 
-  it("pays hearts and currency when something is collected", () => {
-    const state = rich("cami");
-    state.wallet.hearts = 0;
-    state.wallet.shells = 0;
-    const item = dropSettled(state, "shell", 1_000, 50, 0.9);
-    const result = collectSettled(state, derive(state, 0), item.id, true);
-    expect(result).not.toBeNull();
-    expect(result!.currency).toBe("shells");
-    expect(state.wallet.hearts).toBeGreaterThan(0);
-    expect(state.wallet.shells).toBeGreaterThan(0);
-    expect(state.settled.length).toBe(0);
-    expect(state.stats.collects).toBe(1);
+  it("pays currency to whoever collects, and hearts only to you", () => {
+    // A crab picking something up pays no hearts. Hearts come from the jar,
+    // which is either you tapping it or the chain, and creatures making them
+    // is what quietly turned the pets into the spine of the game.
+    const byCrab = rich("cami");
+    byCrab.wallet.hearts = 0;
+    byCrab.wallet.shells = 0;
+    const forCrab = dropSettled(byCrab, "shell", 1_000, 50, 0.9);
+    const crabResult = collectSettled(byCrab, derive(byCrab, 0), forCrab.id, true);
+    expect(crabResult).not.toBeNull();
+    expect(crabResult!.currency).toBe("shells");
+    expect(crabResult!.hearts).toBe(0);
+    expect(byCrab.wallet.hearts).toBe(0);
+    expect(byCrab.wallet.shells).toBeGreaterThan(0);
+    expect(byCrab.settled.length).toBe(0);
+    expect(byCrab.stats.collects).toBe(1);
+
+    // Reaching in and taking it yourself is a tap, so it pays like one.
+    const byHand = rich("cami");
+    byHand.wallet.hearts = 0;
+    const forHand = dropSettled(byHand, "shell", 1_000, 50, 0.9);
+    const handResult = collectSettled(byHand, derive(byHand, 0), forHand.id, false);
+    expect(handResult!.hearts).toBeGreaterThan(0);
+    expect(byHand.wallet.hearts).toBeGreaterThan(0);
   });
 
   it("has otters crack and crabs pick up over a long enough tick", () => {
@@ -507,6 +521,9 @@ describe("abilities", () => {
 describe("time away", () => {
   it("pays for the hours the jar ran without you", () => {
     const state = rich("cami");
+    // The chain is what runs while you are away. Creatures no longer make
+    // hearts, so a jar with nothing bought in it genuinely earns nothing.
+    buyDepth(state, 0, 20);
     state.lastSeenAt = 0;
     const report = computeOffline(state, 3_600_000);
     expect(report.countedMs).toBe(3_600_000);
@@ -840,47 +857,63 @@ describe("metrics", () => {
 /* ------------------------------------------------------------------ */
 
 describe("migration", () => {
-  it("carries an old save forward without losing anything", () => {
+  it("throws away a save from before the reset rather than converting it", () => {
+    // Every save written before version 7 was played on a curve where a
+    // rebirth did not clear the production chain, so it carries counts the
+    // current game could not produce. Half converting one would mean the new
+    // balance never actually applies.
     const old = {
-      version: 3,
-      wallet: { hearts: 5_000, sparks: 40, tokens: 12, treats: 30 },
-      lifetime: { hearts: 900_000 },
-      upgrades: { old_click_power: 10, old_passive: 15 },
-      pets: { a: {}, b: {} },
-      charms: { c: {} },
-      worldsUnlocked: ["bedroom", "rose_garden"],
-      world: "rose_garden",
-      rebirths: 4,
-      ascensions: 1,
+      version: 6,
+      wallet: { hearts: 5e120 },
+      lifetime: { hearts: 1e300 },
+      upgrades: { otter_hands: 400 },
+      moonUpgrades: { m_all: 60, m_depth: 100 },
+      tideChanges: 780,
+      newWaters: 12,
+      deepens: 163,
       stats: { totalClicks: 12_345 },
-      collections: { skins: ["founding"] },
     };
 
     const state = migrateSave(old, "joseph");
     expect(state.version).toBe(SAVE_VERSION);
     expect(state.owner).toBe("joseph");
-    expect(state.wallet.hearts).toBeGreaterThan(5_000); // plus the upgrade refund
-    expect(state.lifetime.hearts).toBe(900_000);
-    expect(state.tideChanges).toBe(4);
-    expect(state.newWaters).toBe(1);
-    expect(state.stats.totalClicks).toBe(12_345);
+    expect(state.wallet.hearts).toBe(0);
+    expect(state.lifetime.hearts).toBe(0);
+    expect(state.tideChanges).toBe(0);
+    expect(state.newWaters).toBe(0);
+    expect(state.deepens).toBe(0);
     expect(state.upgrades).toEqual({});
-    // Pets and charms came back as the currencies that replaced them.
-    expect(state.wallet.shells).toBeGreaterThan(0);
-    expect(state.wallet.glass).toBeGreaterThan(0);
-    // And they still have a creature to play with.
+    expect(state.moonUpgrades).toEqual({});
+    expect(state.stats.totalClicks).toBe(0);
+
+    // Still a playable save rather than an empty object: whoever opens this
+    // gets a first creature and a jar exactly as a new player would.
     expect(Object.keys(state.creatures).length).toBeGreaterThan(0);
     expect(starterOf(state).defId).toBe(STARTER.joseph);
+    expect(state.vessel).toBe("jam_jar");
   });
 
-  it("maps old worlds onto the vessels that replaced them", () => {
+  it("resets the very oldest saves too, whatever shape they were in", () => {
+    // The version 3 saves had pets, charms and worlds, and there used to be
+    // careful conversion code for all of it. It is unreachable now, which is
+    // the point of pinning it: anything older than the reset is a fresh start.
     const state = migrateSave(
-      { version: 3, worldsUnlocked: ["bedroom", "rose_garden"], world: "rose_garden" },
+      { version: 3, worldsUnlocked: ["bedroom", "rose_garden"], world: "rose_garden", rebirths: 4 },
       "cami",
     );
-    expect(state.vesselsUnlocked).toContain("jam_jar");
-    expect(state.vesselsUnlocked.length).toBeGreaterThan(1);
-    expect(state.vesselsUnlocked).toContain(state.vessel);
+    expect(state.vesselsUnlocked).toEqual(["jam_jar"]);
+    expect(state.vessel).toBe("jam_jar");
+    expect(state.tideChanges).toBe(0);
+  });
+
+  it("carries a current save forward untouched", () => {
+    const played = rich("cami");
+    played.tideChanges = 3;
+    played.upgrades["otter_hands"] = 12;
+    const state = migrateSave(JSON.parse(JSON.stringify(played)), "cami");
+    expect(state.tideChanges).toBe(3);
+    expect(state.upgrades["otter_hands"]).toBe(12);
+    expect(state.version).toBe(SAVE_VERSION);
   });
 
   it("survives a corrupt save rather than refusing to open", () => {
