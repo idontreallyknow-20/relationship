@@ -7,6 +7,7 @@ import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import { formatNumber } from "@/game/numbers";
 import type { CurrencyId, GameState } from "@/game/types";
 import { ConfirmDialog, Sheet } from "@/components/ui";
+import { CurrencyIcon } from "./currency-icons";
 
 export function Section({
   title,
@@ -90,14 +91,15 @@ export function CurrencyPill({ currency, amount, format, compact = false }: {
           compact ? "px-2 py-0.5 text-[0.7rem]" : "px-2.5 py-1 text-xs"
         }`}
       >
-        <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: def.color }} />
+        <CurrencyIcon currency={currency} className={compact ? "h-3.5 w-3.5 shrink-0" : "h-4 w-4 shrink-0"} />
         <span className="text-berry">{formatNumber(amount, format)}</span>
         {!compact && <span className="text-berry-soft">{def.short}</span>}
       </button>
 
       <Sheet open={open} onClose={() => setOpen(false)} title={def.name}>
         <div className="space-y-3 pt-1">
-          <p className="font-display text-3xl font-semibold" style={{ color: def.color }}>
+          <p className="flex items-center gap-2.5 font-display text-3xl font-semibold" style={{ color: def.color }}>
+            <CurrencyIcon currency={currency} className="h-8 w-8 shrink-0" />
             {formatNumber(amount, "full")}
           </p>
           <p className="text-sm text-berry">{def.source}</p>
@@ -120,8 +122,8 @@ export function SpendButton({ currency, amount, format, disabled, confirm, label
 }) {
   const def = CURRENCY_BY_ID[currency];
   const [asking, setAsking] = useState(false);
-  // Moons and stars are slow to earn, so spending them asks first.
-  const rare = currency === "moons" || currency === "stars";
+  // The slow currencies ask before they are spent.
+  const rare = currency === "moons" || currency === "stars" || currency === "drops";
   const needsConfirm = confirm && rare;
 
   return (
@@ -133,6 +135,7 @@ export function SpendButton({ currency, amount, format, disabled, confirm, label
           disabled ? "bg-cream text-berry-soft" : "bg-rose-dark text-white"
         } ${className}`}
       >
+        <CurrencyIcon currency={currency} className="h-3.5 w-3.5 shrink-0" />
         {formatNumber(amount, format)}
       </button>
 

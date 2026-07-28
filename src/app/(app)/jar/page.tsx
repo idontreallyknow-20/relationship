@@ -24,27 +24,63 @@ import {
 } from "@/components/jar/extras";
 import { Tour } from "@/components/jar/tour";
 
-const TABS = [
-  { id: "jar", label: "Jar" },
-  { id: "depths", label: "Depths" },
-  { id: "automation", label: "Automation" },
-  { id: "upgrades", label: "Upgrades" },
-  { id: "abilities", label: "Abilities" },
-  { id: "creatures", label: "Creatures" },
-  { id: "vessels", label: "Vessels" },
-  { id: "tide", label: "Tide" },
-  { id: "water", label: "New Water" },
-  { id: "sea", label: "The Sea" },
-  { id: "us", label: "Us" },
-  { id: "missions", label: "Missions" },
-  { id: "challenges", label: "Challenges" },
-  { id: "achievements", label: "Achievements" },
-  { id: "collections", label: "Collections" },
-  { id: "minigames", label: "Mini-games" },
-  { id: "stats", label: "Statistics" },
-  { id: "codex", label: "Codex" },
-  { id: "settings", label: "Settings" },
+/**
+ * Five groups, not nineteen tabs.
+ *
+ * Nineteen was a scrolling strip that nobody could hold in their head, and it
+ * buried the jar itself among admin screens. The jar is first and alone,
+ * because tapping it is the game; everything else is filed under where you
+ * would look for it.
+ */
+const GROUPS = [
+  { id: "jar", label: "Jar", tabs: [] },
+  {
+    id: "grow",
+    label: "Grow",
+    tabs: [
+      { id: "depths", label: "Depths" },
+      { id: "upgrades", label: "Upgrades" },
+      { id: "automation", label: "Automation" },
+      { id: "abilities", label: "Abilities" },
+    ],
+  },
+  {
+    id: "jarful",
+    label: "The jar",
+    tabs: [
+      { id: "creatures", label: "Creatures" },
+      { id: "vessels", label: "Vessels" },
+      { id: "collections", label: "Collections" },
+      { id: "codex", label: "Codex" },
+    ],
+  },
+  {
+    id: "us",
+    label: "Us",
+    tabs: [
+      { id: "us", label: "Together" },
+      { id: "missions", label: "Missions" },
+      { id: "challenges", label: "Challenges" },
+      { id: "achievements", label: "Achievements" },
+      { id: "minigames", label: "Mini-games" },
+    ],
+  },
+  {
+    id: "deeper",
+    label: "Deeper",
+    tabs: [
+      { id: "tide", label: "Tide" },
+      { id: "water", label: "New Water" },
+      { id: "sea", label: "The Sea" },
+      { id: "stats", label: "Statistics" },
+      { id: "settings", label: "Settings" },
+    ],
+  },
 ] as const;
+
+const GROUP_FOR_TAB: Record<string, string> = Object.fromEntries(
+  GROUPS.flatMap((group) => group.tabs.map((tab) => [tab.id, group.id])),
+);
 
 export default function Page() {
   return (
@@ -101,22 +137,43 @@ function JarApp() {
       <div className="sticky top-0 z-20 border-b border-line-soft bg-cream/95 px-4 pb-1.5 pt-1 backdrop-blur-sm">
         <WalletStrip />
         <div data-tour="tabs" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
-          {TABS.map((entry) => (
-            <button
-              key={entry.id}
-              onClick={() => setTab(entry.id)}
-              aria-current={tab === entry.id ? "page" : undefined}
-              className={`pressable shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-                tab === entry.id ? "bg-plum text-white" : "bg-white text-berry-soft"
-              }`}
-            >
-              {entry.label}
-            </button>
-          ))}
+          {GROUPS.map((entry) => {
+            const active = entry.id === "jar" ? tab === "jar" : GROUP_FOR_TAB[tab] === entry.id;
+            return (
+              <button
+                key={entry.id}
+                onClick={() => setTab(entry.id === "jar" ? "jar" : entry.tabs[0].id)}
+                aria-current={active ? "page" : undefined}
+                className={`pressable shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                  active ? "bg-plum text-white" : "bg-white text-berry-soft"
+                }`}
+              >
+                {entry.label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* The second row only appears once you are inside a group. */}
+        {GROUP_FOR_TAB[tab] && (
+          <div className="no-scrollbar -mx-4 mt-1.5 flex gap-1.5 overflow-x-auto px-4">
+            {GROUPS.find((g) => g.id === GROUP_FOR_TAB[tab])?.tabs.map((entry) => (
+              <button
+                key={entry.id}
+                onClick={() => setTab(entry.id)}
+                aria-current={tab === entry.id ? "page" : undefined}
+                className={`pressable shrink-0 rounded-full px-3 py-1 text-[0.7rem] font-semibold ${
+                  tab === entry.id ? "bg-blush text-rose-dark" : "bg-white/70 text-berry-soft"
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <main className="flex flex-col gap-4 px-4 py-4">
+      <main className="flex flex-col gap-3 px-4 py-3">
         {tab === "jar" && <JarScreen onOpenTab={setTab} />}
         {tab === "depths" && <DepthsTab />}
         {tab === "automation" && <AutomationTab />}

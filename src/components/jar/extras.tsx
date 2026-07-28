@@ -11,6 +11,7 @@ import { displayName } from "@/lib/types";
 import { useGame } from "@/game/store";
 import { CURRENCIES } from "@/game/config/currencies";
 import { MEMORIES, TRIPS } from "@/game/config/memories";
+import { METERS, meterMods, togetherBonus } from "@/game/config/meters";
 import { CREATURES } from "@/game/config/creatures";
 import { VESSELS } from "@/game/config/vessels";
 import { TREES, UPGRADES } from "@/game/config/upgrades";
@@ -48,6 +49,7 @@ export function UsTab() {
   }, [daily.data, me, partner]);
 
   const ownedMemories = state.collections["memories"] ?? [];
+  const pairBonus = togetherBonus(state.lifetime.hearts, state.storyProgress["partnerLifetime"] ?? 0);
 
   return (
     <div className="flex flex-col gap-5">
@@ -75,7 +77,34 @@ export function UsTab() {
             You {formatNumber(totals[me] ?? 0, format)} · {partnerName}{" "}
             {formatNumber(totals[partner] ?? 0, format)}
           </p>
+          {pairBonus > 1.001 && (
+            <p className="mt-2 rounded-xl bg-blush/60 px-3 py-1.5 text-xs font-semibold text-rose-dark">
+              Between you: {pairBonus.toFixed(2)}x on everything
+            </p>
+          )}
         </div>
+      </Section>
+
+      <Section title="Love meters" hint="They fill from the rest of the app, and fall on their own.">
+        <ul className="flex flex-col gap-2">
+          {METERS.map((meter) => {
+            const level = state.meters[meter.id] ?? 0;
+            const mods = meterMods(meter, level);
+            const best = Object.values(mods.mul ?? {}).sort((a, b) => b - a)[0] ?? 1;
+            return (
+              <li key={meter.id} className="rounded-card border border-line bg-white p-3.5 shadow-soft">
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-berry">{meter.name}</p>
+                  <p className="text-xs font-bold" style={{ color: meter.color }}>
+                    {best > 1.001 ? `${best.toFixed(2)}x` : "nothing yet"}
+                  </p>
+                </div>
+                <Bar value={level} max={100} color={meter.color} />
+                <p className="mt-1 text-[0.65rem] text-berry-soft">{meter.fills}</p>
+              </li>
+            );
+          })}
+        </ul>
       </Section>
 
       <Section title="Tide" hint="Rises when either of you plays. Spends on everything here.">
@@ -87,9 +116,6 @@ export function UsTab() {
             </span>
           </div>
           <Bar value={state.tideLevel} max={100} color="#7c6ba8" />
-          <p className="mt-1.5 text-xs text-berry-soft">
-            If you have both been here in the last few hours, everything doubles for both of you.
-          </p>
         </div>
       </Section>
 
@@ -425,7 +451,7 @@ export function SettingsTab() {
         </div>
       </Section>
 
-      <Section title="Just the game" hint="Hides the rest of the app until you want it back.">
+      <Section title="Just the game">
         <FocusToggle />
       </Section>
 

@@ -182,6 +182,8 @@ export const COLLECTION_BY_ID: Record<string, CollectionDef> = Object.fromEntrie
 
 export const STARTING_COLLECTIBLES: Record<string, string[]> = {
   waters: ["default", "her_pink", "her_purple"],
+  // Not listed anywhere in the UI. Finding one is the whole of it.
+  eggs: [],
   memories: [],
   vessels: ["jam_jar"],
   notes: [],

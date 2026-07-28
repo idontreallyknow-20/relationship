@@ -28,13 +28,14 @@ import { createGameState } from "./state";
 import { derive, hasFlag } from "./formulas";
 import {
   checkAchievements, claimDailyBonus, computeOffline, claimOffline as applyOffline,
-  recordDay, tick as engineTick, type OfflineReport,
+  recordDay, tick as engineTick, checkEggs, type OfflineReport,
 } from "./engine";
 import {
   buyCheapest, collectGift, grantTogether, receiveGift, recordSameEvening, refreshMissions,
-  runAutobuyers, runDeepAutomation,
+  recordPartnerTotal, runAutobuyers, runDeepAutomation, settleMeters,
 } from "./actions";
 import { drainRewards } from "./rewards-inbox";
+import { pruneNudges, sendNudges } from "./nudges";
 import {
   claimLegacy, loadBothSaves, loadLocal, loadServer, partnerIsAround, queueSync,
   reconcile, saveLocal,
@@ -106,6 +107,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const lastSave = useRef(0);
   const lastSync = useRef(0);
   const dayCounters = useRef({ hearts: 0, clicks: 0, combo: 0 });
+  /** How long ago the partner's save was written, or null if unknown. */
+  const partnerHereMs = useRef<number | null>(null);
 
   const bump = useCallback(() => {
     dirty.current = true;
@@ -271,6 +274,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const theirs = saves.find((s) => s.person !== me);
         if (theirs && receiveGift(state, theirs.state, Date.now()).ok) changed = true;
 
+        // What they have built, which raises the pair bonus for both of you.
+        if (theirs && recordPartnerTotal(state, Number(theirs.lifetime_hearts)).ok) changed = true;
+
+        if (theirs?.updated_at) {
+          partnerHereMs.current = Date.now() - Date.parse(theirs.updated_at);
+        }
+
         if (partnerIsAround(saves, me)) {
           const result = recordSameEvening(state, todayIn(couple.timezone), Date.now());
           if (result.ok) {
@@ -278,6 +288,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             changed = true;
           }
         }
+
+        // Tell them only when there is something they can act on.
+        const yesterday = dayIn(couple.timezone, Date.now() - 86_400_000);
+        pruneNudges(state, yesterday);
+        void sendNudges(state, todayIn(couple.timezone), {
+          giftWaitingForThem: Boolean(state.giftLeft && !state.giftLeft.collected),
+          bothHereUnclaimed:
+            partnerIsAround(saves, me) && !state.togetherRewards.claimed.includes("evening"),
+          theyAnsweredYouDidNot: false,
+        });
 
         if (changed) bump();
       } catch {
@@ -349,6 +369,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       // The autobuyers, which are free and on by choice, then the deeper
       // automation that the star tree unlocks.
+      settleMeters(state, now);
       runAutobuyers(state, now);
       runDeepAutomation(state, now);
       if (hasFlag(state, "auto_upgrade")) buyCheapest(state);
@@ -356,6 +377,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const unlocked = checkAchievements(state, now);
       for (const achievement of unlocked) {
         notify({ kind: "achievement", title: achievement.name, detail: achievement.description });
+      }
+
+      // The quiet ones. No detail line: an egg that explained itself would
+      // stop being one.
+      for (const egg of checkEggs(state, now, partnerHereMs.current)) {
+        notify({ kind: "reward", title: egg.line });
       }
 
       // Day boundary in the couple's timezone.

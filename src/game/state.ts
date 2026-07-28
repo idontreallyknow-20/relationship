@@ -140,6 +140,9 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
     achievements: {},
     collections: JSON.parse(JSON.stringify(STARTING_COLLECTIBLES)),
 
+    meters: {},
+    metersAt: now,
+
     tideLevel: 0,
     giftLeft: null,
     giftWaiting: null,
@@ -288,6 +291,9 @@ export function migrateSave(raw: unknown, person: Person = "cami"): GameState {
     // Somewhere to go on the very first tick after updating.
     merged.depths[2].unlocked = true;
   }
+
+  merged.meters = { ...((old.meters as Record<string, number>) ?? {}) };
+  merged.metersAt = Number(old.metersAt) || Date.now();
 
   merged.deepens = Number(old.deepens) || 0;
   merged.tideBought = Number(old.tideBought) || 0;

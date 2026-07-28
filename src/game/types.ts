@@ -354,6 +354,11 @@ export interface GameState {
   achievements: Record<string, { tier: number; at: number }>;
   collections: Record<string, string[]>;
 
+  /** Love meters, by id, 0 to 100. They fill from the rest of the app. */
+  meters: Record<string, number>;
+  /** When each meter was last brought up to date, for decay. */
+  metersAt: number;
+
   /** Shared with the other person. */
   tideLevel: number;
   giftLeft: Gift | null;

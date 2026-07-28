@@ -9,10 +9,10 @@
 // instead of just seeing a bigger number.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Waves, Zap } from "lucide-react";
+import { ArrowDown, Waves } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthBulkCost, tideBulkCost, tideSpeed,
+  DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthBulkCost, tideSpeed,
 } from "@/game/config/depths";
 import {
   buyAll, buyDepth, buyTide, canDeepen, deepen, deepestUnlocked, depthBuyCount, tideBuyCount,
@@ -49,7 +49,6 @@ export function DepthsTab() {
 
   const amount = state.settings.depthBuyAmount;
   const tideCount = tideBuyCount(state);
-  const tideCostNow = tideBulkCost(state.tideBought, Math.max(1, tideCount)) * derived.costMultiplier;
   const deepest = deepestUnlocked(state);
   const readyToDeepen = canDeepen(state);
   const towardDeepen = state.depths[deepest]?.bought ?? 0;
@@ -102,9 +101,6 @@ export function DepthsTab() {
           Tide {tideCount > 0 ? `x${tideCount}` : ""}
         </Button>
       </div>
-      <p className="-mt-2 text-center text-xs text-berry-soft">
-        Tide costs {formatNumber(tideCostNow, format)} and speeds up every depth at once.
-      </p>
 
       <ul className="flex flex-col gap-2">
         {rows.map(({ def, tier, slot, count, cost, nextCost }) => (
@@ -126,7 +122,7 @@ export function DepthsTab() {
         ))}
       </ul>
 
-      <Section title="Deeper" hint={`Every deepening makes everything ${DEEPEN_MULTIPLIER} times stronger, forever.`}>
+      <Section title="Deeper" hint={`${DEEPEN_MULTIPLIER}x everything, forever`}>
         <div className="rounded-card border border-line bg-white p-4 shadow-soft">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blush text-rose-dark">
@@ -146,9 +142,6 @@ export function DepthsTab() {
           >
             {readyToDeepen ? "Go deeper" : `Buy ${needed - towardDeepen} more`}
           </Button>
-          <p className="mt-1.5 text-center text-xs text-berry-soft">
-            Clears the chain. Your hearts, upgrades and creatures stay.
-          </p>
         </div>
       </Section>
 
@@ -296,7 +289,7 @@ export function AutomationTab() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Section title="The jar plays itself" hint="On from the first run. Upgrades make it quicker.">
+      <Section title="The jar plays itself">
         <div className="flex flex-col gap-2">
           <Toggle
             label="Tap for me"
@@ -390,14 +383,6 @@ export function AutomationTab() {
         </ul>
       </Section>
 
-      <div className="rounded-card border border-line bg-cream/60 p-3.5">
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-berry">
-          <Zap className="h-4 w-4 text-rose-dark" /> Each autobuyer spends only its own share
-        </p>
-        <p className="mt-0.5 text-xs text-berry-soft">
-          Turning them all on will not let the first one empty your hearts before the rest get a turn.
-        </p>
-      </div>
     </div>
   );
 }

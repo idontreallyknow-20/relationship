@@ -29,6 +29,7 @@ import {
   tideAffordable, tideBulkCost,
 } from "./config/depths";
 import { FOOD_BY_ID, MEMORY_BY_ID, TRIP_BY_ID } from "./config/memories";
+import { METERS, METER_BY_ID, METER_FILL } from "./config/meters";
 import { CHALLENGE_BY_ID, MISSIONS, MISSION_BY_ID, type MetricId, type MissionPeriod } from "./config/objectives";
 import { createGameState } from "./state";
 
@@ -723,6 +724,9 @@ export function grantTogether(state: GameState, action: TogetherAction, day: str
     state.storyProgress["questions"] = (state.storyProgress["questions"] ?? 0) + 1;
     recordMetric(state, "questionAnswered", 1);
   }
+  const fill = METER_FILL[action];
+  if (fill) fillMeter(state, fill.meter, fill.amount, now);
+
   pushLog(state, "Together", `${rule.label}, +${tide} tide`);
   return done(`${rule.label}: +${tide} tide`);
 }
@@ -742,6 +746,8 @@ export function recordSameEvening(state: GameState, day: string, now: number): A
   state.tideLevel = 100;
   state.storyProgress["evenings"] = (state.storyProgress["evenings"] ?? 0) + 1;
   recordMetric(state, "sameEvening", 1);
+
+  fillMeter(state, "presence", 100, now);
 
   addBuff(state, {
     source: "same_evening",
@@ -803,6 +809,52 @@ export function collectGift(state: GameState, now: number): ActionResult {
   state.giftWaiting = null;
   pushLog(state, "Gift", gift.label);
   return done(gift.label);
+}
+
+/* ------------------------------------------------------------------ */
+/* Love meters                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bring the meters up to date.
+ *
+ * Called from the tick and from anything that fills one, so the decay is
+ * applied exactly once per elapsed hour however often either happens. Meters
+ * that are already empty stay empty rather than going negative.
+ */
+export function settleMeters(state: GameState, now: number): void {
+  const since = now - (state.metersAt ?? now);
+  state.metersAt = now;
+  if (since <= 0) return;
+  const hours = since / 3_600_000;
+
+  for (const def of METERS) {
+    const level = state.meters[def.id] ?? 0;
+    if (level <= 0) continue;
+    state.meters[def.id] = Math.max(0, level - def.decayPerHour * hours);
+  }
+}
+
+/** Raise a meter, from something that happened elsewhere in the app. */
+export function fillMeter(state: GameState, meterId: string, amount: number, now: number): void {
+  const def = METER_BY_ID[meterId];
+  if (!def || amount <= 0) return;
+  settleMeters(state, now);
+  state.meters[meterId] = Math.min(100, (state.meters[meterId] ?? 0) + amount);
+}
+
+/* ------------------------------------------------------------------ */
+/* Working on it together                                              */
+/* ------------------------------------------------------------------ */
+
+/** Record what the partner's save says, so the bonus can be derived offline. */
+export function recordPartnerTotal(state: GameState, theirLifetime: number): ActionResult {
+  const value = Number(theirLifetime);
+  if (!Number.isFinite(value) || value < 0) return fail("Nothing to read");
+  const previous = state.storyProgress["partnerLifetime"] ?? 0;
+  if (value <= previous) return fail("Nothing new");
+  state.storyProgress["partnerLifetime"] = value;
+  return done();
 }
 
 /* ------------------------------------------------------------------ */

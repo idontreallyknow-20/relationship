@@ -8,6 +8,7 @@ import {
 } from "./config/resets";
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
+import { METERS, meterMods, togetherBonus } from "./config/meters";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
 import { CHALLENGE_BY_ID } from "./config/objectives";
@@ -228,6 +229,17 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   // largest reason to be in the jar on the same evening.
   if (state.tideLevel > 0) {
     apply(bags, { mul: { all: 1 + Math.min(1, state.tideLevel / 100) * 0.6 } });
+  }
+
+  // What the two of you have built between you. Additive, never competitive.
+  const partnerTotal = state.storyProgress["partnerLifetime"] ?? 0;
+  if (partnerTotal > 0) {
+    apply(bags, { mul: { all: togetherBonus(state.lifetime.hearts, partnerTotal) } });
+  }
+
+  // The love meters. Each pays a share of its full multiplier.
+  for (const def of METERS) {
+    apply(bags, meterMods(def, state.meters[def.id] ?? 0));
   }
 
   // Every depth you own at least one of contributes its standing bonus.

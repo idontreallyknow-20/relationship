@@ -8,6 +8,7 @@ import { ACHIEVEMENTS } from "./config/awards";
 import { CREATURE_BY_ID, actionInterval, creatureScale, xpFor } from "./config/creatures";
 import { DRIFTERS, DRIFTER_BY_ID, VESSEL_BY_ID } from "./config/vessels";
 import { DEPTHS } from "./config/depths";
+import { EGG_BY_ID } from "./config/eggs";
 import { SKILL_BY_ID } from "./config/skills";
 
 /* ------------------------------------------------------------------ */
@@ -852,6 +853,78 @@ export function claimOffline(state: GameState, report: OfflineReport, now: numbe
   state.storyProgress["offline"] = (state.storyProgress["offline"] ?? 0) + 1;
   recordMetric(state, "offlineClaims", 1);
   pushLog(state, "Back", `${Math.round(report.countedMs / 60_000)} minutes away`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Easter eggs                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface EggFound {
+  id: string;
+  line: string;
+}
+
+/** Each one lands once, ever. */
+function claimEgg(state: GameState, id: string, now: number): EggFound | null {
+  const def = EGG_BY_ID[id];
+  if (!def) return null;
+  const found = state.collections["eggs"] ?? [];
+  if (found.includes(id)) return null;
+
+  grantCollectible(state, "eggs", id);
+  if (def.mods && def.durationMs) {
+    addBuff(state, {
+      source: `egg:${id}`,
+      label: def.line,
+      mods: def.mods,
+      expiresAt: now + def.durationMs,
+    });
+  }
+  if (def.pearls) addCurrency(state, "pearls", def.pearls);
+  pushLog(state, "Oh", def.line);
+  return { id, line: def.line };
+}
+
+/**
+ * Look for the quiet ones.
+ *
+ * Called every tick, which sounds expensive and is not: every branch is a
+ * comparison against a number already in hand, and each egg stops being
+ * checked the moment it is found.
+ */
+export function checkEggs(state: GameState, now: number, partnerHereMs: number | null): EggFound[] {
+  const found: EggFound[] = [];
+  const date = new Date(now);
+  const push = (id: string) => {
+    const egg = claimEgg(state, id, now);
+    if (egg) found.push(egg);
+  };
+
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+
+  // Playing at midnight.
+  if (hour === 0 && minute < 5) push("midnight");
+  // 1:43, or 143 of anything. It is "I love you" in letter counts.
+  if (hour === 1 && minute === 43) push("the_number");
+  // The twenty-ninth of February.
+  if (date.getMonth() === 1 && date.getDate() === 29) push("leap");
+  // Both of you opened the jar within the same minute.
+  if (partnerHereMs !== null && partnerHereMs < 60_000) push("same_minute");
+
+  // Five otters holding hands is a raft, and a raft is why they hold hands.
+  if (heldHands(state).size >= 5) push("otter_hands");
+  // A thousand things carried up off the floor.
+  if (state.stats.collects >= 1_000) push("crab_sideways");
+  // A hundred charged taps, which is a lot of holding on.
+  if (state.stats.chargedClicks >= 100) push("patient");
+  // Spending literally everything.
+  if (state.lifetime.hearts > 1e6 && state.wallet.hearts < 1) push("empty");
+  // Both of the first two memories.
+  const memories = state.collections["memories"] ?? [];
+  if (memories.includes("the_mall") && memories.includes("photo_booth")) push("the_mall");
+
+  return found;
 }
 
 /* ------------------------------------------------------------------ */

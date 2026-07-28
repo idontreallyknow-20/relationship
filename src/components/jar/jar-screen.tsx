@@ -236,7 +236,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {/* The jar */}
       <div
         data-tour="vessel"
-        className={`relative h-64 overflow-hidden rounded-card border-2 ${shake ? "jar-shake" : ""}`}
+        className={`relative h-44 overflow-hidden rounded-card border-2 ${shake ? "jar-shake" : ""}`}
         style={{ backgroundColor: vessel.backdrop, borderColor: vessel.glass }}
       >
         {/* Water */}
@@ -369,7 +369,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           }}
           onContextMenu={(e) => e.preventDefault()}
           aria-label="Tap the heart, or hold to charge"
-          className="touch-draw relative flex h-36 w-36 select-none items-center justify-center rounded-full"
+          className="touch-draw relative flex h-32 w-32 select-none items-center justify-center rounded-full"
           style={{ color: vessel.accent }}
         >
           <span
@@ -387,14 +387,14 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           {state.auto.tap && derived.autoTapsPerSecond > 0 && !reduced && (
             <span
               aria-hidden="true"
-              className="auto-pulse absolute h-28 w-28 rounded-full border-2"
+              className="auto-pulse absolute h-24 w-24 rounded-full border-2"
               style={{
                 borderColor: vessel.accent,
                 animationDuration: `${Math.max(160, 1000 / derived.autoTapsPerSecond)}ms`,
               }}
             />
           )}
-          <HeartIcon className="h-24 w-24 drop-shadow" style={{ transform: `scale(${1 + charge * 0.14})` }} />
+          <HeartIcon className="h-20 w-20 drop-shadow" style={{ transform: `scale(${1 + charge * 0.14})` }} />
           {charge > 0.05 && (
             <span aria-hidden="true" className="absolute bottom-0 h-1.5 w-24 overflow-hidden rounded-full bg-white/70">
               <span
