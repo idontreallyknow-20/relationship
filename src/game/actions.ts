@@ -28,6 +28,9 @@ import {
   DEEPEN_MULTIPLIER, DEPTHS, deepenRequirement, depthAffordable, depthBulkCost,
   tideAffordable, tideBulkCost,
 } from "./config/depths";
+import {
+  DILATION_UPGRADE_BY_ID, dilationUpgradeCost, hourGain,
+} from "./config/dilation";
 import { FOOD_BY_ID, MEMORY_BY_ID, TRIP_BY_ID } from "./config/memories";
 import { METERS, METER_BY_ID, METER_FILL } from "./config/meters";
 import { CHALLENGE_BY_ID, MISSIONS, MISSION_BY_ID, type MetricId, type MissionPeriod } from "./config/objectives";
@@ -1270,6 +1273,84 @@ export function letGo(state: GameState, now: number): ActionResult {
 
   pushLog(state, "Last rebirth", `${drops} drops`);
   return done(`${drops} drops. There was never a jar.`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Time dilation                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Dilation opens once you have let the sea go at least once.
+ *
+ * It is the only mechanic in the game that is worse than not having it until
+ * you have invested in it, so it sits behind the layer that proves you know
+ * what a reset is for.
+ */
+export function dilationUnlocked(state: GameState): boolean {
+  return state.seas >= 1;
+}
+
+/**
+ * Turn the jar down.
+ *
+ * Costs nothing and takes nothing away, which is deliberate: the price of
+ * dilation is that everything is slower while it is on, and adding a reset on
+ * top of that would make the first stretch feel like a punishment for reading
+ * the tooltip. Hearts already banked stay in the jar; they simply do not count
+ * toward what the stretch pays.
+ */
+export function enterDilation(state: GameState, now: number): ActionResult {
+  if (!dilationUnlocked(state)) return fail("Let the sea go first");
+  if (state.dilation.active) return fail("Already dilated");
+  state.dilation = { ...state.dilation, active: true, startedAt: now, hearts: 0 };
+  pushLog(state, "Dilation", "The jar slowed down");
+  return done("Everything is slower now. Keep going.");
+}
+
+export function dilationPreview(state: GameState): number {
+  return hourGain(state.dilation.hearts, state.dilation.runs, derive(state).mods.mul.hourGain);
+}
+
+/**
+ * Come back out, and be paid for how far you got.
+ *
+ * Leaving without reaching the bar is allowed and pays nothing. It has to be
+ * allowed: dilation can be entered before it is survivable, and a switch that
+ * will not turn off is a trap rather than a decision.
+ */
+export function leaveDilation(state: GameState, now: number): ActionResult {
+  if (!state.dilation.active) return fail("Not dilated");
+  const hours = dilationPreview(state);
+
+  state.dilation = {
+    active: false,
+    startedAt: now,
+    hearts: 0,
+    runs: hours > 0 ? state.dilation.runs + 1 : state.dilation.runs,
+  };
+
+  if (hours <= 0) return done("Back to normal speed. That stretch paid nothing.");
+  addCurrency(state, "hours", hours);
+  recordMetric(state, "dilations", 1);
+  pushLog(state, "Dilation", `${hours} hours`);
+  return done(`${hours} hours`);
+}
+
+export function buyDilationUpgrade(state: GameState, id: string): ActionResult {
+  const def = DILATION_UPGRADE_BY_ID[id];
+  if (!def) return fail("Unknown");
+  const level = state.dilationUpgrades[id] ?? 0;
+  if (level >= def.max) return fail("Already at maximum");
+  if (def.requires) {
+    const [needId, needLevel] = def.requires;
+    if ((state.dilationUpgrades[needId] ?? 0) < needLevel) {
+      return fail(`Needs ${DILATION_UPGRADE_BY_ID[needId]?.name ?? needId} first`);
+    }
+  }
+  const cost = dilationUpgradeCost(def, level);
+  if (!spendCurrency(state, "hours", cost)) return fail("Not enough hours");
+  state.dilationUpgrades[id] = level + 1;
+  return done(`${def.name} is now level ${level + 1}`);
 }
 
 /**

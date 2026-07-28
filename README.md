@@ -8,8 +8,8 @@ two people: Cami and Joseph.
 A Progressive Web App with real-time chat, shared drawings, mood check-ins,
 daily couple questions, a shared memory timeline, letters, planning tools,
 consent-based location sharing, web push notifications, and the Love Jar: a
-full clicking and incremental game with pets, upgrades, rebirths and
-ascensions. There is no public registration, no user search, and no
+full incremental game about tapping a jar, with a chain that fills it,
+rebirths, otters and crabs, and time dilation at the end of it. There is no public registration, no user search, and no
 third-party trackers. Every row in the database is protected by Row Level
 Security that only the two members can pass.
 
@@ -66,7 +66,7 @@ rest of the app: the couples features drop notes into a small inbox
 them the next time it opens. Nothing in the game requires the other person to
 have played.
 
-- `config/` is data: seven currencies, three upgrade trees, abilities, seven
+- `config/` is data: eight currencies, three upgrade trees, abilities, seven
   otters and seven crabs, the rocks and shells they carry, ten vessels,
   drifters, memories and trips, challenges, missions, achievements and
   collections.
@@ -76,11 +76,29 @@ have played.
   locally every few seconds, and queues a server batch every minute.
 - `persistence.ts` reconciles the local save with the server's copy.
 
-The server owns anything permanent or comparable. `game_sync` is idempotent
-per batch, measures elapsed time from its own clock, rejects impossible click
-rates and any counter that moves backwards, and writes an audit row when it
-does. Old `love_taps` rows are preserved and converted into starting progress
-exactly once per person by `game_claim_legacy`.
+Three rules hold the shape of it together:
+
+- **Hearts come from the jar.** Tapping it, and the chain of tiers that fills
+  it. Creatures make no hearts at all; they pay in shells, sea glass and
+  pearls, and in the multipliers they carry. They were the single largest
+  source of passive hearts once, which quietly made "own more otters" the
+  fastest route to everything and left the jar as scenery.
+- **Rebirth clears the chain.** Everything bought with hearts, every
+  deepening, every tier. Without that a rebirth is free, the loop feeds
+  itself, and the numbers leave the range of a double in under half an hour.
+- **Nothing is on screen until it is yours.** Eleven stages keyed to lifetime
+  hearts, each revealing one thing and explaining it when it arrives. The
+  first run is a jar and a heart.
+
+Time dilation is the last of them: a switch that raises everything the jar
+produces to a power below one, and pays hours for how far you get anyway. It
+is the only mechanic here that is worse than not having it until the tree it
+pays for is a few hours deep.
+
+The server stores the save and does not check it. There are two accounts and
+no leaderboard, so the validation layer that used to sit here was pure
+overhead and is gone. Old `love_taps` rows are still converted into starting
+progress exactly once per person by `game_claim_legacy`.
 
 ## Architecture notes
 
@@ -163,3 +181,9 @@ The service role key is never used outside Supabase's own infrastructure.
   counter moves. Simulated at perfect, uninterrupted play that is about four
   hours; at a human pace it is weeks. Going past it would need a
   mantissa-and-exponent number type throughout.
+- Save version 7 threw away every earlier save, locally and on the server
+  (`supabase/migrations/0011_reset_progress.sql`). Everything outside the jar
+  was untouched. Anything older than `RESET_SAVES_BEFORE` is discarded rather
+  than migrated, so the conversion code for the version 3 and 5 shapes is now
+  unreachable; it is kept because it costs nothing and documents what those
+  saves looked like.

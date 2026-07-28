@@ -36,7 +36,8 @@ export type MetricId =
   | "depthsBought"
   | "deepens"
   | "tideBought"
-  | "seas";
+  | "seas"
+  | "dilations";
 
 export const METRIC_LABEL: Record<MetricId, string> = {
   clicks: "taps",
@@ -72,6 +73,7 @@ export const METRIC_LABEL: Record<MetricId, string> = {
   deepens: "deepenings",
   tideBought: "tide raised",
   seas: "seas",
+  dilations: "dilated stretches",
 };
 
 export type Reward = Partial<Record<CurrencyId, number>> & {

@@ -42,7 +42,8 @@ export type Feature =
   | "tideChange"
   | "challenges"
   | "newWater"
-  | "sea";
+  | "sea"
+  | "dilation";
 
 export const STAGES: StageDef[] = [
   {
@@ -116,6 +117,13 @@ export const STAGES: StageDef[] = [
     reveals: ["sea"],
     title: "The last one",
     body: "The rebirth that takes the rebirths, and both of their trees, and pays drops. Nothing above this exists. There was never a jar.",
+  },
+  {
+    index: 10,
+    at: 1e24,
+    reveals: ["dilation"],
+    title: "Time dilation",
+    body: "A switch that makes the whole jar slower on purpose, and pays hours for how far you get anyway. It is the only thing here that is worse than not having it until you have spent a few hours on the tree it pays for.",
   },
 ];
 
