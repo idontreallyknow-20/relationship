@@ -1,6 +1,6 @@
 import type { AddStat, CreatureInstance, Derived, GameState, Mods, MulStat } from "./types";
 import {
-  OFF_TREE_COST, TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
+TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
   type UnlockRule, type UpgradeDef,
 } from "./config/upgrades";
 import {
@@ -90,8 +90,21 @@ export function meetsUnlock(state: GameState, rule: UnlockRule | undefined): boo
   return true;
 }
 
+/**
+ * The upgrades this person can actually buy.
+ *
+ * Filtered by tree as well as by unlock: the other person's line is theirs,
+ * and showing it here only ever made the list twice as long.
+ */
 export function visibleUpgrades(state: GameState): UpgradeDef[] {
-  return UPGRADES.filter((u) => meetsUnlock(state, u.unlock) || (state.upgrades[u.id] ?? 0) > 0);
+  return UPGRADES.filter(
+    (u) => buyableTree(state, u) && (meetsUnlock(state, u.unlock) || (state.upgrades[u.id] ?? 0) > 0),
+  );
+}
+
+/** True when this tree is yours, or the shared one. */
+export function buyableTree(state: GameState, def: UpgradeDef): boolean {
+  return TREE_OWNER[def.tree] === null || TREE_OWNER[def.tree] === state.owner;
 }
 
 /** True when this tree belongs to whoever owns the save. */
@@ -173,7 +186,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   for (const [id, level] of Object.entries(state.upgrades)) {
     const def = UPGRADE_BY_ID[id];
     if (!def || level <= 0) continue;
-    apply(bags, upgradeMods(def, level, isOwnTree(state, def)));
+    apply(bags, upgradeMods(def, level));
     if (def.milestones && def.milestoneMods) {
       const hit = def.milestones.filter((m) => level >= m).length;
       for (let i = 0; i < hit; i++) apply(bags, def.milestoneMods);
@@ -338,28 +351,24 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
 /* Costs                                                               */
 /* ------------------------------------------------------------------ */
 
-function treeCostFactor(state: GameState, def: UpgradeDef): number {
-  return isOwnTree(state, def) ? 1 : TREE_OWNER[def.tree] === null ? 1 : OFF_TREE_COST;
-}
-
 export function upgradeCost(state: GameState, def: UpgradeDef, count = 1, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return safe(bulkCost(def.baseCost, def.growth, owned, count) * discount);
 }
 
 export function upgradeNextCost(state: GameState, def: UpgradeDef, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return safe(scale(def.baseCost, def.growth, owned) * discount);
 }
 
 export function maxAffordable(state: GameState, def: UpgradeDef, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return affordableLevels(state.wallet[def.currency] / discount, def.baseCost, def.growth, owned, def.max);
 }
 

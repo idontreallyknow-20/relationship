@@ -6,7 +6,7 @@ import {
   pushLog, recordMetric, spendCurrency,
 } from "./engine";
 import {
-  creaturesInJar, derive, hasFlag, meetsUnlock, upgradeCost, upgradeNextCost,
+  buyableTree, creaturesInJar, derive, hasFlag, meetsUnlock, upgradeCost, upgradeNextCost,
 } from "./formulas";
 import { safe, seededRandom } from "./numbers";
 import { UPGRADES, UPGRADE_BY_ID } from "./config/upgrades";
@@ -48,6 +48,7 @@ const done = (message?: string): ActionResult => ({ ok: true, message });
 export function buyUpgrade(state: GameState, id: string, count: number): ActionResult {
   const def = UPGRADE_BY_ID[id];
   if (!def) return fail("Unknown upgrade");
+  if (!buyableTree(state, def)) return fail("That one is theirs to buy");
   if (!meetsUnlock(state, def.unlock)) return fail("Not unlocked yet");
   if (count > 1 && !hasFlag(state, "bulk")) return fail("Buying in handfuls is a moon upgrade");
 
@@ -76,7 +77,8 @@ export function buyCheapest(state: GameState): ActionResult {
   const derived = derive(state);
   let best: { id: string; cost: number } | null = null;
   for (const def of UPGRADES) {
-    if (def.currency !== "hearts" || !meetsUnlock(state, def.unlock)) continue;
+    if (def.currency !== "hearts" || !buyableTree(state, def)) continue;
+    if (!meetsUnlock(state, def.unlock)) continue;
     const owned = state.upgrades[def.id] ?? 0;
     if (def.max !== Infinity && owned >= def.max) continue;
     const cost = upgradeNextCost(state, def, derived);

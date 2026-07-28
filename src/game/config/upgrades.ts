@@ -14,10 +14,15 @@ export const TREE_OWNER: Record<Tree, Person | null> = {
   us: null,
 };
 
-/** What it costs someone to buy from a tree that is not theirs. */
-export const OFF_TREE_COST = 1.6;
-/** What their own tree gives them on top. */
-export const OWN_TREE_POWER = 1.25;
+/**
+ * You buy yours, they buy theirs.
+ *
+ * There used to be a penalty instead of a rule: the other person's tree cost
+ * you sixty percent more and gave you a quarter less, but you could still buy
+ * all of it. That made every upgrade screen twice as long as it needed to be
+ * and left the player wondering why they would ever want the worse version.
+ * Now Cami's tree is Cami's, Joseph's is Joseph's, and Us belongs to both.
+ */
 
 export interface UnlockRule {
   lifetimeHearts?: number;
@@ -167,16 +172,15 @@ export const TREES: { id: Tree; name: string; blurb: string }[] = [
   { id: "us", name: "Us", blurb: "Bought with Tide. Both of you get it." },
 ];
 
-export function upgradeMods(def: UpgradeDef, level: number, ownTree: boolean): Mods {
+export function upgradeMods(def: UpgradeDef, level: number): Mods {
   if (level <= 0) return {};
-  const boost = ownTree ? OWN_TREE_POWER : 1;
   if (def.kind === "add") {
-    return { add: { [def.stat as AddStat]: def.per * level * boost } };
+    return { add: { [def.stat as AddStat]: def.per * level } };
   }
   if (def.kind === "mulLinear") {
-    return { mul: { [def.stat as MulStat]: 1 + def.per * level * boost } };
+    return { mul: { [def.stat as MulStat]: 1 + def.per * level } };
   }
-  return { mul: { [def.stat as MulStat]: Math.pow(1 + def.per * boost, level) } };
+  return { mul: { [def.stat as MulStat]: Math.pow(1 + def.per, level) } };
 }
 
 export function nextEffectLabel(def: UpgradeDef): string {

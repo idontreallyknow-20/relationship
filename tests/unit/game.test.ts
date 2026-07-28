@@ -3,7 +3,9 @@ import {
   NUMBER_CEILING, affordableLevels, bulkCost, formatNumber, safe, scale,
 } from "@/game/numbers";
 import { createGameState, migrateSave, SAVE_VERSION } from "@/game/state";
-import { derive, hasFlag, heldHands, maxAffordable, upgradeCost } from "@/game/formulas";
+import {
+  derive, hasFlag, heldHands, maxAffordable, upgradeCost, visibleUpgrades,
+} from "@/game/formulas";
 import {
   activateSkill, addCurrency, checkAchievements, claimDailyBonus, claimOffline,
   collectSettled, computeOffline, dropSettled, earnHearts, metricTotal, performClick,
@@ -224,20 +226,26 @@ describe("upgrades", () => {
     expect(state.stats.upgradesBought).toBe(1);
   });
 
-  it("charges your own tree less than the other person's", () => {
-    const hers = rich("cami");
+  it("refuses the other person's tree outright", () => {
     const his = rich("joseph");
-    const otterUpgrade = UPGRADE_BY_ID["otter_hands"]!;
-    expect(upgradeCost(hers, otterUpgrade, 1)).toBeLessThan(upgradeCost(his, otterUpgrade, 1));
+    const hers = rich("cami");
+    // Otter Hands is Cami's line.
+    expect(buyUpgrade(his, "otter_hands", 1).ok).toBe(false);
+    expect(his.upgrades["otter_hands"]).toBeUndefined();
+    expect(buyUpgrade(hers, "otter_hands", 1).ok).toBe(true);
+    // The shared tree belongs to both of them.
+    expect(buyUpgrade(his, "holding_hands", 1).ok).toBe(true);
   });
 
-  it("gives your own tree more per level than the other person's", () => {
-    const hers = rich("cami");
+  it("keeps the other person's tree out of the list entirely", () => {
     const his = rich("joseph");
-    buyUpgrade(hers, "otter_hands", 10);
-    buyUpgrade(his, "otter_hands", 10);
-    expect(derive(hers, 0).heartsPerClick).toBeGreaterThan(derive(his, 0).heartsPerClick);
+    const ids = visibleUpgrades(his).map((u) => u.id);
+    expect(ids).not.toContain("otter_hands");
+    expect(ids).toContain("sideways_walk");
+    expect(ids).toContain("holding_hands");
   });
+
+
 
   it("buys in bulk for exactly the summed cost", () => {
     const state = rich();
