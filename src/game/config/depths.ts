@@ -248,13 +248,22 @@ export function depthAffordable(def: DepthDef, bought: number, hearts: number): 
 export const DEEPEN_REQUIREMENT = 20;
 
 export function deepenRequirement(deepens: number): number {
-  // Gentle, and capped.
+  // Steep, and capped.
   //
-  // The price staircase triples every ten purchases, so it passes the largest
-  // representable number at roughly six thousand bought. Any requirement above
-  // that is not expensive, it is impossible, and the run simply stops. The cap
-  // is what keeps every deepening reachable however many you have done.
-  return Math.min(1_500, Math.ceil(DEEPEN_REQUIREMENT * Math.pow(1.12, deepens)));
+  // The count resets at every rebirth, so this is the shape of one life: the
+  // first few deepenings are minutes apart, the tenth is an event, and past
+  // the cap each one costs a fixed four thousand purchases, which at a price
+  // that triples every ten is an enormous and rising number of hearts.
+  //
+  // It used to rise twelve percent a step and stop at fifteen hundred, which
+  // in practice meant it stopped rising almost immediately and a life could
+  // deepen indefinitely. That was the engine behind the twenty-minute game.
+  //
+  // The cap itself is not a design choice, it is arithmetic: the price
+  // staircase leaves the range of a floating point number at roughly five
+  // thousand purchases, and a requirement past that is not expensive, it is
+  // unreachable.
+  return Math.min(4_000, Math.ceil(DEEPEN_REQUIREMENT * Math.pow(1.2, deepens)));
 }
 
 /**

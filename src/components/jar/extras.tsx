@@ -12,9 +12,12 @@ import { useGame } from "@/game/store";
 import { CURRENCIES } from "@/game/config/currencies";
 import { MEMORIES, TRIPS } from "@/game/config/memories";
 import { METERS, meterMods, togetherBonus } from "@/game/config/meters";
+import {
+  JOINT_MILESTONES, combinedRebirths, jointNext, jointReached,
+} from "@/game/config/together";
 import { CREATURES } from "@/game/config/creatures";
 import { VESSELS } from "@/game/config/vessels";
-import { TREES, UPGRADES } from "@/game/config/upgrades";
+import { STAT_LABEL, TREES, UPGRADES } from "@/game/config/upgrades";
 import { SKILLS } from "@/game/config/skills";
 import { CHALLENGES } from "@/game/config/objectives";
 import { RESET_LAYERS } from "@/game/config/resets";
@@ -22,7 +25,7 @@ import { buyMemory, startTrip } from "@/game/actions";
 import { addCurrency, earnHearts, recordMetric } from "@/game/engine";
 import { loadDailyScores, type DailyRow } from "@/game/persistence";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
-import type { GameSettings } from "@/game/types";
+import type { GameSettings, MulStat } from "@/game/types";
 import { Button, SegmentedControl, Sheet, useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { Bar, CurrencyPill, EmptyRow, Section, Stat } from "./bits";
@@ -50,6 +53,11 @@ export function UsTab() {
 
   const ownedMemories = state.collections["memories"] ?? [];
   const pairBonus = togetherBonus(state.lifetime.hearts, state.storyProgress["partnerLifetime"] ?? 0);
+
+  const theirRebirths = state.storyProgress["partnerRebirths"] ?? 0;
+  const joint = combinedRebirths(state.tideChanges, theirRebirths);
+  const jointDone = jointReached(joint);
+  const jointUpcoming = jointNext(joint);
 
   return (
     <div className="flex flex-col gap-5">
@@ -83,6 +91,53 @@ export function UsTab() {
             </p>
           )}
         </div>
+      </Section>
+
+      <Section
+        title="Lives between you"
+        hint="Your rebirths and theirs, added up. Every rung pays both of you, forever."
+      >
+        <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
+          <p className="font-display text-3xl font-semibold text-plum">{joint}</p>
+          <p className="text-xs text-berry-soft">
+            you {state.tideChanges} · {partnerName} {theirRebirths}
+          </p>
+          {jointUpcoming && (
+            <>
+              <div className="mt-2">
+                <Bar value={joint} max={jointUpcoming.at} label={`Toward ${jointUpcoming.name}`} />
+              </div>
+              <p className="mt-1 text-xs text-berry-soft">
+                {jointUpcoming.at - joint} more for {jointUpcoming.name}
+              </p>
+            </>
+          )}
+        </div>
+
+        <ul className="mt-2 flex flex-col gap-2">
+          {JOINT_MILESTONES.map((milestone) => {
+            const reached = jointDone.includes(milestone);
+            return (
+              <li
+                key={milestone.at}
+                className={`rounded-card border p-3 ${
+                  reached ? "border-rose-dark bg-blush/40" : "border-line bg-white opacity-70"
+                }`}
+              >
+                <p className="flex items-center justify-between gap-2 text-sm font-semibold text-berry">
+                  <span className="truncate">{milestone.name}</span>
+                  <span className="shrink-0 text-xs text-berry-soft">{milestone.at}</span>
+                </p>
+                <p className="mt-0.5 text-xs text-berry-soft">{milestone.detail}</p>
+                <p className="mt-1 text-xs font-semibold text-rose-dark">
+                  {Object.entries(milestone.mods.mul ?? {})
+                    .map(([stat, value]) => `${value}x ${STAT_LABEL[stat as MulStat] ?? stat}`)
+                    .join(", ")}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
       </Section>
 
       <Section title="Love meters" hint="They fill from the rest of the app, and fall on their own.">
@@ -283,8 +338,8 @@ export function StatsTab() {
           <Stat label="Creatures" value={`${state.codex.length}`} />
           <Stat label="Grown" value={`${state.stats.creaturesEvolved}`} />
           <Stat label="Vessels" value={`${state.vesselsUnlocked.length}`} />
-          <Stat label="Tide changes" value={`${state.tideChanges}`} />
-          <Stat label="New water" value={`${state.newWaters}`} />
+          <Stat label="Rebirths" value={`${state.tideChanges}`} />
+          <Stat label="Deep rebirths" value={`${state.newWaters}`} />
           <Stat
             label="Fastest tide"
             value={state.stats.fastestTideChangeMs ? formatDurationShort(state.stats.fastestTideChangeMs) : "not yet"}

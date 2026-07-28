@@ -5,17 +5,21 @@
 import { useMemo, useState } from "react";
 import { Lock, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
-import { TREES, nextEffectLabel, type Tree, type UpgradeDef } from "@/game/config/upgrades";
+import {
+  TREES, UPGRADES, UPGRADE_BY_ID, nextEffectLabel, type Tree, type UpgradeDef,
+} from "@/game/config/upgrades";
 import { SKILLS, skillCost } from "@/game/config/skills";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import {
   hasFlag, maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades,
 } from "@/game/formulas";
-import { buyUpgrade, levelSkill, toggleSkillAuto } from "@/game/actions";
+import { buyCheapest, buyUpgrade, levelSkill, toggleSkillAuto } from "@/game/actions";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import type { GameSettings } from "@/game/types";
 import { Button, SegmentedControl, Sheet, useToast } from "@/components/ui";
 import { Bar, EmptyRow, LockedRow, Section } from "./bits";
+import { Explain } from "./explain";
+import { TreeGraph } from "./tree";
 
 const BUY_OPTIONS = [
   { value: "1", label: "x1" },
@@ -25,6 +29,11 @@ const BUY_OPTIONS = [
   { value: "max", label: "Max" },
 ];
 
+const VIEW_OPTIONS = [
+  { value: "tree", label: "Tree" },
+  { value: "list", label: "List" },
+];
+
 export function UpgradesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
@@ -32,8 +41,8 @@ export function UpgradesTab() {
   // Yours and the shared one. Theirs is theirs.
   const trees = TREES.filter((entry) => entry.id === state.owner || entry.id === "us");
   const [detail, setDetail] = useState<UpgradeDef | null>(null);
+  const [view, setView] = useState<"tree" | "list">("tree");
   const format = state.settings.numberFormat;
-  const bulk = hasFlag(state, "bulk");
 
   const rows = useMemo(
     () =>
@@ -73,7 +82,26 @@ export function UpgradesTab() {
         })}
       </div>
 
-      {meta && <p className="text-sm text-berry-soft">{meta.blurb}</p>}
+      {meta && (
+        <div className="flex items-start gap-1.5">
+          <p className="flex-1 text-sm text-berry-soft">{meta.blurb}</p>
+          <Explain title="Your tree">
+            <p>
+              Every upgrade grows out of the one before it. The first one is the trunk,
+              and four branches come off it, each doing a different job.
+            </p>
+            <p>
+              You can buy any of them in any order. The branches are there so you can see
+              what a line leads to before you start down it, not to make you buy the middle
+              of one.
+            </p>
+            <p>
+              This is your tree. {state.owner === "cami" ? "Joseph" : "Cami"} has their own,
+              and neither of you can spend into the other one.
+            </p>
+          </Explain>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-xs font-semibold text-berry-soft">Buy</span>
@@ -82,10 +110,6 @@ export function UpgradesTab() {
           value={String(state.settings.buyAmount)}
           onChange={(value) =>
             mutate((draft) => {
-              if (value !== "1" && !bulk) {
-                toast("Handfuls is a moon upgrade");
-                return;
-              }
               draft.settings.buyAmount = (value === "max" ? "max" : Number(value)) as GameSettings["buyAmount"];
             })
           }
@@ -93,7 +117,36 @@ export function UpgradesTab() {
         />
       </div>
 
-      {rows.length === 0 ? (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() =>
+            mutate((draft) => {
+              // Keeps buying the cheapest thing it can until it cannot. Always
+              // here, never something to unlock: it is a shortcut for pressing
+              // a button, not a power.
+              let bought = 0;
+              for (let i = 0; i < 200; i++) {
+                if (!buyCheapest(draft).ok) break;
+                bought += 1;
+              }
+              toast(bought > 0 ? `Bought ${bought}` : "Nothing affordable");
+            })
+          }
+          className="pressable shrink-0 whitespace-nowrap rounded-full border border-plum bg-plum px-3.5 py-2 text-xs font-semibold text-white"
+        >
+          Buy all
+        </button>
+        <SegmentedControl
+          label="View"
+          value={view}
+          onChange={(value) => setView(value as "tree" | "list")}
+          options={VIEW_OPTIONS}
+        />
+      </div>
+
+      {view === "tree" && rows.length > 0 && <TreeGraph tree={tree} onDetail={setDetail} />}
+
+      {view === "list" && (rows.length === 0 ? (
         <EmptyRow>Nothing here yet.</EmptyRow>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -150,7 +203,7 @@ export function UpgradesTab() {
             );
           })}
         </ul>
-      )}
+      ))}
 
       {detail && <UpgradeDetail def={detail} onClose={() => setDetail(null)} />}
     </div>
@@ -158,9 +211,17 @@ export function UpgradesTab() {
 }
 
 function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void }) {
-  const { state, derived } = useGame();
+  const { state, derived, mutate } = useGame();
+  const toast = useToast();
   const owned = state.upgrades[def.id] ?? 0;
   const format = state.settings.numberFormat;
+  const grownFrom = def.after ? UPGRADE_BY_ID[def.after] : null;
+  const leadsTo = UPGRADES.filter((u) => u.after === def.id);
+
+  const atMax = def.max !== Infinity && owned >= def.max;
+  const count = Math.max(1, resolveBuyCount(state, def, derived));
+  const cost = upgradeCost(state, def, count, derived);
+  const affordable = !atMax && meetsUnlock(state, def.unlock) && state.wallet[def.currency] >= cost;
 
   return (
     <Sheet open onClose={onClose} title={def.name}>
@@ -174,10 +235,38 @@ function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void 
           <Row label="Cost" value={formatNumber(upgradeCost(state, def, 1, derived), format)} />
           <Row label="Affordable" value={`${maxAffordable(state, def, derived)}`} />
         </dl>
+
+        {(grownFrom || leadsTo.length > 0) && (
+          <div className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-xs text-berry-soft">
+            {grownFrom && <p>Grows out of {grownFrom.name}.</p>}
+            {leadsTo.length > 0 && (
+              <p className={grownFrom ? "mt-1" : undefined}>
+                Leads to {leadsTo.map((u) => u.name).join(", ")}.
+              </p>
+            )}
+          </div>
+        )}
+
         {def.milestones && (
           <p className="rounded-xl bg-blush/50 px-3.5 py-2.5 text-sm text-berry">
             Milestones at {def.milestones.join(", ")}, each an extra boost to everything.
           </p>
+        )}
+
+        {!atMax && (
+          <Button
+            disabled={!affordable}
+            className="w-full"
+            onClick={() =>
+              mutate((draft) => {
+                const result = buyUpgrade(draft, def.id, count);
+                toast(result.ok ? (result.message ?? `${def.name} bought`) : (result.message ?? "Cannot buy that"));
+              })
+            }
+          >
+            Buy{count > 1 ? ` ${count}` : ""} for {formatNumber(cost, format)}{" "}
+            {CURRENCY_BY_ID[def.currency]?.short.toLowerCase()}
+          </Button>
         )}
       </div>
     </Sheet>
@@ -239,8 +328,8 @@ export function AbilitiesTab() {
                     def.unlock.lifetimeHearts
                       ? `At ${formatNumber(def.unlock.lifetimeHearts, format)} lifetime hearts`
                       : def.unlock.tideChanges
-                        ? `After ${def.unlock.tideChanges} tide changes`
-                        : `After ${def.unlock.newWaters} changes of water`
+                        ? `After ${def.unlock.tideChanges} rebirths`
+                        : `After ${def.unlock.newWaters} deep rebirths`
                   }
                 />
               </li>

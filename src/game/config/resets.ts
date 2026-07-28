@@ -1,9 +1,16 @@
 import type { AddStat, CurrencyId, GameState, Mods, MulStat } from "../types";
 
-// Two reset layers, both themed to water. A Tide Change empties the jar. New
-// Water empties everything, including the tides you have already changed.
+// Rebirth: start the jar again, keep what you learned.
 //
-// Both are instances of one shape, so a third layer later is a config entry.
+// Three rungs of the same shape. The first is the one you do constantly, the
+// second is rare, the third is the end. They used to be called Tide Change,
+// New Water and The Sea, which meant the game had three poetic names for
+// "reset" plus a separate mechanic actually called Tide. Nobody could keep
+// them apart, so they are all just Rebirth now, with a plain adjective.
+//
+// The internal ids and save fields keep the old words (`tideChanges`,
+// `newWaters`, `seas`) so that no existing save has to be rewritten. Nothing
+// the player sees uses them.
 
 export interface ResetLayerDef {
   id: string;
@@ -17,69 +24,99 @@ export interface ResetLayerDef {
   keeps: string[];
 }
 
-export const TIDE_REQUIREMENT = 1e9;
-export const WATER_REQUIREMENT = 1e15;
-/** The last rung, and reachable only after several changes of water. */
-export const SEA_REQUIREMENT = 1e30;
+export const TIDE_REQUIREMENT = 1e6;
+export const WATER_REQUIREMENT = 1e13;
+/** The last rung, and reachable only after several deep rebirths. */
+export const SEA_REQUIREMENT = 1e25;
 
 /**
- * Every rung asks for more than the last one did.
+ * Why these are capped.
  *
- * Without this the layers collapse: the moment a run crosses the flat
- * requirement it can reset, and each reset pays a currency that buys
- * multipliers that make the next crossing instant. Simulated, that fired
- * fourteen tide changes in the thirteenth minute and reached the floating
- * point ceiling in fifteen. The rising bar is the brake, and it is what turns
- * an afternoon into months.
+ * A requirement is a number the run has to actually reach, so a requirement
+ * of 1e400 is not expensive, it is impossible: hearts are ordinary floating
+ * point and stop existing above about 1.8e308. Left uncapped, the bar passed
+ * that at the fifty-first rebirth and the game simply ended with no message.
+ *
+ * The ceilings below sit far enough under it that every rung stays reachable
+ * forever, and once a rung is capped it stops getting harder, which is what
+ * makes the count keep climbing rather than the numbers.
+ *
+ * This is also the answer to "can we just use bigger numbers". Bigger numbers
+ * would let the bar keep rising, but the bar rising is not what makes the game
+ * long; doing the loop again is. What was actually broken was that a rebirth
+ * left the whole production chain standing, so the next one arrived seconds
+ * later and the multipliers compounded until the ceiling. Rebirth clears the
+ * chain now, which bounds the run, which is why these caps are enough.
+ */
+const REQUIREMENT_CEILING = 1e200;
+
+/**
+ * Every rebirth asks for more than the last one did.
+ *
+ * Twenty times more each time. That is enough that the count matters and
+ * gentle enough that the hundredth rebirth is still a thing you can reach,
+ * because the permanent tree is growing alongside it.
  */
 export function tideRequirement(tideChanges: number): number {
-  return TIDE_REQUIREMENT * Math.pow(60, tideChanges);
+  return Math.min(REQUIREMENT_CEILING, TIDE_REQUIREMENT * Math.pow(20, tideChanges));
 }
 
 export function waterRequirement(newWaters: number): number {
-  return WATER_REQUIREMENT * Math.pow(1e5, newWaters);
+  return Math.min(1e250, WATER_REQUIREMENT * Math.pow(1e4, newWaters));
 }
 
 export function seaRequirement(seas: number): number {
-  return SEA_REQUIREMENT * Math.pow(1e6, seas);
+  return Math.min(1e280, SEA_REQUIREMENT * Math.pow(1e5, seas));
 }
 
 /**
- * Moons scale with the cube root of the run, so a long run is worth more than
- * a short one but not proportionally. Playing actively and keeping creatures
- * fed both count.
+ * What a rebirth pays.
+ *
+ * Logarithmic in how far past the bar you went, not proportional to it. That
+ * distinction is the difference between a game that lasts months and one that
+ * lasts an afternoon.
+ *
+ * It used to be the cube root of the overshoot. The trouble is that late in a
+ * life the jar makes more hearts in one second than it made in the whole first
+ * minute, so you never cross the bar, you rocket past it by ten orders of
+ * magnitude before the next tick. Cube-rooting that still paid thousands of
+ * moons for a life that took forty seconds, and the tree those moons bought
+ * made the next life faster still. Simulated: forty-two rebirths in the second
+ * hour and accelerating.
+ *
+ * A logarithm flattens the overshoot completely. Landing exactly on the bar
+ * pays eight; landing ten orders of magnitude past it pays eighty. Going
+ * further is always worth something and never worth waiting for, which is
+ * exactly the shape a prestige currency wants.
  */
+function overshoot(reached: number, bar: number): number {
+  if (!(reached >= bar) || bar <= 0) return 0;
+  return 1 + Math.log10(Math.max(1, reached / bar));
+}
+
 export function moonGain(state: GameState, multiplier = 1): number {
-  const bar = tideRequirement(state.tideChanges);
-  if (state.runHearts < bar) return 0;
-  const base = Math.pow(state.runHearts / bar, 1 / 3) * 8;
+  const past = overshoot(state.runHearts, tideRequirement(state.tideChanges));
+  if (past <= 0) return 0;
   const comboBonus = 1 + Math.min(1, state.stats.bestCombo / 400) * 0.3;
   const activeBonus = 1 + Math.min(1, state.stats.heartsFromClicks / Math.max(1, state.runHearts)) * 0.35;
   const creatureBonus = 1 + Math.min(1, Object.keys(state.creatures).length / 14) * 0.25;
-  return Math.floor(base * comboBonus * activeBonus * creatureBonus * multiplier);
+  return Math.floor(past * 8 * comboBonus * activeBonus * creatureBonus * multiplier);
 }
 
 export function starGain(state: GameState, multiplier = 1): number {
-  const bar = waterRequirement(state.newWaters);
-  if (state.eraHearts < bar) return 0;
-  const base = Math.pow(state.eraHearts / bar, 1 / 4) * 4;
+  const past = overshoot(state.eraHearts, waterRequirement(state.newWaters));
+  if (past <= 0) return 0;
   const tideBonus = 1 + Math.min(2, state.tideChanges / 20);
   const codexBonus = 1 + Math.min(0.5, state.codex.length / 14);
-  return Math.floor(base * tideBonus * codexBonus * multiplier);
+  return Math.floor(past * 4 * tideBonus * codexBonus * multiplier);
 }
 
-/**
- * Drops scale with the fifth root, which is flatter than the layers above it.
- * At this depth the numbers are enormous, and anything steeper would hand out
- * the whole tree on the first reset.
- */
 export function dropGain(state: GameState, multiplier = 1): number {
-  const bar = seaRequirement(state.seas);
-  if (state.seaHearts < bar) return 0;
-  const base = Math.pow(state.seaHearts / bar, 1 / 5) * 3;
+  const past = overshoot(state.seaHearts, seaRequirement(state.seas));
+  if (past <= 0) return 0;
   const waterBonus = 1 + Math.min(3, state.newWaters / 10);
   const depthBonus = 1 + Math.min(1, state.deepens / 100);
-  return Math.floor(base * waterBonus * depthBonus * multiplier);
+  return Math.floor(past * 3 * waterBonus * depthBonus * multiplier);
 }
 
 export interface ResetUpgradeDef {
@@ -98,45 +135,53 @@ export interface ResetUpgradeDef {
 }
 
 export const MOON_UPGRADES: ResetUpgradeDef[] = [
-  { id: "m_click", name: "Deeper Water", description: "Click power, kept through every tide.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "click", per: 0.25 },
-  { id: "m_cps", name: "Settled Floor", description: "Passive hearts, kept through every tide.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "cps", per: 0.25 },
-  { id: "m_all", name: "High Water", description: "Everything, permanently.", currency: "moons", baseCost: 4, growth: 1.5, max: 60, kind: "mulLinear", stat: "all", per: 0.15 },
-  { id: "m_crack", name: "Practised Hands", description: "Otters crack harder in every run.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "crackValue", per: 0.2 },
-  { id: "m_collect", name: "Worn Path", description: "Crabs collect more in every run.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "collectValue", per: 0.2 },
+  { id: "m_click", name: "Stronger Taps", description: "Click power, kept through every rebirth.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "click", per: 0.25 },
+  { id: "m_cps", name: "Steadier Jar", description: "Passive hearts, kept through every rebirth.", currency: "moons", baseCost: 1, growth: 1.35, max: 100, kind: "mulLinear", stat: "cps", per: 0.25 },
+  { id: "m_all", name: "Everything At Once", description: "Everything, permanently.", currency: "moons", baseCost: 4, growth: 1.5, max: 60, kind: "mulLinear", stat: "all", per: 0.15 },
+  // The one with no ceiling.
+  //
+  // Every other moon upgrade maxes out, which is deliberate: a capped tree is
+  // one you can finish and feel finished. But a game meant to last months
+  // needs somewhere for the hundredth rebirth's moons to go, and this is it.
+  // Linear in level with a cost that grows twelve percent a step, so it is
+  // always worth buying and never runs away.
+  { id: "m_forever", name: "Every Life So Far", description: "Everything, a little more, with no limit. Buy it forever.", currency: "moons", baseCost: 30, growth: 1.12, max: Infinity, kind: "mulLinear", stat: "all", per: 0.04 },
+  { id: "m_crack", name: "Practised Hands", description: "Otters crack harder in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "crackValue", per: 0.2 },
+  { id: "m_collect", name: "Worn Path", description: "Crabs collect more in every life.", currency: "moons", baseCost: 3, growth: 1.45, max: 50, kind: "mulLinear", stat: "collectValue", per: 0.2 },
   { id: "m_crit", name: "Sharp Edge", description: "Better criticals from the first tap.", currency: "moons", baseCost: 3, growth: 1.45, max: 40, kind: "add", stat: "critChance", per: 0.01 },
-  { id: "m_combo", name: "Muscle Memory", description: "Start each run with a combo going.", currency: "moons", baseCost: 2, growth: 1.4, max: 50, kind: "add", stat: "comboStart", per: 4 },
-  { id: "m_keep", name: "What Stays", description: "Keep this many levels of every upgrade through a tide change.", currency: "moons", baseCost: 6, growth: 1.6, max: 25, kind: "add", stat: "startingUpgrades", per: 1 },
+  { id: "m_combo", name: "Warm Start", description: "Start each life with a combo already going.", currency: "moons", baseCost: 2, growth: 1.4, max: 50, kind: "add", stat: "comboStart", per: 4 },
+  { id: "m_keep", name: "Muscle Memory", description: "Keep this many levels of every upgrade through a rebirth.", currency: "moons", baseCost: 6, growth: 1.6, max: 25, kind: "add", stat: "startingUpgrades", per: 1 },
   { id: "m_slots", name: "Room To Move", description: "One more creature in the jar.", currency: "moons", baseCost: 15, growth: 2.2, max: 6, kind: "add", stat: "creatureSlots", per: 1 },
-  { id: "m_ability", name: "Second Nature", description: "One more ability equipped.", currency: "moons", baseCost: 18, growth: 2.3, max: 3, kind: "add", stat: "abilitySlots", per: 1 },
+  { id: "m_ability", name: "One More Ability", description: "One more ability equipped.", currency: "moons", baseCost: 18, growth: 2.3, max: 3, kind: "add", stat: "abilitySlots", per: 1 },
   { id: "m_offline", name: "Long Night", description: "Collect from more hours away, permanently.", currency: "moons", baseCost: 5, growth: 1.55, max: 40, kind: "add", stat: "offlineHours", per: 1 },
-  { id: "m_cost", name: "Worn Smooth", description: "Everything costs less, in every run.", currency: "moons", baseCost: 10, growth: 1.75, max: 25, kind: "mulLinear", stat: "cost", per: -0.02 },
-  { id: "m_creature", name: "Well Fed", description: "Creatures are stronger in every run.", currency: "moons", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "creaturePower", per: 0.15 },
-  { id: "m_moons", name: "Pull Of The Moon", description: "Every future tide change pays more.", currency: "moons", baseCost: 8, growth: 1.7, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.12 },
-  { id: "m_gift", name: "Something For You", description: "What you leave your partner is worth much more.", currency: "moons", baseCost: 12, growth: 1.8, max: 20, kind: "mulLinear", stat: "all", per: 0.05 },
+  { id: "m_cost", name: "Cheaper Everything", description: "Everything costs less, in every life.", currency: "moons", baseCost: 10, growth: 1.75, max: 25, kind: "mulLinear", stat: "cost", per: -0.02 },
+  { id: "m_creature", name: "Well Fed", description: "Creatures are stronger in every life.", currency: "moons", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "creaturePower", per: 0.15 },
+  { id: "m_moons", name: "More Moons", description: "Every future rebirth pays more.", currency: "moons", baseCost: 8, growth: 1.7, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.12 },
+  { id: "m_gift", name: "Something For You", description: "What you leave your partner when you are reborn is worth much more.", currency: "moons", baseCost: 12, growth: 1.8, max: 20, kind: "mulLinear", stat: "all", per: 0.05 },
   // Unlocks.
-  { id: "m_bulk", name: "Handfuls", description: "Buy ten, twenty five, a hundred, or as many as you can afford.", currency: "moons", baseCost: 4, growth: 1, max: 1, kind: "flag", flag: "bulk" },
   { id: "m_items", name: "Rocks And Shells", description: "Creatures can carry something.", currency: "moons", baseCost: 10, growth: 1, max: 1, kind: "flag", flag: "items" },
-  { id: "m_challenges", name: "Rough Water", description: "Unlocks challenges.", currency: "moons", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "challenges" },
-  { id: "m_auto_buy", name: "Steady Hand", description: "Buys the cheapest affordable upgrade on its own.", currency: "moons", baseCost: 25, growth: 1, max: 1, kind: "flag", flag: "auto_buy" },
-  { id: "m_auto_feed", name: "Full Bowls", description: "Creatures feed themselves from your shells.", currency: "moons", baseCost: 18, growth: 1, max: 1, kind: "flag", flag: "auto_feed" },
-  { id: "m_auto_skill", name: "Second Nature", description: "Abilities can fire themselves once maxed.", currency: "moons", baseCost: 30, growth: 1, max: 1, kind: "flag", flag: "auto_skill" },
+  { id: "m_challenges", name: "Challenges", description: "Runs with a rule attached, and a prize for clearing them.", currency: "moons", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "challenges" },
+  { id: "m_auto_buy", name: "Buys For You", description: "Buys the cheapest affordable upgrade on its own.", currency: "moons", baseCost: 25, growth: 1, max: 1, kind: "flag", flag: "auto_buy" },
+  { id: "m_auto_feed", name: "Feeds For You", description: "Creatures feed themselves from your shells.", currency: "moons", baseCost: 18, growth: 1, max: 1, kind: "flag", flag: "auto_feed" },
+  { id: "m_auto_skill", name: "Fires For You", description: "Abilities can fire themselves once maxed.", currency: "moons", baseCost: 30, growth: 1, max: 1, kind: "flag", flag: "auto_skill" },
+  { id: "m_auto_rebirth", name: "Reborn For You", description: "Rebirth happens on its own the moment it is worth it.", currency: "moons", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_rebirth", requires: ["m_forever", 10] },
 
   // The jar plays itself harder. These are the line the player keeps feeding,
   // because every level of them is time they no longer have to spend tapping.
   { id: "m_auto_tap", name: "Quick Hands", description: "The jar taps for you more often.", currency: "moons", baseCost: 2, growth: 1.28, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 1 },
   { id: "m_auto_crit", name: "Learns The Rhythm", description: "The taps it makes for you crit far more often.", currency: "moons", baseCost: 6, growth: 1.4, max: 20, kind: "add", stat: "critChance", per: 0.02 },
-  { id: "m_autobuyer", name: "Steady Machinery", description: "Every autobuyer runs faster.", currency: "moons", baseCost: 5, growth: 1.35, max: 100, kind: "add", stat: "autobuyerSpeed", per: 1 },
-  { id: "m_depth", name: "Weight Of Water", description: "Every depth produces more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "depthPower", per: 0.3 },
-  { id: "m_tide_speed", name: "Running Tide", description: "Everything in the jar moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "tideSpeed", per: 0.2 },
-  { id: "m_new_water", name: "New Water", description: "Unlocks the second reset layer. This is what the tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
+  { id: "m_autobuyer", name: "Faster Autobuyers", description: "Every autobuyer runs faster.", currency: "moons", baseCost: 5, growth: 1.35, max: 100, kind: "add", stat: "autobuyerSpeed", per: 1 },
+  { id: "m_depth", name: "Heavier Chain", description: "Every tier of the chain produces more.", currency: "moons", baseCost: 4, growth: 1.42, max: 100, kind: "mulLinear", stat: "depthPower", per: 0.3 },
+  { id: "m_tide_speed", name: "Faster Jar", description: "Everything in the jar moves faster.", currency: "moons", baseCost: 7, growth: 1.5, max: 60, kind: "mulLinear", stat: "tideSpeed", per: 0.2 },
+  { id: "m_new_water", name: "Deep Rebirth", description: "Unlocks the rebirth above rebirth. This is what the tree is for.", currency: "moons", baseCost: 250, growth: 1, max: 1, kind: "flag", flag: "new_water", requires: ["m_all", 20] },
 ];
 
 export const STAR_UPGRADES: ResetUpgradeDef[] = [
   { id: "s_all", name: "Everything Rises", description: "Every heart, everywhere.", currency: "stars", baseCost: 1, growth: 1.4, max: 100, kind: "mulLinear", stat: "all", per: 0.4 },
   { id: "s_crack", name: "Old Hands", description: "Otters, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "crackValue", per: 0.35 },
   { id: "s_collect", name: "Old Paths", description: "Crabs, far stronger.", currency: "stars", baseCost: 2, growth: 1.45, max: 60, kind: "mulLinear", stat: "collectValue", per: 0.35 },
-  { id: "s_moons", name: "Faster Tides", description: "Tide changes pay far more moons.", currency: "stars", baseCost: 4, growth: 1.55, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.3 },
-  { id: "s_keep", name: "Deep Roots", description: "Keep far more through a tide change.", currency: "stars", baseCost: 8, growth: 1.8, max: 20, kind: "add", stat: "startingUpgrades", per: 5 },
+  { id: "s_moons", name: "Richer Rebirths", description: "Rebirths pay far more moons.", currency: "stars", baseCost: 4, growth: 1.55, max: 40, kind: "mulLinear", stat: "moonGain", per: 0.3 },
+  { id: "s_keep", name: "Deep Roots", description: "Keep far more through a rebirth.", currency: "stars", baseCost: 8, growth: 1.8, max: 20, kind: "add", stat: "startingUpgrades", per: 5 },
   { id: "s_slots", name: "Open Water", description: "Two more creatures in the jar.", currency: "stars", baseCost: 12, growth: 2.4, max: 4, kind: "add", stat: "creatureSlots", per: 1 },
   { id: "s_offline_cap", name: "Long Away", description: "Far more time away counts.", currency: "stars", baseCost: 6, growth: 1.6, max: 40, kind: "add", stat: "offlineHours", per: 4 },
   { id: "s_offline_rate", name: "Still Working", description: "Time away is worth much more.", currency: "stars", baseCost: 6, growth: 1.6, max: 40, kind: "mulLinear", stat: "offline", per: 0.25 },
@@ -144,15 +189,15 @@ export const STAR_UPGRADES: ResetUpgradeDef[] = [
   { id: "s_glass", name: "Glass Beach", description: "Sea glass, far more often.", currency: "stars", baseCost: 5, growth: 1.55, max: 40, kind: "mulLinear", stat: "glassGain", per: 0.3 },
   { id: "s_tide", name: "Spring Tide", description: "Tide rises far faster for both of you.", currency: "stars", baseCost: 7, growth: 1.6, max: 30, kind: "mulLinear", stat: "tideGain", per: 0.3 },
   { id: "s_cooldown", name: "No Waiting", description: "Abilities come back much sooner.", currency: "stars", baseCost: 9, growth: 1.7, max: 25, kind: "mulLinear", stat: "skillCooldown", per: -0.025 },
-  { id: "s_creature_keep", name: "They Stay", description: "Creatures keep their levels through new water.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "creature_retention" },
-  { id: "s_item_keep", name: "Keepsakes", description: "Rocks and shells survive new water.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "item_retention" },
+  { id: "s_creature_keep", name: "They Stay", description: "Creatures keep their levels through a deep rebirth.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "creature_retention" },
+  { id: "s_item_keep", name: "Keepsakes", description: "Rocks and shells survive a deep rebirth.", currency: "stars", baseCost: 12, growth: 1, max: 1, kind: "flag", flag: "item_retention" },
   { id: "s_auto_upgrade", name: "It Runs Itself", description: "Buys upgrades continuously.", currency: "stars", baseCost: 20, growth: 1, max: 1, kind: "flag", flag: "auto_upgrade" },
   { id: "s_ocean", name: "The Ocean", description: "Unlocks the last vessel.", currency: "stars", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "ocean" },
   { id: "s_auto_tap", name: "Never Stops", description: "The jar taps far, far more often.", currency: "stars", baseCost: 3, growth: 1.45, max: 100, kind: "add", stat: "autoTapsPerSecond", per: 25 },
   { id: "s_depth", name: "Pressure", description: "Every depth, far stronger.", currency: "stars", baseCost: 3, growth: 1.5, max: 100, kind: "mulLinear", stat: "depthPower", per: 1 },
   { id: "s_autobuyer", name: "It Never Sleeps", description: "Autobuyers run many times faster.", currency: "stars", baseCost: 6, growth: 1.5, max: 100, kind: "add", stat: "autobuyerSpeed", per: 20 },
   { id: "s_deepen", name: "Further Down", description: "Deepening pays much more.", currency: "stars", baseCost: 10, growth: 1.7, max: 40, kind: "mulLinear", stat: "deepenGain", per: 0.25 },
-  { id: "s_stars", name: "More Stars", description: "Every new water pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
+  { id: "s_stars", name: "More Stars", description: "Every deep rebirth pays more.", currency: "stars", baseCost: 30, growth: 2, max: 25, kind: "mulLinear", stat: "starGain", per: 0.2 },
 ];
 
 
@@ -178,21 +223,21 @@ export const DROP_UPGRADES: ResetUpgradeDef[] = [
   { id: "d_tide", name: "The Long Pull", description: "Everything moves far faster.", currency: "drops", baseCost: 3, growth: 1.55, max: 100, kind: "mulLinear", stat: "tideSpeed", per: 1 },
   { id: "d_tap", name: "Countless Hands", description: "The jar taps for you constantly.", currency: "drops", baseCost: 2, growth: 1.45, max: 200, kind: "add", stat: "autoTapsPerSecond", per: 500 },
   { id: "d_autobuyer", name: "Tireless", description: "Autobuyers run as fast as the game ticks.", currency: "drops", baseCost: 4, growth: 1.5, max: 200, kind: "add", stat: "autobuyerSpeed", per: 100 },
-  { id: "d_moons", name: "Bright Moons", description: "Tide changes pay vastly more.", currency: "drops", baseCost: 6, growth: 1.6, max: 100, kind: "mulLinear", stat: "moonGain", per: 1 },
-  { id: "d_stars", name: "Whole Sky", description: "New water pays vastly more.", currency: "drops", baseCost: 8, growth: 1.6, max: 100, kind: "mulLinear", stat: "starGain", per: 1 },
-  { id: "d_drops", name: "It Rains", description: "Every future sea pays more.", currency: "drops", baseCost: 12, growth: 1.7, max: 60, kind: "mulLinear", stat: "dropGain", per: 0.5 },
+  { id: "d_moons", name: "Bright Moons", description: "Rebirths pay vastly more.", currency: "drops", baseCost: 6, growth: 1.6, max: 100, kind: "mulLinear", stat: "moonGain", per: 1 },
+  { id: "d_stars", name: "Whole Sky", description: "Deep rebirths pay vastly more.", currency: "drops", baseCost: 8, growth: 1.6, max: 100, kind: "mulLinear", stat: "starGain", per: 1 },
+  { id: "d_drops", name: "It Rains", description: "Every last rebirth pays more.", currency: "drops", baseCost: 12, growth: 1.7, max: 60, kind: "mulLinear", stat: "dropGain", per: 0.5 },
   { id: "d_deepen", name: "No Bottom", description: "Deepening pays far more.", currency: "drops", baseCost: 10, growth: 1.65, max: 60, kind: "mulLinear", stat: "deepenGain", per: 1 },
   { id: "d_offline", name: "It Keeps Going", description: "Far more time away counts, and it counts for more.", currency: "drops", baseCost: 5, growth: 1.5, max: 80, kind: "add", stat: "offlineHours", per: 12 },
 
   // The four that lengthen the chain. This is what the layer is for.
-  { id: "d_depth_1", name: "The Trench", description: "One more depth, below The Current.", currency: "drops", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1 },
-  { id: "d_depth_2", name: "The Dark", description: "Another one, below that.", currency: "drops", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_1", 1] },
-  { id: "d_depth_3", name: "The Floor Of It", description: "Deeper still.", currency: "drops", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_2", 1] },
-  { id: "d_depth_4", name: "Whatever Is Under That", description: "The last one there is.", currency: "drops", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_3", 1] },
+  { id: "d_depth_1", name: "One More Tier", description: "The chain gets one rung longer.", currency: "drops", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1 },
+  { id: "d_depth_2", name: "Another Tier", description: "And another rung below that.", currency: "drops", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_1", 1] },
+  { id: "d_depth_3", name: "Deeper Still", description: "One more again.", currency: "drops", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_2", 1] },
+  { id: "d_depth_4", name: "The Last Tier", description: "The last rung there is.", currency: "drops", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_3", 1] },
 
   { id: "d_auto_deepen", name: "It Deepens Itself", description: "The jar goes deeper on its own the moment it can.", currency: "drops", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "auto_deepen" },
-  { id: "d_auto_tide", name: "It Turns Itself", description: "Tide changes happen on their own.", currency: "drops", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },
-  { id: "d_keep_depths", name: "What The Water Remembers", description: "Deepenings survive a change of water.", currency: "drops", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_deepens" },
+  { id: "d_auto_tide", name: "It Turns Itself", description: "Rebirth happens on its own.", currency: "drops", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },
+  { id: "d_keep_depths", name: "What The Water Remembers", description: "Deepenings survive a deep rebirth.", currency: "drops", baseCost: 80, growth: 1, max: 1, kind: "flag", flag: "keep_deepens" },
 ];
 
 export const RESET_UPGRADE_BY_ID: Record<string, ResetUpgradeDef> = Object.fromEntries(
@@ -202,64 +247,62 @@ export const RESET_UPGRADE_BY_ID: Record<string, ResetUpgradeDef> = Object.fromE
 export const RESET_LAYERS: ResetLayerDef[] = [
   {
     id: "tide",
-    name: "Tide Change",
-    verb: "Change the tide",
+    name: "Rebirth",
+    verb: "Be reborn",
     currency: "moons",
-    blurb: "The water goes out. Everything living stays.",
+    blurb: "Empty the jar and start again, stronger. This is the loop the whole game runs on.",
     requirement: TIDE_REQUIREMENT,
     gain: moonGain,
     resets: [
-      "Hearts in the jar, and this run's total",
-      "Every upgrade in all three trees, minus what What Stays keeps",
-      "Your combo",
-      "The vessel, back to the Jam Jar",
+      "Hearts in the jar, and this life's total",
+      "The whole chain, and every deepening",
+      "Everything you bought with hearts, including speed",
+      "Every upgrade in your tree, minus what Muscle Memory keeps",
+      "Your combo, and the vessel",
     ],
     keeps: [
+      "Moons, and everything you spend them on",
       "Every creature, their levels, names and what they carry",
       "The codex, collections and cosmetics",
-      "Moons and moon upgrades",
-      "New water progress",
       "Tide, and everything in the Us tree",
       "Everything in the rest of the app",
     ],
   },
   {
     id: "water",
-    name: "New Water",
-    verb: "Change the water",
+    name: "Deep Rebirth",
+    verb: "Go deeper",
     currency: "stars",
-    blurb: "All of it, out. Rare, and worth it.",
+    blurb: "A rebirth of the rebirths. Rare, and worth it.",
     requirement: WATER_REQUIREMENT,
     gain: starGain,
     resets: [
-      "Everything a tide change resets",
+      "Everything an ordinary rebirth takes",
       "Moons and every moon upgrade",
-      "Your tide change count",
+      "Your rebirth count, back to nothing",
       "Creature levels, unless you own They Stay",
       "Rocks and shells, unless you own Keepsakes",
-      "Vessels, back to the Jam Jar",
     ],
     keeps: [
+      "Stars and star upgrades",
       "The codex. Every creature you have ever met stays met",
       "Collections, cosmetics and names",
-      "Stars and star upgrades",
       "Lifetime statistics and records",
       "Question history and everything else in the app",
     ],
   },
   {
     id: "sea",
-    name: "The Sea",
+    name: "Last Rebirth",
     verb: "Let it all go",
     currency: "drops",
     blurb: "There was never a jar. There was only ever this.",
     requirement: SEA_REQUIREMENT,
     gain: dropGain,
     resets: [
-      "Everything a change of water takes",
+      "Everything a deep rebirth takes",
       "Moons, stars, and both of their trees",
-      "Every change of water and tide you have made",
-      "The chain, and how deep the jar goes",
+      "Every rebirth, deep or otherwise, that you have done",
     ],
     keeps: [
       "Drops and the drop tree",

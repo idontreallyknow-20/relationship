@@ -232,9 +232,11 @@ function DepthRow({
         />
       )}
       <div className="relative flex items-start gap-3">
+        {/* The spine leans over once a second while the tier is working. A row
+            of numbers going up tells you nothing about which tier is doing it. */}
         <span
           aria-hidden="true"
-          className="mt-0.5 h-9 w-1.5 shrink-0 rounded-full"
+          className={`mt-0.5 h-9 w-1.5 shrink-0 rounded-full${owned > 0 && !reduced ? " tier-tick" : ""}`}
           style={{ backgroundColor: color, opacity: owned > 0 ? 1 : 0.25 }}
         />
         <div className="min-w-0 flex-1">
