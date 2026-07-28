@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Zap } from "lucide-react";
 import { useGame } from "@/game/store";
 import {
-  CHARGE_THRESHOLD, collectSettled, currentVessel, performClick, tapDrifter, activateSkill,
+  collectSettled, currentVessel, performClick, tapDrifter, activateSkill,
 } from "@/game/engine";
 import { buyUpgrade } from "@/game/actions";
 import {
@@ -22,6 +22,7 @@ import { DRIFTER_BY_ID } from "@/game/config/vessels";
 import { WATER_BY_ID } from "@/game/config/memories";
 import { TIDE_REQUIREMENT } from "@/game/config/resets";
 import type { Settled } from "@/game/types";
+import type { Feature } from "@/game/config/stages";
 import { useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { Bar, CreatureGlyph, EmptyRow, Section, Stat } from "./bits";
@@ -40,12 +41,13 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const { state, derived, mutate, version, now, notify } = useGame();
   const toast = useToast();
   const vessel = currentVessel(state);
+  /** Nothing is on screen until it is yours. */
+  const has = (feature: Feature) => derived.features.has(feature);
 
   const [popups, setPopups] = useState<Popup[]>([]);
   const [shake, setShake] = useState(false);
+  const [slosh, setSlosh] = useState(false);
   const popupId = useRef(0);
-  const holdStart = useRef<number | null>(null);
-  const [charge, setCharge] = useState(0);
   const ringRef = useRef(0);
   const [ringValue, setRingPhase] = useState(0);
 
@@ -110,17 +112,13 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   /* Tapping                                                           */
   /* ---------------------------------------------------------------- */
 
-  const release = useCallback(() => {
+  const tap = useCallback(() => {
     const at = Date.now();
-    const held = holdStart.current ? Math.min(1, (at - holdStart.current) / 1_200) : 0;
-    holdStart.current = null;
-    setCharge(0);
 
     mutate((draft) => {
       const d = derive(draft, at);
       const outcome = performClick(draft, d, {
         precision: ringRef.current,
-        charge: held,
         now: at,
         x: 50,
         y: 50,
@@ -132,7 +130,6 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         45,
         outcome.mega ? "mega" : outcome.crit ? "crit" : "normal",
       );
-      if (outcome.charged) addPopup("dropped", 50, 62, "bonus");
 
       if (outcome.mega) {
         buzz([12, 30, 18]);
@@ -145,18 +142,17 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         buzz(14);
         cue("crit");
       } else {
-        buzz(outcome.charged ? 20 : 6);
-        cue(outcome.charged ? "drop" : "tap");
+        buzz(6);
+        cue("tap");
+      }
+
+      // The jar answers every tap, not only the rare ones.
+      if (!reduced) {
+        setSlosh(true);
+        setTimeout(() => setSlosh(false), 520);
       }
     });
   }, [addPopup, buzz, cue, format, mutate, reduced, state.settings.screenShake]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (holdStart.current) setCharge(Math.min(1, (Date.now() - holdStart.current) / 1_200));
-    }, 60);
-    return () => clearInterval(interval);
-  }, []);
 
   /* ---------------------------------------------------------------- */
   /* Things in the water                                               */
@@ -236,7 +232,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {/* The jar */}
       <div
         data-tour="vessel"
-        className={`relative h-44 overflow-hidden rounded-card border-2 ${shake ? "jar-shake" : ""}`}
+        className={`relative h-44 overflow-hidden rounded-card border-2 ${shake ? "jar-shake" : ""} ${slosh ? "jar-slosh" : ""}`}
         style={{ backgroundColor: vessel.backdrop, borderColor: vessel.glass }}
       >
         {/* Water */}
@@ -358,17 +354,9 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {/* The heart */}
       <div data-tour="tap" className="flex flex-col items-center gap-1.5">
         <button
-          onPointerDown={(e) => {
-            holdStart.current = Date.now();
-            e.currentTarget.setPointerCapture?.(e.pointerId);
-          }}
-          onPointerUp={release}
-          onPointerCancel={() => {
-            holdStart.current = null;
-            setCharge(0);
-          }}
+          onPointerDown={tap}
           onContextMenu={(e) => e.preventDefault()}
-          aria-label="Tap the heart, or hold to charge"
+          aria-label="Tap the heart"
           className="touch-draw relative flex h-32 w-32 select-none items-center justify-center rounded-full"
           style={{ color: vessel.accent }}
         >
@@ -394,44 +382,36 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               }}
             />
           )}
-          <HeartIcon className="h-20 w-20 drop-shadow" style={{ transform: `scale(${1 + charge * 0.14})` }} />
-          {charge > 0.05 && (
-            <span aria-hidden="true" className="absolute bottom-0 h-1.5 w-24 overflow-hidden rounded-full bg-white/70">
-              <span
-                className="block h-full rounded-full"
-                style={{
-                  width: `${charge * 100}%`,
-                  backgroundColor: charge >= CHARGE_THRESHOLD ? "#c99a3f" : vessel.accent,
-                }}
-              />
-            </span>
-          )}
+          <HeartIcon className="h-20 w-20 drop-shadow" />
         </button>
         <p className="text-xs font-semibold" style={{ color: vessel.accent }}>
-          {state.auto.tap && charge <= 0.05
+          {state.auto.tap
             ? `Tapping for you, ${formatNumber(derived.autoTapsPerSecond, format)} a second`
-            : charge >= CHARGE_THRESHOLD
-              ? "Let go"
-              : charge > 0.05
-                ? "Keep holding"
-                : ringPhase > 0.8
-                  ? "Perfect timing"
-                  : "Tap, or hold to drop one to the floor"}
+            : ringPhase > 0.8
+              ? "Perfect timing"
+              : "Tap the heart"}
         </p>
       </div>
 
-      {/* Numbers */}
+      {/* Numbers, which arrive as they start to mean something. Six of these on
+          a first run was six things to wonder about before the first upgrade. */}
       <div className="grid grid-cols-3 gap-2">
         <Stat label="Per tap" value={formatNumber(derived.heartsPerClick, format)} tone="accent" />
-        <Stat label="Per second" value={formatNumber(derived.heartsPerSecond, format)} />
-        <Stat label="Combo" value={`${state.combo} / ${derived.comboCap}`} />
-        <Stat label="Critical" value={formatPercent(derived.critChance, 1)} />
-        <Stat label="Lifetime" value={formatNumber(state.lifetime.hearts, format)} />
-        <Stat label="Tide" value={`${Math.round(state.tideLevel)}%`} />
+        {has("chain") && (
+          <Stat label="Per second" value={formatNumber(derived.heartsPerSecond, format)} />
+        )}
+        {state.combo > 0 && <Stat label="Combo" value={`${state.combo} / ${derived.comboCap}`} />}
+        {has("upgrades") && (
+          <Stat label="Critical" value={formatPercent(derived.critChance, 1)} />
+        )}
+        {has("chain") && (
+          <Stat label="Lifetime" value={formatNumber(state.lifetime.hearts, format)} />
+        )}
+        {has("tide") && <Stat label="Tide" value={`${Math.round(state.tideLevel)}%`} />}
       </div>
 
       {/* Tide, which is the shared one */}
-      {state.tideLevel > 0 && (
+      {has("tide") && state.tideLevel > 0 && (
         <div className="rounded-card border border-line bg-white p-3">
           <div className="mb-1 flex items-baseline justify-between text-xs">
             <span className="font-semibold text-plum">Tide</span>
@@ -460,7 +440,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       )}
 
       {/* Next thing */}
-      {state.runHearts < TIDE_REQUIREMENT && (
+      {has("tideChange") && state.runHearts < TIDE_REQUIREMENT && (
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-berry">Next tide change</p>
@@ -517,6 +497,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       )}
 
       {/* Quick upgrades */}
+      {has("upgrades") && (
       <Section title="Upgrades" action={
         <button className="text-xs font-semibold text-rose-dark underline" onClick={() => onOpenTab("upgrades")}>
           All
@@ -566,6 +547,7 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
           </ul>
         )}
       </Section>
+      )}
 
       {/* Recently */}
       {state.log.length > 0 && (

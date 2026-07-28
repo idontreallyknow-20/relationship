@@ -8,7 +8,6 @@ export type MetricId =
   | "criticals"
   | "megaCriticals"
   | "perfectClicks"
-  | "chargedClicks"
   | "hearts"
   | "heartsFromClicks"
   | "heartsFromPassive"
@@ -44,7 +43,6 @@ export const METRIC_LABEL: Record<MetricId, string> = {
   criticals: "critical taps",
   megaCriticals: "mega criticals",
   perfectClicks: "perfectly timed taps",
-  chargedClicks: "charged taps",
   hearts: "hearts",
   heartsFromClicks: "hearts from tapping",
   heartsFromPassive: "hearts from the jar",
@@ -108,7 +106,7 @@ export const MISSIONS: MissionDef[] = [
   daily("d_clicks", "Tap the heart", "clicks", 300, { pearls: 2, shells: 40 }),
   daily("d_crit", "Land criticals", "criticals", 40, { pearls: 2, glass: 60 }),
   daily("d_combo", "Reach a combo", "bestCombo", 40, { pearls: 3, shells: 30 }),
-  daily("d_charge", "Charge and let go", "chargedClicks", 25, { pearls: 2, shells: 50 }),
+  daily("d_perfect", "Time it right", "perfectClicks", 25, { pearls: 2, shells: 50 }),
   daily("d_cracks", "Crack shells open", "cracks", 60, { shells: 80, glass: 40 }),
   daily("d_collects", "Collect off the floor", "collects", 60, { glass: 90, shells: 30 }),
   daily("d_upgrades", "Buy upgrades", "upgrades", 12, { pearls: 2, glass: 60 }),
@@ -133,7 +131,7 @@ export const MISSIONS: MissionDef[] = [
   { id: "s1", period: "story", step: 1, name: "Put a hundred hearts in", metric: "hearts", baseGoal: 100, scaling: "fixed", reward: { hearts: 60 }, weight: 0 },
   { id: "s2", period: "story", step: 2, name: "Buy your first upgrade", metric: "upgrades", baseGoal: 1, scaling: "fixed", reward: { hearts: 250 }, weight: 0 },
   { id: "s3", period: "story", step: 3, name: "Reach a combo of ten", metric: "bestCombo", baseGoal: 10, scaling: "fixed", reward: { hearts: 900 }, weight: 0 },
-  { id: "s4", period: "story", step: 4, name: "Hold, then let go", metric: "chargedClicks", baseGoal: 3, scaling: "fixed", reward: { shells: 60 }, weight: 0 },
+  { id: "s4", period: "story", step: 4, name: "Tap it dead centre", metric: "perfectClicks", baseGoal: 3, scaling: "fixed", reward: { shells: 60 }, weight: 0 },
   { id: "s5", period: "story", step: 5, name: "Watch an otter crack one open", metric: "cracks", baseGoal: 5, scaling: "fixed", reward: { shells: 100 }, weight: 0 },
   { id: "s6", period: "story", step: 6, name: "Watch a crab pick it up", metric: "collects", baseGoal: 5, scaling: "fixed", reward: { glass: 120 }, weight: 0 },
   { id: "s7", period: "story", step: 7, name: "Feed something", metric: "creatureLevels", baseGoal: 2, scaling: "fixed", reward: { pearls: 5 }, weight: 0 },
@@ -165,7 +163,7 @@ export type ChallengeRule =
   | "limited_clicks"
   | "time_attack"
   | "combo_only"
-  | "charge_only"
+  | "perfect_only"
   | "one_line"
   | "fast_decay"
   | "endless"
@@ -218,9 +216,9 @@ export const CHALLENGES: ChallengeDef[] = [
     repeatReward: { moons: 2 }, unlockLifetime: 5e7, difficulty: 3,
   },
   {
-    id: "charge_only", name: "Patience Only", description: "Only charged taps count for anything.",
-    rule: "charge_only", goal: { metric: "hearts", amount: 8e7 }, timeLimit: 480,
-    mods: { mul: { chargePower: 5 } }, reward: { moons: 4, glass: 900 },
+    id: "perfect_only", name: "Perfect Only", description: "Only dead-centre taps count for anything.",
+    rule: "perfect_only", goal: { metric: "hearts", amount: 8e7 }, timeLimit: 480,
+    mods: { mul: { click: 5 } }, reward: { moons: 4, glass: 900 },
     repeatReward: { moons: 2 }, unlockLifetime: 8e7, difficulty: 3,
   },
   {

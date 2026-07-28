@@ -14,10 +14,15 @@ export const TREE_OWNER: Record<Tree, Person | null> = {
   us: null,
 };
 
-/** What it costs someone to buy from a tree that is not theirs. */
-export const OFF_TREE_COST = 1.6;
-/** What their own tree gives them on top. */
-export const OWN_TREE_POWER = 1.25;
+/**
+ * You buy yours, they buy theirs.
+ *
+ * There used to be a penalty instead of a rule: the other person's tree cost
+ * you sixty percent more and gave you a quarter less, but you could still buy
+ * all of it. That made every upgrade screen twice as long as it needed to be
+ * and left the player wondering why they would ever want the worse version.
+ * Now Cami's tree is Cami's, Joseph's is Joseph's, and Us belongs to both.
+ */
 
 export interface UnlockRule {
   lifetimeHearts?: number;
@@ -93,7 +98,7 @@ const CAMI = tree("cami", { kind: "add", stat: "clickFlat" }, [
   { id: "somersault", name: "Somersault", description: "Criticals hit harder.", cost: 12_000, growth: 1.33, per: 0.16, kind: "mulLinear", stat: "crit", max: 60 },
   { id: "floating_together", name: "Floating Together", description: "Otters holding hands gain more.", cost: 40_000, growth: 1.4, per: 0.12, kind: "mulLinear", stat: "pairBonus", max: 30, unlock: { lifetimeHearts: 30_000 } },
   { id: "otter_chatter", name: "Otter Chatter", description: "Combos climb faster.", cost: 90_000, growth: 1.38, per: 0.08, kind: "mulLinear", stat: "comboGain", max: 30 },
-  { id: "deep_breath", name: "Deep Breath", description: "Holding is worth more.", cost: 150_000, growth: 1.42, per: 0.16, kind: "mulLinear", stat: "chargePower", max: 30, unlock: { lifetimeHearts: 120_000 } },
+  { id: "deep_breath", name: "Deep Breath", description: "Every tap lands heavier.", cost: 150_000, growth: 1.42, per: 0.16, kind: "mulLinear", stat: "click", max: 30, unlock: { lifetimeHearts: 120_000 } },
   { id: "cracking_stone", name: "Cracking Stone", description: "More shells come out of every crack.", cost: 400_000, growth: 1.4, per: 0.14, kind: "mulLinear", stat: "shellGain", max: 40 },
   { id: "pup_patrol", name: "Pup Patrol", description: "The whole raft works harder.", cost: 1.2e6, growth: 1.42, per: 0.11, kind: "mulLinear", stat: "creaturePower", max: 40, unlock: { lifetimeHearts: 1e6 } },
   { id: "sleek_coat", name: "Sleek Coat", description: "Everything a little better.", cost: 5e6, growth: 1.5, per: 0.05, kind: "mulLinear", stat: "all", max: 30, unlock: { lifetimeHearts: 4e6 } },
@@ -167,16 +172,15 @@ export const TREES: { id: Tree; name: string; blurb: string }[] = [
   { id: "us", name: "Us", blurb: "Bought with Tide. Both of you get it." },
 ];
 
-export function upgradeMods(def: UpgradeDef, level: number, ownTree: boolean): Mods {
+export function upgradeMods(def: UpgradeDef, level: number): Mods {
   if (level <= 0) return {};
-  const boost = ownTree ? OWN_TREE_POWER : 1;
   if (def.kind === "add") {
-    return { add: { [def.stat as AddStat]: def.per * level * boost } };
+    return { add: { [def.stat as AddStat]: def.per * level } };
   }
   if (def.kind === "mulLinear") {
-    return { mul: { [def.stat as MulStat]: 1 + def.per * level * boost } };
+    return { mul: { [def.stat as MulStat]: 1 + def.per * level } };
   }
-  return { mul: { [def.stat as MulStat]: Math.pow(1 + def.per * boost, level) } };
+  return { mul: { [def.stat as MulStat]: Math.pow(1 + def.per, level) } };
 }
 
 export function nextEffectLabel(def: UpgradeDef): string {
@@ -209,7 +213,6 @@ export const STAT_LABEL: Partial<Record<AddStat | MulStat, string>> = {
   megaCrit: "mega critical power",
   comboGain: "combo growth",
   comboPower: "combo payout",
-  chargePower: "charge power",
   crackValue: "crack payout",
   crackSpeed: "crack speed",
   collectValue: "collect payout",

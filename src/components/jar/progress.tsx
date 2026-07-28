@@ -9,7 +9,7 @@ import { TREES, nextEffectLabel, type Tree, type UpgradeDef } from "@/game/confi
 import { SKILLS, skillCost } from "@/game/config/skills";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import {
-  hasFlag, isOwnTree, maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades,
+  hasFlag, maxAffordable, meetsUnlock, resolveBuyCount, upgradeCost, visibleUpgrades,
 } from "@/game/formulas";
 import { buyUpgrade, levelSkill, toggleSkillAuto } from "@/game/actions";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
@@ -29,6 +29,8 @@ export function UpgradesTab() {
   const { state, derived, mutate, version } = useGame();
   const toast = useToast();
   const [tree, setTree] = useState<Tree>(state.owner === "joseph" ? "joseph" : "cami");
+  // Yours and the shared one. Theirs is theirs.
+  const trees = TREES.filter((entry) => entry.id === state.owner || entry.id === "us");
   const [detail, setDetail] = useState<UpgradeDef | null>(null);
   const format = state.settings.numberFormat;
   const bulk = hasFlag(state, "bulk");
@@ -44,7 +46,6 @@ export function UpgradesTab() {
           const cost = upgradeCost(state, def, count, derived);
           return {
             def, owned, unlocked, count, cost,
-            mine: isOwnTree(state, def),
             affordable: unlocked && state.wallet[def.currency] >= cost && count > 0,
           };
         }),
@@ -57,8 +58,7 @@ export function UpgradesTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
-        {TREES.map((entry) => {
-          const mine = entry.id === state.owner;
+        {trees.map((entry) => {
           return (
             <button
               key={entry.id}
@@ -68,18 +68,12 @@ export function UpgradesTab() {
               }`}
             >
               {entry.name}
-              {mine && <span className="ml-1 opacity-70">·</span>}
             </button>
           );
         })}
       </div>
 
       {meta && <p className="text-sm text-berry-soft">{meta.blurb}</p>}
-      {tree !== "us" && tree !== state.owner && (
-        <p className="rounded-xl bg-blush/50 px-3.5 py-2 text-xs text-berry">
-          Not your tree, so it costs more and gives less. You can still buy all of it.
-        </p>
-      )}
 
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-xs font-semibold text-berry-soft">Buy</span>
@@ -103,7 +97,7 @@ export function UpgradesTab() {
         <EmptyRow>Nothing here yet.</EmptyRow>
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map(({ def, owned, unlocked, count, cost, affordable, mine }) => {
+          {rows.map(({ def, owned, unlocked, count, cost, affordable }) => {
             const atMax = def.max !== Infinity && owned >= def.max;
             const currency = CURRENCY_BY_ID[def.currency];
             return (
@@ -123,7 +117,6 @@ export function UpgradesTab() {
                     <p className="mt-0.5 truncate text-xs text-berry-soft">{def.description}</p>
                     <p className="mt-1 text-xs font-semibold" style={{ color: currency?.color }}>
                       {atMax ? "Maxed" : nextEffectLabel(def)}
-                      {mine && !atMax && <span className="ml-1 text-berry-soft">· yours</span>}
                     </p>
                   </button>
 
@@ -185,9 +178,6 @@ function UpgradeDetail({ def, onClose }: { def: UpgradeDef; onClose: () => void 
           <p className="rounded-xl bg-blush/50 px-3.5 py-2.5 text-sm text-berry">
             Milestones at {def.milestones.join(", ")}, each an extra boost to everything.
           </p>
-        )}
-        {isOwnTree(state, def) && (
-          <p className="text-xs text-berry-soft">Your own tree, so this is cheaper and stronger for you.</p>
         )}
       </div>
     </Sheet>

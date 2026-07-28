@@ -1,15 +1,14 @@
-// The depths of the jar.
+// The chain: the jar filling up, and then filling up other things.
 //
-// This is the engine underneath everything else. Each depth's inhabitants
-// produce the depth above them, and the surface produces hearts, so buying at
-// depth six cascades down through five, four and three and arrives as hearts
-// some seconds later. That chain is the only reason the numbers ever run away;
-// without it every upgrade is a nudge and the game is over in an evening.
+// Each tier makes the tier above it, and the first one makes hearts. Buying
+// at tier four cascades down through three and two and arrives as hearts a few
+// seconds later, which is the only reason the numbers ever run away.
 //
-// Depths one and two are the otters and the crabs that were already here, so
-// none of the personalisation is lost: hers still sit on the surface, his
-// still walk the floor, and the crack-and-collect loop plays on top of this
-// rather than beside it.
+// These used to be named after the otters and the crabs, which made the pets
+// the spine of the game rather than a thing you keep. They are their own
+// system now, and this is deliberately the plainest fiction available: a jar
+// fills, then a shelf of jars, then a room of shelves. Nobody has to be told
+// what a shelf is.
 
 import type { Mods } from "../types";
 
@@ -83,45 +82,45 @@ function powerFor(tier: number): number {
 export const DEPTHS: DepthDef[] = [
   {
     tier: 1,
-    id: "otters",
-    name: "Otters",
-    unit: "otters",
-    blurb: "Hers. They float at the surface and crack things open.",
-    color: "#a87f6a",
+    id: "hearts",
+    name: "Hearts",
+    unit: "hearts",
+    blurb: "One at a time, into the jar.",
+    color: "#a85b73",
     baseCost: 10,
     growth: GROWTH,
     power: powerFor(1),
   },
   {
     tier: 2,
-    id: "crabs",
-    name: "Crabs",
-    unit: "crabs",
-    blurb: "His. They walk the floor and carry what falls back up.",
-    color: "#8a5a4a",
+    id: "handfuls",
+    name: "Handfuls",
+    unit: "handfuls",
+    blurb: "Enough to cup in both hands.",
+    color: "#b8748a",
     baseCost: 100,
     growth: GROWTH,
     power: powerFor(2),
   },
   {
     tier: 3,
-    id: "kelp",
-    name: "Kelp",
-    unit: "fronds",
-    blurb: "It grows where the light still reaches, and the crabs live in it.",
-    color: "#5d7f5a",
+    id: "jars",
+    name: "Jars",
+    unit: "jars",
+    blurb: "A whole jar of them, filled and sealed.",
+    color: "#8a6a9c",
     baseCost: 1_200,
     growth: GROWTH,
     power: powerFor(3),
-    mods: { mul: { collectValue: 1.05 } },
+    mods: { mul: { cps: 1.05 } },
   },
   {
     tier: 4,
-    id: "clams",
-    name: "Clams",
-    unit: "clams",
-    blurb: "Shut, mostly. What they open for, the kelp takes root in.",
-    color: "#8f8299",
+    id: "shelves",
+    name: "Shelves",
+    unit: "shelves",
+    blurb: "A shelf of jars, and room for more.",
+    color: "#6b6ba8",
     baseCost: 4e4,
     growth: GROWTH,
     power: powerFor(4),
@@ -129,23 +128,23 @@ export const DEPTHS: DepthDef[] = [
   },
   {
     tier: 5,
-    id: "urchins",
-    name: "Urchins",
-    unit: "urchins",
-    blurb: "Slow, spined, and patient. The clams grow on what they leave.",
-    color: "#6b5b8f",
+    id: "rooms",
+    name: "Rooms",
+    unit: "rooms",
+    blurb: "A room of shelves. It got out of hand.",
+    color: "#5a7f9c",
     baseCost: 2e6,
     growth: GROWTH,
     power: powerFor(5),
-    mods: { mul: { crackValue: 1.08 } },
+    mods: { mul: { click: 1.08 } },
   },
   {
     tier: 6,
-    id: "rays",
-    name: "Rays",
-    unit: "rays",
-    blurb: "They pass over the floor and stir it, and the urchins follow.",
-    color: "#4a6b8f",
+    id: "houses",
+    name: "Houses",
+    unit: "houses",
+    blurb: "A house of rooms, all of them full.",
+    color: "#4a7f7a",
     baseCost: 5e8,
     growth: GROWTH,
     power: powerFor(6),
@@ -153,11 +152,11 @@ export const DEPTHS: DepthDef[] = [
   },
   {
     tier: 7,
-    id: "eels",
-    name: "Eels",
-    unit: "eels",
-    blurb: "Down where the light gave up. Nothing here is in a hurry.",
-    color: "#3d4a6b",
+    id: "streets",
+    name: "Streets",
+    unit: "streets",
+    blurb: "A street of houses. Everyone knows.",
+    color: "#4a6b5a",
     baseCost: 2e11,
     growth: GROWTH,
     power: powerFor(7),
@@ -165,11 +164,11 @@ export const DEPTHS: DepthDef[] = [
   },
   {
     tier: 8,
-    id: "current",
-    name: "The Current",
-    unit: "currents",
-    blurb: "Not alive. It moves everything above it anyway.",
-    color: "#2a3350",
+    id: "towns",
+    name: "Towns",
+    unit: "towns",
+    blurb: "You have run out of words for this.",
+    color: "#3d5044",
     baseCost: 1e15,
     growth: GROWTH,
     power: powerFor(8),

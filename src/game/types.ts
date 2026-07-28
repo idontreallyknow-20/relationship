@@ -3,6 +3,8 @@
 // Content lives in `src/game/config`. Nothing in here knows about a specific
 // upgrade or creature.
 
+import type { Feature } from "./config/stages";
+
 export type Person = "cami" | "joseph";
 
 export type CurrencyId =
@@ -36,7 +38,6 @@ export type AddStat =
   | "freeUpgradeChance"
   // Automation and the depth chain.
   | "autoTapsPerSecond"
-  | "autoChargeRatio"
   | "extraDepths"
   | "autobuyerSpeed";
 
@@ -49,7 +50,6 @@ export type MulStat =
   | "megaCrit"
   | "comboGain"
   | "comboPower"
-  | "chargePower"
   // The two creature lines.
   | "crackValue"
   | "crackSpeed"
@@ -200,8 +200,6 @@ export interface DepthState {
 export interface AutoState {
   /** Tap on your behalf. */
   tap: boolean;
-  /** Make some of those taps charged holds. */
-  hold: boolean;
   /** Carries the fractional part of a tap between ticks. */
   tapCredit: number;
 }
@@ -235,7 +233,6 @@ export interface GameStats {
   criticalClicks: number;
   megaCriticalClicks: number;
   perfectClicks: number;
-  chargedClicks: number;
   bestCombo: number;
   comboFinishers: number;
   heartsFromClicks: number;
@@ -355,6 +352,9 @@ export interface GameState {
   collections: Record<string, string[]>;
 
   /** Love meters, by id, 0 to 100. They fill from the rest of the app. */
+  /** The highest stage whose arrival has been shown to the player. */
+  stageSeen: number;
+
   meters: Record<string, number>;
   /** When each meter was last brought up to date, for decay. */
   metersAt: number;
@@ -367,7 +367,6 @@ export interface GameState {
   /** Live run state, not persisted across a tide change. */
   combo: number;
   comboExpiresAt: number;
-  charge: number;
   buffs: Buff[];
 
   dailyBonus: { day: string | null; streak: number };
@@ -396,7 +395,6 @@ export interface Derived {
   comboMultiplier: number;
   comboShield: number;
   critChainChance: number;
-  chargePower: number;
   luck: number;
   offlineHours: number;
   offlineRate: number;
@@ -418,15 +416,18 @@ export interface Derived {
   depth: number;
   floor: number;
 
+  /** How far the game has been revealed, and what that means is on screen. */
+  stage: number;
+  features: Set<Feature>;
+
   /** How many depths are playable right now. */
   depthCount: number;
   /** Speed multiplier every depth is running at. */
   tideSpeedMultiplier: number;
   /** Output multiplier from deepenings, the drop tree and everything else. */
   depthPower: number;
-  /** Taps a second the jar makes for you, and how many of those are charged. */
+  /** Taps a second the jar makes for you. */
   autoTapsPerSecond: number;
-  autoChargeRatio: number;
   /** How often an autobuyer may fire, in milliseconds. */
   autobuyerIntervalMs: number;
   mods: { add: Record<AddStat, number>; mul: Record<MulStat, number> };

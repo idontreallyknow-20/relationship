@@ -1,6 +1,6 @@
 import type { AddStat, CreatureInstance, Derived, GameState, Mods, MulStat } from "./types";
 import {
-  OFF_TREE_COST, TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
+TREE_OWNER, UPGRADES, UPGRADE_BY_ID, upgradeMods,
   type UnlockRule, type UpgradeDef,
 } from "./config/upgrades";
 import {
@@ -9,6 +9,7 @@ import {
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
+import { featuresAt, stageFor } from "./config/stages";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
 import { CHALLENGE_BY_ID } from "./config/objectives";
@@ -24,12 +25,12 @@ const ADD_SET: Record<AddStat, true> = {
   critChainChance: true, luck: true, offlineHours: true, capacity: true,
   creatureSlots: true, abilitySlots: true, startingUpgrades: true,
   driftChance: true, freeUpgradeChance: true, autoTapsPerSecond: true,
-  autoChargeRatio: true, extraDepths: true, autobuyerSpeed: true,
+  extraDepths: true, autobuyerSpeed: true,
 };
 
 const MUL_SET: Record<MulStat, true> = {
   all: true, click: true, cps: true, crit: true, megaCrit: true, comboGain: true,
-  comboPower: true, chargePower: true, crackValue: true, crackSpeed: true,
+  comboPower: true, crackValue: true, crackSpeed: true,
   collectValue: true, collectSpeed: true, pairBonus: true, creaturePower: true,
   creatureXp: true, shellGain: true, glassGain: true, pearlGain: true,
   tideGain: true, moonGain: true, starGain: true, offline: true, cost: true,
@@ -90,8 +91,21 @@ export function meetsUnlock(state: GameState, rule: UnlockRule | undefined): boo
   return true;
 }
 
+/**
+ * The upgrades this person can actually buy.
+ *
+ * Filtered by tree as well as by unlock: the other person's line is theirs,
+ * and showing it here only ever made the list twice as long.
+ */
 export function visibleUpgrades(state: GameState): UpgradeDef[] {
-  return UPGRADES.filter((u) => meetsUnlock(state, u.unlock) || (state.upgrades[u.id] ?? 0) > 0);
+  return UPGRADES.filter(
+    (u) => buyableTree(state, u) && (meetsUnlock(state, u.unlock) || (state.upgrades[u.id] ?? 0) > 0),
+  );
+}
+
+/** True when this tree is yours, or the shared one. */
+export function buyableTree(state: GameState, def: UpgradeDef): boolean {
+  return TREE_OWNER[def.tree] === null || TREE_OWNER[def.tree] === state.owner;
 }
 
 /** True when this tree belongs to whoever owns the save. */
@@ -166,16 +180,14 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   bags.add.abilitySlots = 3;
   bags.add.capacity = vessel.capacity === Infinity ? 1e300 : vessel.capacity;
   // The jar taps for you from the very first run. Upgrades make it quicker
-  // and start turning those taps into charged holds.
   bags.add.autoTapsPerSecond = 1;
-  bags.add.autoChargeRatio = 0;
   bags.add.autobuyerSpeed = 1;
   bags.add.extraDepths = 0;
 
   for (const [id, level] of Object.entries(state.upgrades)) {
     const def = UPGRADE_BY_ID[id];
     if (!def || level <= 0) continue;
-    apply(bags, upgradeMods(def, level, isOwnTree(state, def)));
+    apply(bags, upgradeMods(def, level));
     if (def.milestones && def.milestoneMods) {
       const hit = def.milestones.filter((m) => level >= m).length;
       for (let i = 0; i < hit; i++) apply(bags, def.milestoneMods);
@@ -289,6 +301,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
   // The chain. Depth one turns into hearts; every depth below turns into the
   // one above it. `depthPower` and the tide speed apply at every rung, which
   // is why a multiplier bought once is felt eight times over.
+  const stage = stageFor(state.lifetime.hearts);
   const tideMul = tideSpeed(state.tideBought) * bags.mul.tideSpeed;
   const depthPower = bags.mul.depthPower;
   const surface = state.depths[0]?.owned ?? 0;
@@ -306,8 +319,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     comboMultiplier,
     comboShield: bags.add.comboShield,
     critChainChance: bags.add.critChainChance,
-    chargePower: bags.mul.chargePower,
-    luck: bags.add.luck,
+      luck: bags.add.luck,
     offlineHours: Math.min(96, bags.add.offlineHours),
     offlineRate: Math.min(1, 0.35 * bags.mul.offline),
     costMultiplier: bags.mul.cost,
@@ -327,12 +339,14 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     depth: vessel.depth,
     floor: vessel.floor,
 
+    stage,
+    features: featuresAt(stage),
+
     depthCount: maxDepthCount(Math.floor(bags.add.extraDepths)),
     tideSpeedMultiplier: safe(tideMul),
     depthPower: safe(depthPower),
     autoTapsPerSecond: safe(bags.add.autoTapsPerSecond),
-    autoChargeRatio: Math.min(1, Math.max(0, bags.add.autoChargeRatio)),
-    autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
+      autobuyerIntervalMs: Math.max(50, 5_000 / Math.max(1, bags.add.autobuyerSpeed)),
 
     mods: bags,
   };
@@ -342,28 +356,24 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
 /* Costs                                                               */
 /* ------------------------------------------------------------------ */
 
-function treeCostFactor(state: GameState, def: UpgradeDef): number {
-  return isOwnTree(state, def) ? 1 : TREE_OWNER[def.tree] === null ? 1 : OFF_TREE_COST;
-}
-
 export function upgradeCost(state: GameState, def: UpgradeDef, count = 1, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return safe(bulkCost(def.baseCost, def.growth, owned, count) * discount);
 }
 
 export function upgradeNextCost(state: GameState, def: UpgradeDef, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return safe(scale(def.baseCost, def.growth, owned) * discount);
 }
 
 export function maxAffordable(state: GameState, def: UpgradeDef, derived?: Derived): number {
   const owned = state.upgrades[def.id] ?? 0;
   const d = derived ?? derive(state);
-  const discount = (def.currency === "hearts" ? d.costMultiplier : 1) * treeCostFactor(state, def);
+  const discount = (def.currency === "hearts" ? d.costMultiplier : 1);
   return affordableLevels(state.wallet[def.currency] / discount, def.baseCost, def.growth, owned, def.max);
 }
 
