@@ -15,6 +15,7 @@ import {
   creaturesInJar, derive, heldHands, meetsUnlock, upgradeNextCost, visibleUpgrades,
 } from "@/game/formulas";
 import { formatDurationShort, formatNumber, formatPercent } from "@/game/numbers";
+import { NEWS_INTERVAL_MS, newsLine } from "@/game/config/news";
 import { play, release as releaseAudio, type Cue } from "@/game/sound";
 import { SKILLS } from "@/game/config/skills";
 import { CREATURE_BY_ID } from "@/game/config/creatures";
@@ -238,7 +239,13 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const drifterDef = state.drifter ? DRIFTER_BY_ID[state.drifter.defId] : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    // The jar stays a column even on a wide window. It is one object and a
+    // button; stretching it to fifteen hundred pixels makes a short, very wide
+    // rectangle with a heart lost in the middle of it. The screens with two
+    // things to look at, the trees, are the ones that use the width.
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
+      <NewsTicker stage={derived.stage} />
+
       {/* The jar */}
       <div
         data-tour="vessel"
@@ -600,5 +607,32 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
         </Section>
       )}
     </div>
+  );
+}
+
+/**
+ * Something to read while you tap.
+ *
+ * Borrowed from Cookie Clicker, and doing nothing mechanical on purpose: a
+ * line that paid out would become something to farm. It is filtered by stage,
+ * so nothing here spoils a mechanic that has not arrived yet.
+ */
+function NewsTicker({ stage }: { stage: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), NEWS_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const line = newsLine(stage, now);
+  return (
+    <p
+      key={line}
+      className="fade-in rounded-full border border-line-soft bg-white/70 px-4 py-1.5 text-center text-xs italic text-berry-soft"
+      aria-live="off"
+    >
+      {line}
+    </p>
   );
 }

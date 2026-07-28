@@ -28,12 +28,19 @@ import { StageAnnounce } from "@/components/jar/explain";
 import type { Feature } from "@/game/config/stages";
 
 /**
- * Five groups, not nineteen tabs.
+ * Four groups, not five, and eleven tabs rather than seventeen.
  *
- * Nineteen was a scrolling strip that nobody could hold in their head, and it
- * buried the jar itself among admin screens. The jar is first and alone,
- * because tapping it is the game; everything else is filed under where you
- * would look for it.
+ * Nineteen flat tabs became five groups a while ago, which was the right move
+ * and did not go far enough: five groups of four or five is still twenty-two
+ * things to choose between, and several of them were filed by what the code
+ * calls them rather than by what they are for. The chain, the upgrades and the
+ * automation are one subject, and they were three tabs across two rows.
+ *
+ * So: the jar you tap, the tree you spend in, the two of you, and rebirth.
+ * Everything that is a reference rather than a decision (the codex, the
+ * collections, the statistics, the mini-games) sits behind More, because a
+ * thing you read once a week should not cost a slot next to the thing you tap
+ * every second.
  */
 const GROUPS = [
   { id: "jar", label: "Jar", tabs: [] },
@@ -41,20 +48,10 @@ const GROUPS = [
     id: "grow",
     label: "Grow",
     tabs: [
+      { id: "upgrades", label: "Trees", needs: "upgrades" },
       { id: "depths", label: "The chain", needs: "chain" },
-      { id: "upgrades", label: "Upgrades", needs: "upgrades" },
       { id: "automation", label: "Automation", needs: "automation" },
       { id: "abilities", label: "Abilities", needs: "abilities" },
-    ],
-  },
-  {
-    id: "jarful",
-    label: "The jar",
-    tabs: [
-      { id: "creatures", label: "Creatures", needs: "pets" },
-      { id: "vessels", label: "Vessels", needs: "vessels" },
-      { id: "collections", label: "Collections", needs: "pets" },
-      { id: "codex", label: "Codex", needs: "pets" },
     ],
   },
   {
@@ -62,20 +59,30 @@ const GROUPS = [
     label: "Us",
     tabs: [
       { id: "us", label: "Together", needs: "us" },
+      { id: "creatures", label: "Creatures", needs: "pets" },
       { id: "missions", label: "Missions", needs: "missions" },
       { id: "challenges", label: "Challenges", needs: "challenges" },
-      { id: "achievements", label: "Achievements", needs: "missions" },
-      { id: "minigames", label: "Mini-games", needs: "pets" },
     ],
   },
   {
     id: "deeper",
-    label: "Deeper",
+    label: "Rebirth",
     tabs: [
       { id: "tide", label: "Rebirth", needs: "tideChange" },
-      { id: "water", label: "Deep rebirth", needs: "newWater" },
-      { id: "sea", label: "Last rebirth", needs: "sea" },
+      { id: "water", label: "Deep", needs: "newWater" },
+      { id: "sea", label: "Last", needs: "sea" },
       { id: "dilation", label: "Dilation", needs: "dilation" },
+    ],
+  },
+  {
+    id: "more",
+    label: "More",
+    tabs: [
+      { id: "vessels", label: "Jars", needs: "vessels" },
+      { id: "achievements", label: "Achievements", needs: "missions" },
+      { id: "collections", label: "Collections", needs: "pets" },
+      { id: "codex", label: "Codex", needs: "pets" },
+      { id: "minigames", label: "Mini-games", needs: "pets" },
       { id: "stats", label: "Statistics", needs: "tideChange" },
     ],
   },
@@ -172,7 +179,15 @@ function JarApp() {
         }
       />
 
-      <div className="sticky top-0 z-20 border-b border-line-soft bg-cream/95 px-4 pb-1.5 pt-1 backdrop-blur-sm">
+      {/* Docked below the bar, not underneath it.
+          Both of these were `sticky top-0`; this one has the lower z-index, so
+          on any scroll it slid behind the title bar and took the wallet and
+          the tabs with it. */}
+      <div
+        className="sticky z-20 border-b border-line-soft bg-cream/95 pb-1.5 pt-1 backdrop-blur-sm"
+        style={{ top: "calc(3.5rem + var(--safe-top))" }}
+      >
+        <div className="mx-auto w-full max-w-lg px-4 lg:max-w-5xl">
         <WalletStrip />
         <div data-tour="tabs" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
           {groups.map((entry) => {
@@ -209,9 +224,10 @@ function JarApp() {
             ))}
           </div>
         )}
+        </div>
       </div>
 
-      <main className="flex flex-col gap-3 px-4 py-3">
+      <main className="mx-auto flex w-full max-w-lg flex-col gap-3 px-4 py-3 lg:max-w-5xl">
         {current === "jar" && <JarScreen onOpenTab={setTab} />}
         {current === "depths" && <DepthsTab />}
         {current === "automation" && <AutomationTab />}

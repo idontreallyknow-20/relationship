@@ -458,7 +458,7 @@ export function TopBar({
       className="sticky top-0 z-30 border-b border-line-soft bg-cream/95 backdrop-blur-sm"
       style={{ paddingTop: "var(--safe-top)" }}
     >
-      <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
+      <div className="mx-auto flex h-14 w-full max-w-lg items-center gap-2 px-4 lg:max-w-5xl">
         {back && (
           <IconButton label="Back" onClick={back} className="-ml-2">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

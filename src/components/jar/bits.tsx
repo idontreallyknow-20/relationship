@@ -2,7 +2,8 @@
 
 // Small shared pieces. Presentation only: no game rules live here.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useGame } from "@/game/store";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import { formatNumber } from "@/game/numbers";
 import type { CurrencyId, GameState } from "@/game/types";
@@ -72,6 +73,49 @@ export function Bar({ value, max, color = "var(--color-rose-dark)", height = "0.
   );
 }
 
+/**
+ * A number that rolls to its new value instead of jumping to it.
+ *
+ * The wallet is the one place in the game where a number changing is the whole
+ * point, and it changed by teleporting. Rolling it is most of the difference
+ * between a readout and a total that feels like it is filling up.
+ *
+ * Interpolated geometrically rather than linearly, because these numbers span
+ * thirty orders of magnitude and a linear walk from a thousand to a trillion
+ * spends the entire animation looking like a trillion. Falls straight through
+ * for a decrease, since watching your balance drain after buying something is
+ * not a reward, and for reduced motion.
+ */
+function useRolling(value: number, enabled: boolean): number {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  const started = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || value <= shown || !Number.isFinite(value)) {
+      setShown(value);
+      from.current = value;
+      return;
+    }
+    from.current = shown;
+    started.current = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - started.current) / 420);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const a = Math.max(1, from.current);
+      const b = Math.max(1, value);
+      setShown(t >= 1 ? value : a * Math.pow(b / a, eased));
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, enabled]);
+
+  return shown;
+}
+
 export function CurrencyPill({ currency, amount, format, compact = false }: {
   currency: CurrencyId;
   amount: number;
@@ -80,6 +124,11 @@ export function CurrencyPill({ currency, amount, format, compact = false }: {
 }) {
   const def = CURRENCY_BY_ID[currency];
   const [open, setOpen] = useState(false);
+  const { state } = useGame();
+  const rolling = useRolling(
+    amount,
+    !state.settings.reducedMotion && !state.settings.batterySaver,
+  );
   if (!def) return null;
 
   return (
@@ -92,7 +141,7 @@ export function CurrencyPill({ currency, amount, format, compact = false }: {
         }`}
       >
         <CurrencyIcon currency={currency} className={compact ? "h-3.5 w-3.5 shrink-0" : "h-4 w-4 shrink-0"} />
-        <span className="text-berry">{formatNumber(amount, format)}</span>
+        <span className="text-berry tabular-nums">{formatNumber(rolling, format)}</span>
         {!compact && <span className="text-berry-soft">{def.short}</span>}
       </button>
 
