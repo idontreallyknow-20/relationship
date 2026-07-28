@@ -25,6 +25,15 @@ import { HeartIcon } from "@/components/hearts";
 export function StageAnnounce() {
   const { state, derived, mutate } = useGame();
 
+  // Never on top of the tour.
+  //
+  // Both of these are full screen sheets with their own dimming overlay, and
+  // crossing the second stage during the first run put them on screen together:
+  // two stacked cards, each greying the other out, one of them explaining a tab
+  // the tour was about to explain anyway. The tour is six steps and finishes in
+  // under a minute, and the stage announcement keeps until it does.
+  if (!state.settings.tutorialDone) return null;
+
   const pending = derived.stage > state.stageSeen ? STAGE_BY_INDEX[derived.stage] : null;
   if (!pending) return null;
 

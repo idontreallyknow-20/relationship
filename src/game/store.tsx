@@ -31,7 +31,8 @@ import {
   recordDay, tick as engineTick, checkEggs, type OfflineReport,
 } from "./engine";
 import {
-  buyCheapest, collectGift, grantTogether, receiveGift, recordSameEvening, refreshMissions,
+  buyCheapest, collectGift, grantTogether, receiveGift, recordPartnerRebirths,
+  recordSameEvening, refreshMissions,
   recordPartnerTotal, runAutobuyers, runDeepAutomation, settleMeters,
 } from "./actions";
 import { drainRewards } from "./rewards-inbox";
@@ -276,6 +277,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
         // What they have built, which raises the pair bonus for both of you.
         if (theirs && recordPartnerTotal(state, Number(theirs.lifetime_hearts)).ok) changed = true;
+        // And how many lives they have had, which is the joint milestone ladder.
+        if (theirs && recordPartnerRebirths(state, Number(theirs.tide_changes)).ok) changed = true;
 
         if (theirs?.updated_at) {
           partnerHereMs.current = Date.now() - Date.parse(theirs.updated_at);

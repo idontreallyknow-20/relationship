@@ -252,9 +252,9 @@ export const WATERS: WaterDef[] = [
   { id: "her_pink", name: "Hers, Pink", color: "#e8a0c0", source: "Yours from the start." },
   { id: "her_purple", name: "Hers, Purple", color: "#a888d8", source: "Yours from the start." },
   { id: "deep", name: "Deep", color: "#2f5a80", source: "Reach the Aquarium." },
-  { id: "dawn", name: "Dawn", color: "#e0b088", source: "Fifty tide changes." },
+  { id: "dawn", name: "Dawn", color: "#e0b088", source: "Fifty rebirths." },
   { id: "dragon", name: "Dragon", color: "#a03a2a", source: "Buy The Dragon." },
-  { id: "moonstone", name: "Moonstone", color: "#c8c0e0", source: "Change the water three times." },
+  { id: "moonstone", name: "Moonstone", color: "#c8c0e0", source: "Three deep rebirths." },
 ];
 
 export const WATER_BY_ID: Record<string, WaterDef> = Object.fromEntries(WATERS.map((w) => [w.id, w]));

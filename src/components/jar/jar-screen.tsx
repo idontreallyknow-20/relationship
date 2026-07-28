@@ -46,6 +46,9 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
 
   const [popups, setPopups] = useState<Popup[]>([]);
   const [shake, setShake] = useState(false);
+  // Every tap sends a ring out from the heart. Purely feel, and the first
+  // thing anybody notices about a tapping game.
+  const [ripple, setRipple] = useState(0);
   const [slosh, setSlosh] = useState(false);
   const popupId = useRef(0);
   const ringRef = useRef(0);
@@ -114,6 +117,9 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
 
   const tap = useCallback(() => {
     const at = Date.now();
+    // Bumping a counter remounts the ring below, which replays its animation.
+    // Cheaper and steadier than a timer, and it cannot leak one.
+    setRipple((n) => n + 1);
 
     mutate((draft) => {
       const d = derive(draft, at);
@@ -382,6 +388,14 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
               }}
             />
           )}
+          {ripple > 0 && !reduced && (
+            <span
+              key={ripple}
+              aria-hidden="true"
+              className="tap-ring absolute h-28 w-28 rounded-full border-2"
+              style={{ borderColor: vessel.accent }}
+            />
+          )}
           <HeartIcon className="h-20 w-20 drop-shadow" />
         </button>
         <p className="text-xs font-semibold" style={{ color: vessel.accent }}>
@@ -443,12 +457,12 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       {has("tideChange") && state.runHearts < TIDE_REQUIREMENT && (
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold text-berry">Next tide change</p>
+            <p className="text-sm font-semibold text-berry">Next rebirth</p>
             <p className="text-xs text-berry-soft">
               {formatNumber(state.runHearts, format)} / {formatNumber(TIDE_REQUIREMENT, format)}
             </p>
           </div>
-          <Bar value={state.runHearts} max={TIDE_REQUIREMENT} label="Progress toward a tide change" />
+          <Bar value={state.runHearts} max={TIDE_REQUIREMENT} label="Progress toward a rebirth" />
         </div>
       )}
 

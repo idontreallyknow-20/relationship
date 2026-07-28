@@ -50,7 +50,9 @@ export function buyUpgrade(state: GameState, id: string, count: number): ActionR
   if (!def) return fail("Unknown upgrade");
   if (!buyableTree(state, def)) return fail("That one is theirs to buy");
   if (!meetsUnlock(state, def.unlock)) return fail("Not unlocked yet");
-  if (count > 1 && !hasFlag(state, "bulk")) return fail("Buying in handfuls is a moon upgrade");
+  // Buying ten or a hundred or the lot used to be a moon upgrade. It should
+  // never have been: it is not power, it is not having to press a button
+  // eighty times, and making somebody earn that is just making them tap.
 
   const challenge = state.activeChallenge ? CHALLENGE_BY_ID[state.activeChallenge.defId] : null;
   if (challenge?.rule === "one_line" && def.tree !== state.owner) {
@@ -476,7 +478,6 @@ export function deepen(state: GameState): ActionResult {
     depth.owned = 0;
   }
   state.depths[0].unlocked = true;
-  state.depths[1].unlocked = true;
   // Hearts stay. Taking them as well meant rebuilding from nothing every time,
   // and measured, that was one deepening per quarter of an hour: a wall in the
   // one loop that is supposed to be the fast one. Losing the chain is the cost;
@@ -776,7 +777,7 @@ export const GIFT_WINDOW_MS = 48 * 3_600_000;
 /**
  * Take whatever the other person left behind.
  *
- * `leaveGift` writes onto the giver's own save, which is all a tide change can
+ * `leaveGift` writes onto the giver's own save, which is all a rebirth can
  * reach. This is the other half: the receiver reads their partner's save and
  * moves the gift across. Idempotent on the gift's timestamp, so polling for it
  * every few minutes cannot hand the same one over twice.
@@ -851,6 +852,23 @@ export function recordPartnerTotal(state: GameState, theirLifetime: number): Act
   const previous = state.storyProgress["partnerLifetime"] ?? 0;
   if (value <= previous) return fail("Nothing new");
   state.storyProgress["partnerLifetime"] = value;
+  return done();
+}
+
+/**
+ * Remember how many times they have been reborn.
+ *
+ * Only ever goes up. Their save is read from the server every few minutes, and
+ * a deep rebirth on their side puts their count back to zero; taking the lower
+ * number would quietly delete a joint milestone the pair genuinely reached, so
+ * this keeps the high water mark instead.
+ */
+export function recordPartnerRebirths(state: GameState, theirRebirths: number): ActionResult {
+  const value = Number(theirRebirths);
+  if (!Number.isFinite(value) || value < 0) return fail("Nothing to read");
+  const previous = state.storyProgress["partnerRebirths"] ?? 0;
+  if (value <= previous) return fail("Nothing new");
+  state.storyProgress["partnerRebirths"] = value;
   return done();
 }
 
@@ -980,7 +998,7 @@ export function startChallenge(state: GameState, id: string, now: number): Actio
   if (state.activeChallenge) return fail("Already in one");
   if (state.lifetime.hearts < def.unlockLifetime) return fail("Not unlocked yet");
   if (def.requiresTideChanges && state.tideChanges < def.requiresTideChanges) {
-    return fail(`Needs ${def.requiresTideChanges} tide changes`);
+    return fail(`Needs ${def.requiresTideChanges} rebirths`);
   }
 
   const snapshot = JSON.stringify({
@@ -1051,6 +1069,24 @@ export function finishChallenge(state: GameState, now: number, abandon = false):
 /* Reset layers                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Put the chain back to how it looked on the first morning.
+ *
+ * Every rebirth calls this. Only the first tier is open, nothing is bought,
+ * no deepening has happened and the jar is back to its ordinary speed. The
+ * autobuyers keep their settings, because turning eight switches back on
+ * after every rebirth is not a decision, it is a chore.
+ */
+function resetChain(state: GameState): void {
+  for (let i = 0; i < state.depths.length; i++) {
+    state.depths[i].bought = 0;
+    state.depths[i].owned = 0;
+    state.depths[i].unlocked = i === 0;
+  }
+  state.deepens = 0;
+  state.tideBought = 0;
+}
+
 export function canChangeTide(state: GameState): boolean {
   return state.runHearts >= tideRequirement(state.tideChanges);
 }
@@ -1094,10 +1130,23 @@ export function changeTide(state: GameState, now: number): ActionResult {
   state.drifter = null;
   state.vessel = "jam_jar";
 
+  // The chain goes, and so does every deepening.
+  //
+  // This is the whole reason the game used to end after twenty minutes. A
+  // rebirth took your hearts and your upgrades but left the chain standing,
+  // so income came straight back, the bar was crossed again within seconds,
+  // and the permanent multipliers compounded on themselves until hearts left
+  // the range of a floating point number. Measured: eighty-eight rebirths and
+  // a hundred and sixty-three deepenings inside the twentieth minute.
+  //
+  // Clearing the chain is what makes a life have a shape. You rebuild it each
+  // time, faster than the last, which is the entire pleasure of the genre.
+  resetChain(state);
+
   leaveGift(state, state.owner, now);
   if (state.tideChanges >= 50) grantCollectible(state, "waters", "dawn");
-  pushLog(state, "Tide", `${moons} moons`);
-  return done(`Tide change ${state.tideChanges}: ${moons} moons`);
+  pushLog(state, "Rebirth", `${moons} moons`);
+  return done(`Rebirth ${state.tideChanges}: ${moons} moons`);
 }
 
 export function canChangeWater(state: GameState): boolean {
@@ -1109,7 +1158,7 @@ export function waterPreview(state: GameState): number {
 }
 
 export function changeWater(state: GameState, now: number): ActionResult {
-  if (!hasFlag(state, "new_water")) return fail("New Water is a moon upgrade");
+  if (!hasFlag(state, "new_water")) return fail("Deep Rebirth is a moon upgrade");
   if (!canChangeWater(state)) return fail("Not enough hearts in this era yet");
   const stars = waterPreview(state);
   if (stars <= 0) return fail("This era would not pay anything");
@@ -1155,12 +1204,12 @@ export function changeWater(state: GameState, now: number): ActionResult {
   }
   if (state.newWaters >= 3) grantCollectible(state, "waters", "moonstone");
 
-  pushLog(state, "Water", `${stars} stars`);
-  return done(`New water ${state.newWaters}: ${stars} stars`);
+  pushLog(state, "Deep rebirth", `${stars} stars`);
+  return done(`Deep rebirth ${state.newWaters}: ${stars} stars`);
 }
 
 /* ------------------------------------------------------------------ */
-/* The Sea                                                             */
+/* The last rebirth                                                    */
 /* ------------------------------------------------------------------ */
 
 export function canLetGo(state: GameState): boolean {
@@ -1180,7 +1229,7 @@ export function seaPreview(state: GameState): number {
  * the creatures, the memories and the two of you.
  */
 export function letGo(state: GameState, now: number): ActionResult {
-  if (state.newWaters < 3) return fail("Change the water three times first");
+  if (state.newWaters < 3) return fail("Do three deep rebirths first");
   if (!canLetGo(state)) return fail("Not enough yet");
   const drops = seaPreview(state);
   if (drops <= 0) return fail("This one would not pay anything");
@@ -1216,10 +1265,10 @@ export function letGo(state: GameState, now: number): ActionResult {
   if (!keepDeepens) state.deepens = 0;
 
   for (let i = 0; i < state.depths.length; i++) {
-    state.depths[i] = { bought: 0, owned: 0, unlocked: i < 2 };
+    state.depths[i] = { bought: 0, owned: 0, unlocked: i === 0 };
   }
 
-  pushLog(state, "The Sea", `${drops} drops`);
+  pushLog(state, "Last rebirth", `${drops} drops`);
   return done(`${drops} drops. There was never a jar.`);
 }
 

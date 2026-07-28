@@ -71,9 +71,9 @@ const GROUPS = [
     id: "deeper",
     label: "Deeper",
     tabs: [
-      { id: "tide", label: "Tide change", needs: "tideChange" },
-      { id: "water", label: "New water", needs: "newWater" },
-      { id: "sea", label: "The Sea", needs: "sea" },
+      { id: "tide", label: "Rebirth", needs: "tideChange" },
+      { id: "water", label: "Deep rebirth", needs: "newWater" },
+      { id: "sea", label: "Last rebirth", needs: "sea" },
       { id: "stats", label: "Statistics", needs: "tideChange" },
     ],
   },

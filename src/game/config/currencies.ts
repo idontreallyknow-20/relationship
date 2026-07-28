@@ -65,7 +65,7 @@ export const CURRENCIES: CurrencyDef[] = [
     id: "stars",
     name: "Stars",
     short: "Stars",
-    source: "New water. Rare.",
+    source: "Deep rebirth. Rare.",
     purpose: "The last vessels and the deepest upgrades.",
     color: "#4f7bd0",
   },

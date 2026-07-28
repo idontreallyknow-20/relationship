@@ -154,5 +154,12 @@ The service role key is never used outside Supabase's own infrastructure.
 - A request that hangs rather than failing is given eight seconds before the
   cached copy is shown instead. On a genuinely slow connection that means a
   screen can go stale for a moment before refreshing.
-- Numbers are IEEE doubles with a hard ceiling of 1e300. The progression is
-  tuned so that is end-of-content rather than something you trip over.
+- Numbers are IEEE doubles with a hard ceiling of about 1.8e308, and the game
+  has no big-number type. That is fine because rebirth clears the production
+  chain, so a single life is bounded and the count of lives is what grows;
+  every reset requirement is capped well under the ceiling so no rung can
+  become unreachable. The consequence is a plateau rather than an ending: past
+  roughly a hundred and fifty rebirths the bar stops rising and only the
+  counter moves. Simulated at perfect, uninterrupted play that is about four
+  hours; at a human pace it is weeks. Going past it would need a
+  mantissa-and-exponent number type throughout.

@@ -214,7 +214,7 @@ export interface AutobuyerState {
   lastRunAt: number;
 }
 
-/** Left behind by a tide change for the other person to find. */
+/** Left behind by a rebirth for the other person to find. */
 export interface Gift {
   from: Person;
   at: number;
@@ -299,7 +299,7 @@ export interface GameState {
   wallet: Record<CurrencyId, number>;
   lifetime: Record<CurrencyId, number>;
 
-  /** Hearts since the last tide change, and since the last new water. */
+  /** Hearts this life, and since the last deep rebirth. */
   runHearts: number;
   eraHearts: number;
   runStartedAt: number;
@@ -364,7 +364,7 @@ export interface GameState {
   giftLeft: Gift | null;
   giftWaiting: Gift | null;
 
-  /** Live run state, not persisted across a tide change. */
+  /** Live run state, not persisted across a rebirth. */
   combo: number;
   comboExpiresAt: number;
   buffs: Buff[];

@@ -272,12 +272,13 @@ describe("upgrades", () => {
     expect(buyUpgrade(state, def.id, 1).ok).toBe(false);
   });
 
-  it("only buys in handfuls once the moon upgrade is bought", () => {
+  it("buys in handfuls from the very first life, with nothing to unlock", () => {
+    // This used to cost four moons, which meant the first hour of the game was
+    // spent pressing a button one level at a time to earn the right to stop.
     const state = rich();
     delete state.moonUpgrades["m_bulk"];
-    expect(buyUpgrade(state, "otter_hands", 10).ok).toBe(false);
-    state.moonUpgrades["m_bulk"] = 1;
     expect(buyUpgrade(state, "otter_hands", 10).ok).toBe(true);
+    expect(state.upgrades["otter_hands"]).toBe(10);
   });
 });
 

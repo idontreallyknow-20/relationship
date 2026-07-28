@@ -9,6 +9,7 @@ import {
 import { CREATURE_BY_ID, TRAIT_BY_ID, actionInterval, creatureScale } from "./config/creatures";
 import { DEEPEN_MULTIPLIER, DEPTHS, maxDepthCount, tideSpeed } from "./config/depths";
 import { METERS, meterMods, togetherBonus } from "./config/meters";
+import { combinedRebirths, jointReached } from "./config/together";
 import { featuresAt, stageFor } from "./config/stages";
 import { MEMORY_BY_ID } from "./config/memories";
 import { VESSEL_BY_ID } from "./config/vessels";
@@ -249,6 +250,11 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     apply(bags, { mul: { all: togetherBonus(state.lifetime.hearts, partnerTotal) } });
   }
 
+  // The pair's rebirths, added together and paid to both of you. Derived from
+  // a remembered number rather than a live one, so it survives being offline.
+  const joint = combinedRebirths(state.tideChanges, state.storyProgress["partnerRebirths"] ?? 0);
+  for (const milestone of jointReached(joint)) apply(bags, milestone.mods);
+
   // The love meters. Each pays a share of its full multiplier.
   for (const def of METERS) {
     apply(bags, meterMods(def, state.meters[def.id] ?? 0));
@@ -259,7 +265,7 @@ export function derive(state: GameState, now: number = Date.now()): Derived {
     if (state.depths[i].owned > 0) apply(bags, DEPTHS[i].mods);
   }
 
-  // Deepening pays a multiplier that survives everything below a tide change.
+  // Deepening pays a multiplier that survives everything below a rebirth.
   if (state.deepens > 0) {
     apply(bags, { mul: { depthPower: Math.pow(DEEPEN_MULTIPLIER, state.deepens) } });
   }

@@ -18,7 +18,9 @@ import {
   depthBuyCount, tideBuyCount, buyResetUpgrade,
 } from "@/game/actions";
 import { DEPTHS, deepenRequirement, depthCost, tideCost } from "@/game/config/depths";
-import { MOON_UPGRADES } from "@/game/config/resets";
+import {
+  MOON_UPGRADES, moonGain, seaRequirement, tideRequirement, waterRequirement,
+} from "@/game/config/resets";
 import { upgradeNextCost } from "@/game/formulas";
 import { UPGRADES } from "@/game/config/upgrades";
 import { meetsUnlock } from "@/game/formulas";
@@ -244,6 +246,97 @@ describe("the numbers stay sane", () => {
     // Not so cheap that one purchase buys hundreds of levels.
     expect(state.tideBought).toBeLessThan(60);
   });
+});
+
+describe("rebirth is the loop", () => {
+  it("clears the chain, so the next life starts from the top", () => {
+    const state = createGameState(0);
+    let now = 0;
+    while (!canChangeTide(state) && now < 3_600_000) {
+      for (let t = 0; t < TICKS_PER_SECOND; t++) {
+        now += TICK_MS;
+        tick(state, TICK_MS, now);
+      }
+      buyAll(state, 8);
+      if (canDeepen(state)) deepen(state);
+    }
+
+    expect(canChangeTide(state), "never reached the first rebirth in an hour").toBe(true);
+    expect(state.depths.some((d) => d.bought > 0), "nothing was ever bought").toBe(true);
+
+    changeTide(state, now);
+
+    // This is the whole fix. A rebirth that leaves the chain standing is not a
+    // rebirth: income comes straight back, the bar is crossed again within
+    // seconds, and the permanent multipliers compound to the ceiling.
+    for (const depth of state.depths) {
+      expect(depth.bought, "a tier survived a rebirth").toBe(0);
+      expect(depth.owned, "a tier was still producing after a rebirth").toBe(0);
+    }
+    expect(state.depths.filter((d) => d.unlocked)).toHaveLength(1);
+    expect(state.deepens, "deepenings survived a rebirth").toBe(0);
+    expect(state.tideBought, "bought speed survived a rebirth").toBe(0);
+    expect(state.wallet.moons).toBeGreaterThan(0);
+  });
+
+  it("pays for going further without paying proportionally", () => {
+    // Logarithmic, not proportional. Late in a life the jar makes more in a
+    // second than it made in the first minute, so a proportional payout hands
+    // out thousands of moons for a life that took under a minute, and the tree
+    // those moons buy makes the next life shorter still.
+    const onTheBar = createGameState(0);
+    onTheBar.runHearts = tideRequirement(0);
+    const wayPast = createGameState(0);
+    wayPast.runHearts = tideRequirement(0) * 1e12;
+
+    const modest = moonGain(onTheBar);
+    const enormous = moonGain(wayPast);
+    expect(enormous).toBeGreaterThan(modest);
+    expect(enormous).toBeLessThan(modest * 20);
+  });
+
+  it("never asks for more hearts than a number can hold", () => {
+    // A requirement is something the run has to actually reach. Above about
+    // 1.8e308 there is no such number, so an uncapped bar does not make the
+    // game harder, it ends it silently.
+    for (let n = 0; n < 1_000; n++) {
+      expect(Number.isFinite(tideRequirement(n)), `rebirth ${n}`).toBe(true);
+      expect(tideRequirement(n)).toBeLessThan(1e250);
+      expect(Number.isFinite(waterRequirement(n))).toBe(true);
+      expect(Number.isFinite(seaRequirement(n))).toBe(true);
+    }
+  });
+
+  it("stays far below the ceiling across four hours of perfect play", () => {
+    // The measurement that started all of this: optimal play used to reach
+    // 1e300 in the twentieth minute and the game simply stopped.
+    const state = createGameState(0);
+    let now = 0;
+    let rebirths = 0;
+    for (let second = 0; second < 14_400; second++) {
+      for (let t = 0; t < TICKS_PER_SECOND; t++) {
+        now += TICK_MS;
+        tick(state, TICK_MS, now);
+      }
+      buyAll(state, 8);
+      if (canDeepen(state)) deepen(state);
+      if (canChangeTide(state)) {
+        changeTide(state, now);
+        rebirths += 1;
+        for (const id of ["m_depth", "m_auto_tap", "m_autobuyer", "m_tide_speed", "m_all", "m_forever"]) {
+          for (let i = 0; i < 20; i++) if (!buyResetUpgrade(state, id).ok) break;
+        }
+      }
+    }
+
+    expect(rebirths, "the loop stopped turning").toBeGreaterThan(10);
+    expect(state.wallet.hearts).toBeLessThan(1e280);
+    expect(state.runHearts).toBeLessThan(1e280);
+    expect(Number.isFinite(derive(state, now).heartsPerSecond)).toBe(true);
+    for (const depth of state.depths) {
+      expect(Number.isFinite(depth.owned), "a tier ran away").toBe(true);
+    }
+  }, 60_000);
 });
 
 describe("the moon tree is worth buying", () => {

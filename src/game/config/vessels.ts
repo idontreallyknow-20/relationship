@@ -178,7 +178,7 @@ export const VESSELS: VesselDef[] = [
     backdrop: "#c0d0cc",
     accent: "#1f4a50",
     mods: { mul: { all: 2.2, moonGain: 1.4 } },
-    rule: "Tide changes here pay far more.",
+    rule: "Rebirths here pay far more.",
     cost: { currency: "stars", amount: 25 },
     unlockLifetime: 1e19,
   },
