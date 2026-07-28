@@ -17,9 +17,9 @@ import {
   buyAll, buyDepth, buyTide, canChangeTide, canDeepen, changeTide, deepen,
   depthBuyCount, tideBuyCount, buyResetUpgrade,
 } from "@/game/actions";
-import { DEPTHS, deepenRequirement, depthCost, tideCost } from "@/game/config/depths";
+import { DEPTHS, deepenPower, deepenRequirement, depthCost, maxDepthCount, tideCost } from "@/game/config/depths";
 import {
-  MOON_UPGRADES, moonGain, seaRequirement, tideRequirement, waterRequirement,
+  DROP_UPGRADES, MOON_UPGRADES, moonGain, seaRequirement, tideRequirement, waterRequirement,
 } from "@/game/config/resets";
 import { upgradeNextCost } from "@/game/formulas";
 import { UPGRADES } from "@/game/config/upgrades";
@@ -399,5 +399,47 @@ describe("the moon tree is worth buying", () => {
       tick(invested, TICK_MS, now);
     }
     expect(invested.lifetime.hearts).toBeGreaterThan(plain.lifetime.hearts * 2);
+  });
+});
+
+describe("the chain reaches its own end", () => {
+  // Towns, the deepest tier in the game, could not be opened by any
+  // combination of purchases: three tiers are reachable without the drop tree
+  // and four rungs of one each got to seven of eight. Not expensive, not
+  // hidden, just absent from the arithmetic.
+  it("can open every tier that exists", () => {
+    const extra = DROP_UPGRADES
+      .filter((def) => def.stat === "extraDepths")
+      .reduce((sum, def) => sum + (def.per ?? 0) * (def.max === Infinity ? 1 : def.max), 0);
+    expect(maxDepthCount(extra)).toBe(DEPTHS.length);
+  });
+});
+
+describe("a life is bounded", () => {
+  // Rebirth was made to clear the chain so that a single life could not run
+  // away. Deepening survived that reasoning and put the twenty-minute game
+  // back: its requirement is capped at four thousand purchases, so once the
+  // chain can buy four thousand of anything it is free and endlessly
+  // repeatable, and it multiplied every tier by 1.5 with no limit.
+  it("does not let deepening compound without end", () => {
+    expect(deepenPower(0)).toBe(1);
+    expect(deepenPower(10)).toBeCloseTo(Math.pow(1.5, 10), 5);
+
+    // Five hundred deepenings used to be 1.5^500, which is past the ceiling on
+    // its own, never mind everything it multiplies.
+    expect(deepenPower(500)).toBeLessThan(1e30);
+    expect(Number.isFinite(deepenPower(5_000))).toBe(true);
+  });
+
+  it("still makes every early deepening clearly worth doing", () => {
+    for (let n = 1; n <= 25; n++) {
+      expect(deepenPower(n) / deepenPower(n - 1)).toBeCloseTo(1.5, 5);
+    }
+  });
+
+  it("never goes backwards", () => {
+    for (let n = 1; n < 200; n++) {
+      expect(deepenPower(n)).toBeGreaterThan(deepenPower(n - 1));
+    }
   });
 });

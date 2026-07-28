@@ -55,7 +55,11 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
   const [ringValue, setRingPhase] = useState(0);
 
   const reduced = state.settings.reducedMotion || state.settings.batterySaver;
+  // "Some" used to be identical to "Full": the only check was `!== "off"`, so
+  // the middle setting was a label with nothing behind it. It now halves the
+  // number of numbers in the air, which is what someone picking it wants.
   const particlesOn = state.settings.particles !== "off" && !state.settings.batterySaver;
+  const popupCap = state.settings.particles === "reduced" ? Math.ceil(MAX_POPUPS / 3) : MAX_POPUPS;
   const format = state.settings.numberFormat;
   const ringPhase = reduced ? 1 : ringValue;
 
@@ -87,10 +91,10 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
     (text: string, x: number, y: number, kind: Popup["kind"]) => {
       if (!particlesOn) return;
       const id = ++popupId.current;
-      setPopups((prev) => [...prev.slice(-(MAX_POPUPS - 1)), { id, x, y, text, kind }]);
+      setPopups((prev) => [...prev.slice(-(popupCap - 1)), { id, x, y, text, kind }]);
       setTimeout(() => setPopups((prev) => prev.filter((p) => p.id !== id)), 900);
     },
-    [particlesOn],
+    [particlesOn, popupCap],
   );
 
   const buzz = useCallback(
@@ -408,21 +412,40 @@ export function JarScreen({ onOpenTab }: { onOpenTab: (tab: string) => void }) {
       </div>
 
       {/* Numbers, which arrive as they start to mean something. Six of these on
-          a first run was six things to wonder about before the first upgrade. */}
-      <div className="grid grid-cols-3 gap-2">
-        <Stat label="Per tap" value={formatNumber(derived.heartsPerClick, format)} tone="accent" />
-        {has("chain") && (
-          <Stat label="Per second" value={formatNumber(derived.heartsPerSecond, format)} />
-        )}
-        {state.combo > 0 && <Stat label="Combo" value={`${state.combo} / ${derived.comboCap}`} />}
-        {has("upgrades") && (
-          <Stat label="Critical" value={formatPercent(derived.critChance, 1)} />
-        )}
-        {has("chain") && (
-          <Stat label="Lifetime" value={formatNumber(state.lifetime.hearts, format)} />
-        )}
-        {has("tide") && <Stat label="Tide" value={`${Math.round(state.tideLevel)}%`} />}
-      </div>
+          a first run was six things to wonder about before the first upgrade.
+
+          Built as a list rather than six conditionals inside a fixed three
+          column grid, which rendered one card and two empty cells on a fresh
+          save and five cards and one empty cell in the middle of a run. The
+          row never balanced at any point in the game. */}
+      {(() => {
+        const stats: { label: string; value: string; tone?: "accent" }[] = [
+          { label: "Per tap", value: formatNumber(derived.heartsPerClick, format), tone: "accent" },
+        ];
+        if (has("chain")) {
+          stats.push({ label: "Per second", value: formatNumber(derived.heartsPerSecond, format) });
+        }
+        if (state.combo > 0) {
+          stats.push({ label: "Combo", value: `${state.combo} / ${derived.comboCap}` });
+        }
+        if (has("upgrades")) {
+          stats.push({ label: "Critical", value: formatPercent(derived.critChance, 1) });
+        }
+        if (has("chain")) {
+          stats.push({ label: "Lifetime", value: formatNumber(state.lifetime.hearts, format) });
+        }
+        if (has("tide")) {
+          stats.push({ label: "Tide", value: `${Math.round(state.tideLevel)}%` });
+        }
+        const columns = Math.min(3, stats.length);
+        return (
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            {stats.map((stat) => (
+              <Stat key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Tide, which is the shared one */}
       {has("tide") && state.tideLevel > 0 && (

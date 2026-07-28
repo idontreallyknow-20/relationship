@@ -245,7 +245,13 @@ const DROP_RAW: ResetUpgradeDef[] = [
   { id: "d_depth_1", name: "One More Tier", description: "The chain gets one rung longer.", currency: "drops", baseCost: 25, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1 },
   { id: "d_depth_2", name: "Another Tier", description: "And another rung below that.", currency: "drops", baseCost: 60, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_1", 1] },
   { id: "d_depth_3", name: "Deeper Still", description: "One more again.", currency: "drops", baseCost: 150, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_2", 1] },
-  { id: "d_depth_4", name: "The Last Tier", description: "The last rung there is.", currency: "drops", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 1, requires: ["d_depth_3", 1] },
+  // Two, not one.
+  //
+  // The chain has eight tiers and three are reachable without the drop tree, so
+  // four rungs of one each stopped at seven. Towns, the deepest thing in the
+  // game, could not be opened by any combination of purchases: not expensive,
+  // not hidden, simply absent from the arithmetic.
+  { id: "d_depth_4", name: "The Last Tier", description: "The last two rungs there are.", currency: "drops", baseCost: 400, growth: 1, max: 1, kind: "add", stat: "extraDepths", per: 2, requires: ["d_depth_3", 1] },
 
   { id: "d_auto_deepen", name: "It Deepens Itself", description: "The jar goes deeper on its own the moment it can.", currency: "drops", baseCost: 40, growth: 1, max: 1, kind: "flag", flag: "auto_deepen" },
   { id: "d_auto_tide", name: "It Turns Itself", description: "Rebirth happens on its own.", currency: "drops", baseCost: 120, growth: 1, max: 1, kind: "flag", flag: "auto_tide" },

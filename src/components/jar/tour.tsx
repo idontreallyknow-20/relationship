@@ -1,8 +1,22 @@
 "use client";
 
-// First run pointer tour. Six steps, an arrow at each one, skippable at any
-// point. It reads element positions from the DOM rather than hard-coding
-// coordinates, so it survives layout changes and small screens.
+// First run pointer tour. An arrow at each step, skippable at any point. It
+// reads element positions from the DOM rather than hard-coding coordinates, so
+// it survives layout changes and small screens.
+//
+// Two steps, not six.
+//
+// The last two used to switch to the Upgrades and Us tabs and explain three
+// upgrade trees and the shared bonuses. Neither tab exists on a fresh save, so
+// `JarApp` silently fell back to the jar and the tour spent two of its six
+// steps pointing at a row containing the single word "Jar" while describing
+// things that were not on screen and would not be for an hour. A third
+// explained otters and crabs, which now arrive several hours in.
+//
+// Everything they covered still gets explained, by the thing that was built to
+// explain it: each stage announces itself when it actually arrives, in its own
+// words, and stays re-readable afterwards. A tour can only usefully cover what
+// is on screen during the tour, and on a fresh save that is a jar and a heart.
 
 import { useCallback, useEffect, useState } from "react";
 import { useGame } from "@/game/store";
@@ -27,32 +41,8 @@ const STEPS: Step[] = [
   {
     anchor: "tap",
     tab: "jar",
-    title: "Tap",
-    body: "Tap it. That is the whole game. Tap on the beat and it pays more.",
-  },
-  {
-    anchor: "vessel",
-    tab: "jar",
-    title: "Otters and crabs",
-    body: "Otters crack things open at the surface. Crabs carry the pieces up from the floor.",
-  },
-  {
-    anchor: "wallet",
-    tab: "jar",
-    title: "What you keep",
-    body: "Hearts spend on upgrades. Shells and sea glass come from the floor.",
-  },
-  {
-    anchor: "tabs",
-    tab: "upgrades",
-    title: "Three trees",
-    body: "Cami's tree, Joseph's tree, and the shared one. Your own tree costs less and gives more.",
-  },
-  {
-    anchor: "tabs",
-    tab: "us",
-    title: "Together",
-    body: "Gifts, shared totals, and a bonus when you both play the same evening.",
+    title: "Tap the heart",
+    body: "That is the whole game for now. Tap on the beat and it pays more. Everything else arrives on its own, one thing at a time.",
   },
 ];
 

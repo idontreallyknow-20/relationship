@@ -804,9 +804,11 @@ function ReactionGame({ onClose }: { onClose: () => void }) {
 export function WalletStrip() {
   const { state } = useGame();
   const format = state.settings.numberFormat;
-  const shown = CURRENCIES.filter(
-    (c) => state.wallet[c.id] > 0 || c.id === "hearts" || c.id === "shells" || c.id === "glass",
-  );
+  // Hearts always, and anything you have some of. Shells and sea glass used to
+  // be forced on as well, so a save that had never seen a creature opened with
+  // three currencies, two of them zero and neither of them explained. A wallet
+  // is a list of what you have.
+  const shown = CURRENCIES.filter((c) => c.id === "hearts" || state.wallet[c.id] > 0);
   return (
     <div data-tour="wallet" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
       {shown.map((c) => (
