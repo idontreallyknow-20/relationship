@@ -101,7 +101,7 @@ export function levelSkill(state: GameState, id: string): ActionResult {
   if (!def || !skill) return fail("Unknown ability");
   if (skill.level >= def.maxLevel) return fail("Already at maximum");
   if (!meetsUnlock(state, def.unlock)) return fail("Not unlocked yet");
-  if (!spendCurrency(state, "ribbons", skillCost(def, skill.level))) return fail("Not enough pearls");
+  if (!spendCurrency(state, "ribbons", skillCost(def, skill.level))) return fail("Not enough ribbons");
   skill.level += 1;
   return done(`${def.name} is now level ${skill.level}`);
 }
@@ -223,7 +223,7 @@ export function growCreature(state: GameState, creatureId: string): ActionResult
   const target = CREATURE_BY_ID[def.evolvesTo];
   if (!target) return fail("This one does not grow any further");
   if (creature.level < def.evolveAt.level) return fail(`Reach level ${def.evolveAt.level} first`);
-  if (!spendCurrency(state, "ribbons", def.evolveAt.glass)) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", def.evolveAt.glass)) return fail("Not enough ribbons");
 
   creature.defId = target.id;
   creature.level = Math.max(1, Math.floor(creature.level * 0.65));
@@ -318,7 +318,7 @@ export function craftItem(state: GameState, kind: "rock" | "shell", rarity: Item
   if (!hasFlag(state, "items")) return fail("Rocks and shells are a moon upgrade");
   const derived = derive(state);
   const cost = Math.ceil(CRAFT_COST[rarity] * derived.costMultiplier);
-  if (!spendCurrency(state, "ribbons", cost)) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", cost)) return fail("Not enough ribbons");
 
   const id = crypto.randomUUID();
   const item: ItemInstance = {
@@ -341,7 +341,7 @@ export function polishItem(state: GameState, itemId: string): ActionResult {
   const item = state.items[itemId];
   if (!item) return fail("Unknown");
   if (item.level >= 20) return fail("Already at maximum");
-  if (!spendCurrency(state, "ribbons", polishCost(item.rarity, item.level))) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", polishCost(item.rarity, item.level))) return fail("Not enough ribbons");
   const before = item.level;
   item.level += 1;
   const factor = itemLevelScale(item.level) / itemLevelScale(before);
@@ -353,7 +353,7 @@ export function rerollItem(state: GameState, itemId: string): ActionResult {
   const item = state.items[itemId];
   if (!item) return fail("Unknown");
   if (item.locked) return fail("That one is locked");
-  if (!spendCurrency(state, "ribbons", rerollCost(item.rarity))) return fail("Not enough sea glass");
+  if (!spendCurrency(state, "ribbons", rerollCost(item.rarity))) return fail("Not enough ribbons");
   item.affixes = rollAffixes(item.kind, item.rarity, item.level, derive(state).luck);
   return done("Rerolled");
 }
@@ -368,7 +368,7 @@ export function salvageItem(state: GameState, itemId: string): ActionResult {
     if (creature.itemId === itemId) creature.itemId = null;
   }
   addCurrency(state, "ribbons", value);
-  return done(`Salvaged for ${value} sea glass`);
+  return done(`Salvaged for ${value} ribbons`);
 }
 
 export function giveItem(state: GameState, creatureId: string, itemId: string | null): ActionResult {
@@ -456,7 +456,7 @@ export function buyNextJar(state: GameState): ActionResult {
 }
 
 /** Go back to a jar already unlocked, which is only ever cosmetic. */
-export function useJar(state: GameState, id: string): ActionResult {
+export function switchToJar(state: GameState, id: string): ActionResult {
   if (!state.jarsUnlocked.includes(id)) return fail("Not unlocked yet");
   state.jar = id;
   return done(`Filling the ${JAR_BY_ID[id]?.name ?? "jar"}`);
@@ -652,7 +652,7 @@ export function leaveGift(state: GameState, from: Person, now: number): void {
   state.giftLeft = {
     from,
     at: now,
-    label: `${from === "cami" ? "Cami" : "Joseph"} left the tide out for you`,
+    label: "They left something out for you",
     mods: { mul: { all: strength } },
     durationMs: 2 * 3_600_000,
     collected: false,
@@ -747,7 +747,7 @@ export function recordPartnerTotal(state: GameState, theirLifetime: number): Act
  * Remember how many times they have been reborn.
  *
  * Only ever goes up. Their save is read from the server every few minutes, and
- * a deep rebirth on their side puts their count back to zero; taking the lower
+ * a ascension on their side puts their count back to zero; taking the lower
  * number would quietly delete a joint milestone the pair genuinely reached, so
  * this keeps the high water mark instead.
  */
@@ -861,7 +861,7 @@ export function rerollMission(state: GameState, missionId: string, day: string):
   const def = MISSION_BY_ID[mission.defId];
   if (!def || def.period !== "daily") return fail("Only daily missions");
   if (mission.rerolled) return fail("Already rerolled today");
-  if (!spendCurrency(state, "ribbons", 5)) return fail("Not enough pearls");
+  if (!spendCurrency(state, "ribbons", 5)) return fail("Not enough ribbons");
 
   const taken = new Set(state.missions.map((m) => m.defId));
   const pool = MISSIONS.filter((m) => m.period === "daily" && !taken.has(m.id));
@@ -966,10 +966,13 @@ export function finishChallenge(state: GameState, now: number, abandon = false):
  * bug the production chain had, and it produced a game that was over in twenty
  * minutes.
  *
- * The sealed jars themselves are kept as a record, because they are the only
- * thing in the save that says what the two of you have actually done, but they
- * stop paying. The autobuyers keep their settings, since turning switches back
- * on after every rebirth is a chore rather than a decision.
+ * Your ribbons survive, and that is deliberate: they are what you rebuy the
+ * jars and the shelf tree with, so a rebirth costs you the income rather than
+ * the knowledge of how to get it back. The lifetime count of jars sealed
+ * survives too, in `stats`, because it is the only number in the save that
+ * says what the two of you have actually done. The autobuyers keep their
+ * settings, since turning switches back on after every rebirth is a chore
+ * rather than a decision.
  */
 function resetShelf(state: GameState): void {
   state.sealed = [];
@@ -1019,16 +1022,16 @@ export function changeTide(state: GameState, now: number): ActionResult {
   state.comboExpiresAt = 0;
   state.buffs = state.buffs.filter((b) => b.source.startsWith("trip:"));
 
-  // The chain goes, and so does every deepening.
+  // The shelf comes down.
   //
   // This is the whole reason the game used to end after twenty minutes. A
-  // rebirth took your hearts and your upgrades but left the chain standing,
-  // so income came straight back, the bar was crossed again within seconds,
-  // and the permanent multipliers compounded on themselves until hearts left
-  // the range of a floating point number. Measured: eighty-eight rebirths and
-  // a hundred and sixty-three deepenings inside the twentieth minute.
+  // rebirth took your hearts and your upgrades but left every source of income
+  // standing, so it came straight back, the bar was crossed again within
+  // seconds, and the permanent multipliers compounded on themselves until
+  // hearts left the range of a floating point number. Measured: eighty-eight
+  // rebirths inside the twentieth minute.
   //
-  // Clearing the chain is what makes a life have a shape. You rebuild it each
+  // Clearing the shelf is what makes a life have a shape. You rebuild it each
   // time, faster than the last, which is the entire pleasure of the genre.
   resetShelf(state);
 
@@ -1047,7 +1050,7 @@ export function waterPreview(state: GameState): number {
 }
 
 export function changeWater(state: GameState, now: number): ActionResult {
-  if (!hasFlag(state, "new_water")) return fail("Deep Rebirth is a moon upgrade");
+  if (!hasFlag(state, "new_water")) return fail("Ascension is a moon upgrade");
   if (!canChangeWater(state)) return fail("Not enough hearts in this era yet");
   const stars = waterPreview(state);
   if (stars <= 0) return fail("This era would not pay anything");
@@ -1063,6 +1066,12 @@ export function changeWater(state: GameState, now: number): ActionResult {
 
   const keepCreatures = hasFlag(state, "creature_retention");
   const keepItems = hasFlag(state, "item_retention");
+
+  // A ascension said it took everything an ordinary one takes and then did
+  // not touch the shelf, so the run it started already had its old passive
+  // income back before the first tap. That is the exact runaway an ordinary
+  // rebirth was changed to prevent, one layer up.
+  resetShelf(state);
 
   state.upgrades = {};
   state.moonUpgrades = {};
@@ -1089,12 +1098,12 @@ export function changeWater(state: GameState, now: number): ActionResult {
   }
   if (state.newWaters >= 3) grantCollectible(state, "waters", "moonstone");
 
-  pushLog(state, "Deep rebirth", `${stars} stars`);
-  return done(`Deep rebirth ${state.newWaters}: ${stars} stars`);
+  pushLog(state, "Ascension", `${stars} stars`);
+  return done(`Ascension ${state.newWaters}: ${stars} stars`);
 }
 
 /* ------------------------------------------------------------------ */
-/* The last rebirth                                                    */
+/* The forever                                                    */
 /* ------------------------------------------------------------------ */
 
 export function canLetGo(state: GameState): boolean {
@@ -1114,7 +1123,7 @@ export function seaPreview(state: GameState): number {
  * the creatures, the memories and the two of you.
  */
 export function letGo(state: GameState, now: number): ActionResult {
-  if (state.newWaters < 3) return fail("Do three deep rebirths first");
+  if (state.newWaters < 3) return fail("Do three ascensions first");
   if (!canLetGo(state)) return fail("Not enough yet");
   const suns = seaPreview(state);
   if (suns <= 0) return fail("This one would not pay anything");
@@ -1123,7 +1132,8 @@ export function letGo(state: GameState, now: number): ActionResult {
   state.seas += 1;
   recordMetric(state, "seas", 1);
 
-  const keepDeepens = hasFlag(state, "keep_deepens");
+  // The one thing the forever can be talked out of taking.
+  if (!hasFlag(state, "keep_shelf")) resetShelf(state);
 
   state.upgrades = {};
   state.moonUpgrades = {};

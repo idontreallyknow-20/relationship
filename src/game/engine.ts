@@ -10,7 +10,7 @@ import { FIRST_JAR, JAR_BY_ID } from "./config/jars";
 import { ribbonGain } from "./config/shelf";
 import { EGG_BY_ID } from "./config/eggs";
 import { SKILL_BY_ID } from "./config/skills";
-import { advanceStage } from "./config/stages";
+import { advanceStage, featuresAt, stageFor } from "./config/stages";
 
 /* ------------------------------------------------------------------ */
 /* Currency                                                            */
@@ -315,6 +315,16 @@ export function sealJar(state: GameState, derived: Derived, now: number): SealRe
   const ribbons = ribbonGain(hearts, derived.jarCapacity, derived.mods.mul.ribbonGain);
 
   state.sealed = [...state.sealed.slice(-199), { jarId: state.jar, hearts: banked, at: now }];
+
+  // Keepsakes come from playing, and the rest of the app is a bonus on top.
+  //
+  // They used to come *only* from the two of you using chat, moods, letters and
+  // the daily question, which made the shared tree unreachable for anybody
+  // playing on their own and made the whole currency read as a tax on using
+  // other screens. Sealing is the natural place for them: a filled jar is a
+  // keepsake, which is what the word means.
+  const keepsakes = Math.max(1, Math.floor(Math.log10(Math.max(10, banked)) * derived.mods.mul.keepsakeGain));
+  addCurrency(state, "keepsakes", keepsakes);
   state.shelfHearts = safe(state.shelfHearts + banked);
   state.wallet.hearts = kept;
 
@@ -452,11 +462,33 @@ export function tick(state: GameState, dtMs: number, now: number): TickResult {
   // The reveal ladder, one rung at a time and no faster than the gap allows.
   // Everything on screen is gated off `stageReached`, so this is the single
   // place a feature can ever appear.
-  advanceStage(state, now);
+  if (advanceStage(state, now)) seatWaitingPets(state);
 
   state.lastTickAt = now;
   state.updatedAt = now;
   return { carried, comboBroken, sealed, autoTaps, shelfHearts };
+}
+
+/**
+ * Sit any pet down that is waiting for a chair.
+ *
+ * Called when a rung opens, which is how the starter pet arrives: it is in the
+ * save from the first second but out of the jar, so that a new save has no
+ * passive income until the rung that explains passive income. Anything the
+ * player took out by hand stays out, because this only ever fills empty seats
+ * up to the number of pets that have never been seated.
+ */
+function seatWaitingPets(state: GameState): void {
+  if (!featuresAt(stageFor(state)).has("pets")) return;
+  const seated = new Set(state.slots.filter(Boolean) as string[]);
+  for (const creature of Object.values(state.creatures)) {
+    if (seated.has(creature.id) || creature.slot !== null) continue;
+    const free = state.slots.indexOf(null);
+    if (free < 0) return;
+    state.slots[free] = creature.id;
+    creature.slot = free;
+    seated.add(creature.id);
+  }
 }
 
 /** Experience without the level-up message; the tick calls this constantly. */

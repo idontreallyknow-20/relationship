@@ -1,14 +1,21 @@
 "use client";
 
-// A drawn mark for each of the eight currencies.
+// A drawn mark for each of the seven currencies.
 //
-// They were coloured dots, which told you nothing and made a row of them look
-// like a progress bar. Each one is now the thing it is: a heart, a pearl in a
-// shell, a shell, a worn piece of glass, a wave, a moon, a star, a drop.
+// Each one is the thing it is: a heart, a ribbon tied round a jar lid, a little
+// keepsake box, a moon, a star, a sun, an hourglass.
 //
-// All eight are one viewBox, one stroke weight and one visual weight, so a row
-// of them reads as a set rather than as clip art. Two tones each, both derived
-// from the currency's own colour, so adding a currency needs no new palette.
+// Reported as "the icons are all confusing", and they were, for a specific
+// reason worth writing down: three of them were another currency's drawing
+// reused. Ribbons borrowed the shell, keepsakes borrowed the wave and suns
+// borrowed the raindrop, left over from the sea currencies they replaced. So
+// the wallet held three marks that pictured something the game no longer has,
+// and two of them pictured the same kind of thing as each other. They are
+// drawn now.
+//
+// All seven are one viewBox and one visual weight, so a row of them reads as a
+// set rather than as clip art, and two tones each, both derived from the
+// currency's own colour, so adding a currency needs no new palette.
 
 import type { CurrencyId } from "@/game/types";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
@@ -30,58 +37,9 @@ function Hearts({ className, color }: GlyphProps) {
   );
 }
 
-function Pearls({ className, color }: GlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path d="M3 15c0-5 4-9 9-9s9 4 9 9z" fill={color} opacity="0.35" />
-      <path d="M3 15h18" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M8 15c0-3 1.8-5.5 4-5.5s4 2.5 4 5.5" stroke={color} strokeWidth="1.2" fill="none" opacity="0.6" />
-      <circle cx="12" cy="16.5" r="3.6" fill={color} />
-      <circle cx="10.7" cy="15.3" r="1.1" fill="#fff" opacity="0.75" />
-    </svg>
-  );
-}
 
-function Shells({ className, color }: GlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path d="M12 21C6.5 21 2.5 16.6 2.5 11.5A9.5 9.5 0 0 1 21.5 11.5C21.5 16.6 17.5 21 12 21z" fill={color} />
-      <g stroke="#fff" strokeWidth="1.1" strokeLinecap="round" opacity="0.55" fill="none">
-        <path d="M12 20.4V4" />
-        <path d="M12 20.4 6.2 6.6" />
-        <path d="M12 20.4 17.8 6.6" />
-        <path d="M12 20.4 3.2 12.4" />
-        <path d="M12 20.4 20.8 12.4" />
-      </g>
-    </svg>
-  );
-}
 
-function Glass({ className, color }: GlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      {/* Worn smooth, so no corner is sharp. */}
-      <path
-        d="M8.5 3.5c3.5-1.4 8 .3 9.6 3.6 1.8 3.7.3 8.6-3 10.9-3.5 2.4-8.7 1.6-10.8-1.8C2 12.6 3.4 5.6 8.5 3.5z"
-        fill={color}
-        opacity="0.75"
-      />
-      <path d="M9.5 8.5c1.8-1 4-.6 5.2.9" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.6" />
-    </svg>
-  );
-}
 
-function Tide({ className, color }: GlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="none">
-      <g stroke={color} strokeWidth="2.1" strokeLinecap="round">
-        <path d="M2.5 8.5c2-2 3.7-2 5.5 0s3.5 2 5.5 0 3.7-2 5.5 0" opacity="0.45" />
-        <path d="M2.5 13c2-2 3.7-2 5.5 0s3.5 2 5.5 0 3.7-2 5.5 0" opacity="0.75" />
-        <path d="M2.5 17.5c2-2 3.7-2 5.5 0s3.5 2 5.5 0 3.7-2 5.5 0" />
-      </g>
-    </svg>
-  );
-}
 
 function Moons({ className, color }: GlyphProps) {
   return (
@@ -103,14 +61,6 @@ function Stars({ className, color }: GlyphProps) {
   );
 }
 
-function Drops({ className, color }: GlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path d="M12 2.5c4 5.2 6.5 8.8 6.5 11.8a6.5 6.5 0 0 1-13 0c0-3 2.5-6.6 6.5-11.8z" fill={color} />
-      <path d="M8.8 14.6a3.4 3.4 0 0 0 2.1 3.1" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.6" />
-    </svg>
-  );
-}
 
 function Hours({ className, color }: GlyphProps) {
   return (
@@ -123,16 +73,51 @@ function Hours({ className, color }: GlyphProps) {
   );
 }
 
+function Ribbons({ className, color }: GlyphProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {/* A ribbon tied round a jar lid: a knot and two tails. */}
+      <path d="M3.2 8.4h17.6v3.2H3.2z" fill={color} opacity="0.55" />
+      <circle cx="12" cy="10" r="2.4" fill={color} />
+      <path d="M12 12.2 8.6 20l3.4-2.1 3.4 2.1z" fill={color} />
+      <circle cx="12" cy="10" r="0.9" fill="#fff" opacity="0.5" />
+    </svg>
+  );
+}
+
+function Keepsakes({ className, color }: GlyphProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {/* A small box with a lid, for the things the two of you keep. */}
+      <path d="M4 10.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z" fill={color} />
+      <path d="M3 7.2h18v3.3H3z" fill={color} opacity="0.6" />
+      <path d="M12 7.2c-1.6-2.4-4.6-2.6-4.6-.6 0 .3.2.5.5.6z" fill={color} opacity="0.8" />
+      <path d="M12 7.2c1.6-2.4 4.6-2.6 4.6-.6 0 .3-.2.5-.5.6z" fill={color} opacity="0.8" />
+      <rect x="11.1" y="10.5" width="1.8" height="10" fill="#fff" opacity="0.4" />
+    </svg>
+  );
+}
+
+function Suns({ className, color }: GlyphProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="5" fill={color} />
+      <g stroke={color} strokeWidth="1.8" strokeLinecap="round" opacity="0.7">
+        <path d="M12 1.6v2.8M12 19.6v2.8M1.6 12h2.8M19.6 12h2.8" />
+        <path d="M4.6 4.6 6.6 6.6M17.4 17.4l2 2M19.4 4.6l-2 2M6.6 17.4l-2 2" />
+      </g>
+      <circle cx="10.3" cy="10.3" r="1.4" fill="#fff" opacity="0.35" />
+    </svg>
+  );
+}
+
 const GLYPHS: Record<CurrencyId, (props: GlyphProps) => React.ReactElement> = {
   hearts: Hearts,
-  // Ribbons reuse the shell drawing: a sealed jar's lid ring is closer to a
-  // shell than to anything else already drawn, and one new glyph is cheaper
-  // than one wrong one.
-  ribbons: Shells,
-  keepsakes: Tide,
+  ribbons: Ribbons,
+  keepsakes: Keepsakes,
   moons: Moons,
   stars: Stars,
-  suns: Drops,
+  suns: Suns,
   hours: Hours,
 };
 

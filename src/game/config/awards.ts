@@ -66,7 +66,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     [5, 100, 1_000, 8_000], { ribbons: 406 }),
   t("a_tides", "tides", "Born Again", "Be reborn.", "tideChanges",
     [1, 5, 25, 100, 500], { moons: 5 }),
-  t("a_waters", "tides", "All Of It", "Do a deep rebirth.", "newWaters",
+  t("a_waters", "tides", "All Of It", "Do a ascension.", "newWaters",
     [1, 3, 10, 30], { stars: 2 }),
   t("a_challenges", "challenges", "Rough Water", "Complete challenges.", "challenges",
     [1, 10, 40, 120], { moons: 3, ribbons: 20 }),
@@ -123,7 +123,7 @@ export const COLLECTIONS: CollectionDef[] = [
       c("deep", "Deep", "Reach the Aquarium.", true),
       c("dawn", "Dawn", "Fifty rebirths.", true),
       c("dragon", "Dragon", "Buy The Dragon.", true),
-      c("moonstone", "Moonstone", "Three deep rebirths.", true),
+      c("moonstone", "Moonstone", "Three ascensions.", true),
     ],
   },
   {
@@ -144,7 +144,7 @@ export const COLLECTIONS: CollectionDef[] = [
   },
   {
     id: "vessels",
-    name: "Vessels",
+    name: "Jars",
     completion: { stars: 3 },
     items: [
       c("jam_jar", "Jam Jar", "Already on the shelf."),

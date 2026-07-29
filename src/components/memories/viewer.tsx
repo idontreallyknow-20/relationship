@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { signedUrl } from "@/lib/media";
 import { formatRelative, formatShortDate } from "@/lib/format";
 import { displayName, type Memory, type MemoryComment, type Person } from "@/lib/types";
+import { useNames } from "@/lib/couple-context";
 import { FavoriteHearts, KIND_LABELS, memoryDate } from "./card";
 import { MemoryMedia } from "./media";
 
@@ -41,6 +42,7 @@ export function MemoryViewer({
   onDelete: () => void;
 }) {
   const toast = useToast();
+  const names = useNames();
   const mine = memory.created_by === me;
   const [comments, setComments] = useState<MemoryComment[] | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -188,7 +190,7 @@ export function MemoryViewer({
                 {memory.location}
               </span>
             )}
-            <span>by {displayName(memory.created_by)}</span>
+            <span>by {names[memory.created_by]}</span>
             {memory.edited_at && <span>edited</span>}
           </div>
 
@@ -210,7 +212,7 @@ export function MemoryViewer({
                 ? "Tap the heart if you love this one"
                 : favoritedBy.length === 2
                   ? "You both love this"
-                  : `Loved by ${displayName(favoritedBy[0])}`}
+                  : `Loved by ${names[favoritedBy[0]]}`}
             </span>
           </div>
 
@@ -225,7 +227,7 @@ export function MemoryViewer({
             <ul className="mt-3 space-y-3">
               {comments.map((c) => (
                 <li key={c.id} className="flex items-start gap-2.5">
-                  <Avatar name={displayName(c.person)} size="sm" />
+                  <Avatar name={names[c.person]} size="sm" />
                   <div className="min-w-0 flex-1 rounded-2xl bg-blush/50 px-3.5 py-2.5">
                     <p className="text-sm text-berry">{c.body}</p>
                     <p className="mt-0.5 text-[11px] text-berry-soft">{formatRelative(c.created_at)}</p>

@@ -13,6 +13,7 @@ import { EmptyState, IconButton } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { formatDay, formatTime } from "@/lib/format";
 import { displayName, partnerOf, type CoupleEvent, type EventKind, type EventRsvp, type Person } from "@/lib/types";
+import { useNames } from "@/lib/couple-context";
 import { expandOccurrences, type Occurrence } from "./occurrences";
 
 const KIND_LABELS: Record<EventKind, string> = {
@@ -52,6 +53,7 @@ function RsvpRow({
   me: Person;
   onRsvp: (eventId: string, status: EventRsvp["status"]) => void;
 }) {
+  const names = useNames();
   const mine = rsvps.find((r) => r.event_id === event.id && r.person === me);
   const partner = partnerOf(me);
   const theirs = rsvps.find((r) => r.event_id === event.id && r.person === partner);
@@ -78,7 +80,7 @@ function RsvpRow({
         ))}
       </div>
       <span className="ml-auto text-xs text-berry-soft">
-        {displayName(partner)}: {theirs ? theirs.status : "no reply yet"}
+        {names[partner]}: {theirs ? theirs.status : "no reply yet"}
       </span>
     </div>
   );

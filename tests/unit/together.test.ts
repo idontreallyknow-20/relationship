@@ -41,7 +41,7 @@ describe("lives between you", () => {
   });
 
   it("keeps the high water mark when their count resets", () => {
-    // A deep rebirth on their side puts their count back to zero. Taking the
+    // A ascension on their side puts their count back to zero. Taking the
     // lower number would quietly remove a rung the pair genuinely reached.
     const state = createGameState(0);
     expect(recordPartnerRebirths(state, 40).ok).toBe(true);

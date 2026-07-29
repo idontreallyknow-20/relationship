@@ -1,7 +1,7 @@
 import type { AddStat, ItemRarity, MulStat } from "../types";
 
 // One item per creature, not ten slots on the player. An otter carries a
-// favourite rock. A crab wears a shell. Both are made from sea glass.
+// favourite rock. A crab wears a shell. Both are made from ribbons.
 
 export const RARITIES: ItemRarity[] = ["plain", "smooth", "banded", "opaline", "moonstone"];
 
@@ -55,7 +55,7 @@ export const AFFIXES: AffixDef[] = [
   { id: "pair", label: "Holding hands", kind: "mul", stat: "pairBonus", base: 0.15, weight: 45, only: "rock" },
   { id: "collect_value", label: "Collect payout", kind: "mul", stat: "petValue", base: 0.12, weight: 100, only: "shell" },
   { id: "collect_speed", label: "Collect speed", kind: "mul", stat: "petSpeed", base: 0.08, weight: 80, only: "shell" },
-  { id: "glass", label: "Sea glass", kind: "mul", stat: "ribbonGain", base: 0.14, weight: 55, only: "shell" },
+  { id: "glass", label: "Ribbons", kind: "mul", stat: "ribbonGain", base: 0.14, weight: 55, only: "shell" },
   { id: "click", label: "Click power", kind: "mul", stat: "click", base: 0.07, weight: 70 },
   { id: "cps", label: "Passive hearts", kind: "mul", stat: "cps", base: 0.07, weight: 70 },
   { id: "all", label: "All hearts", kind: "mul", stat: "all", base: 0.03, weight: 25 },
@@ -63,7 +63,7 @@ export const AFFIXES: AffixDef[] = [
   { id: "crit_power", label: "Critical power", kind: "mul", stat: "crit", base: 0.08, weight: 55 },
   { id: "combo_time", label: "Combo time", kind: "add", stat: "comboDurationMs", base: 150, weight: 50 },
   { id: "shells", label: "Shells", kind: "mul", stat: "ribbonGain", base: 0.14, weight: 50 },
-  { id: "pearls", label: "Pearls", kind: "mul", stat: "ribbonGain", base: 0.1, weight: 30 },
+  { id: "ribbons", label: "Ribbons", kind: "mul", stat: "ribbonGain", base: 0.1, weight: 30 },
   { id: "offline", label: "Offline", kind: "mul", stat: "offline", base: 0.1, weight: 45 },
   { id: "luck", label: "Luck", kind: "add", stat: "luck", base: 0.015, weight: 30 },
   { id: "creature", label: "Creature power", kind: "mul", stat: "creaturePower", base: 0.09, weight: 40 },

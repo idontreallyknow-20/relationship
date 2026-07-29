@@ -29,6 +29,9 @@ import type { GameSettings, MulStat } from "@/game/types";
 import { Button, SegmentedControl, Sheet, useToast } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
 import { Bar, CurrencyPill, EmptyRow, Section, Stat } from "./bits";
+import { ExplainAll } from "./explain";
+import { GlossaryButton } from "./glossary";
+import { PartnerJar } from "./partner";
 
 /* ------------------------------------------------------------------ */
 /* Us                                                                  */
@@ -61,6 +64,8 @@ export function UsTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      <PartnerJar />
+
       <Section title="The jar, both of you" hint="Added together, not compared.">
         <div className="rounded-card border border-line bg-white p-3.5 shadow-soft">
           <p className="font-display text-3xl font-semibold text-plum">
@@ -140,7 +145,7 @@ export function UsTab() {
         </ul>
       </Section>
 
-      <Section title="Love meters" hint="They fill from the rest of the app, and fall on their own.">
+      <Section title="Love meters" hint="A bonus on top. They fill from the rest of the app, and fall on their own.">
         <ul className="flex flex-col gap-2">
           {METERS.map((meter) => {
             const level = state.meters[meter.id] ?? 0;
@@ -162,15 +167,44 @@ export function UsTab() {
         </ul>
       </Section>
 
-      <Section title="Tide" hint="Rises when either of you plays. Spends on everything here.">
+      {/* Warmth and keepsakes, which used to be one thing called Tide.
+          Reported as confusing, and it was two separate things sharing a name:
+          a bar that adds a bonus, and a currency you spend. They are now told
+          apart, and both say where they come from. */}
+      <Section
+        title="Warmth"
+        explain="warmth"
+        hint="A bonus to everything, for both of you at once."
+      >
         <div className="rounded-card border border-line bg-white p-3.5">
           <div className="mb-1 flex items-baseline justify-between text-sm">
             <span className="font-semibold text-plum">{Math.round(state.tideLevel)}%</span>
             <span className="text-xs text-berry-soft">
-              {formatNumber(state.wallet.keepsakes, format)} tide saved
+              +{Math.round(Math.min(1, state.tideLevel / 100) * 60)}% to everything
             </span>
           </div>
           <Bar value={state.tideLevel} max={100} color="#7c6ba8" />
+          <p className="mt-1.5 text-xs leading-relaxed text-berry-soft">
+            Sealing jars raises it, and so does either of you doing something in
+            the rest of the app. It falls slowly on its own.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Keepsakes"
+        explain="keepsakes"
+        hint="What everything on this page is bought with."
+      >
+        <div className="rounded-card border border-line bg-white p-3.5">
+          <p className="font-display text-2xl font-semibold text-plum">
+            {formatNumber(state.wallet.keepsakes, format)}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-berry-soft">
+            Mostly from sealing jars, which is the main way to get them. The
+            questions, the meters and everything else the two of you do in the
+            app pay a few more on top, as a bonus.
+          </p>
         </div>
       </Section>
 
@@ -339,7 +373,7 @@ export function StatsTab() {
           <Stat label="Grown" value={`${state.stats.creaturesEvolved}`} />
           <Stat label="Vessels" value={`${state.jarsUnlocked.length}`} />
           <Stat label="Rebirths" value={`${state.tideChanges}`} />
-          <Stat label="Deep rebirths" value={`${state.newWaters}`} />
+          <Stat label="Ascensions" value={`${state.newWaters}`} />
           <Stat
             label="Fastest tide"
             value={state.stats.fastestTideChangeMs ? formatDurationShort(state.stats.fastestTideChangeMs) : "not yet"}
@@ -496,6 +530,15 @@ export function SettingsTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Help first, because somebody who opened settings looking for an
+          explanation should not have to scroll past four toggles to find it. */}
+      <Section title="Help">
+        <div className="flex flex-col gap-2">
+          <GlossaryButton />
+          <ExplainAll />
+        </div>
+      </Section>
+
       <Section title="Feel">
         <div className="flex flex-col gap-2">
           {toggle("haptics", "Haptics")}
@@ -800,13 +843,29 @@ function ReactionGame({ onClose }: { onClose: () => void }) {
 /* ------------------------------------------------------------------ */
 
 export function WalletStrip() {
-  const { state } = useGame();
+  const { state, derived } = useGame();
   const format = state.settings.numberFormat;
-  // Hearts always, and anything you have some of. Shells and sea glass used to
-  // be forced on as well, so a save that had never seen a creature opened with
-  // three currencies, two of them zero and neither of them explained. A wallet
-  // is a list of what you have.
-  const shown = CURRENCIES.filter((c) => c.id === "hearts" || state.wallet[c.id] > 0);
+  // Hearts always, anything you have some of, and anything the game has told
+  // you about even if the balance is zero.
+  //
+  // The second half matters: reported as "ribbons are not viewable as a
+  // currency". They were only drawn once you held at least one, so the rung
+  // that says a jar pays ribbons was followed by a wallet with no ribbons in
+  // it, and the word had nothing on screen to attach to until the first seal
+  // landed. Showing a currency at zero once it exists is how you learn it
+  // exists.
+  const features = derived.features;
+  const revealed = (id: string) =>
+    (id === "ribbons" && features.has("seal"))
+    || (id === "keepsakes" && features.has("seal"))
+    || (id === "moons" && features.has("tideChange"))
+    || (id === "stars" && features.has("newWater"))
+    || (id === "suns" && features.has("sea"))
+    || (id === "hours" && features.has("dilation"));
+
+  const shown = CURRENCIES.filter(
+    (c) => c.id === "hearts" || state.wallet[c.id] > 0 || revealed(c.id),
+  );
   return (
     <div data-tour="wallet" className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 py-1">
       {shown.map((c) => (

@@ -15,8 +15,8 @@ import { createGameState } from "@/game/state";
 import { derive, upgradeNextCost, meetsUnlock } from "@/game/formulas";
 import { performClick, tick } from "@/game/engine";
 import {
-  buyAll, buyNextJar, buyShelfUpgrade, canChangeTide, changeTide,
-  sealCurrentJar, buyResetUpgrade,
+  buyAll, buyNextJar, buyShelfUpgrade, canChangeTide, canChangeWater, canLetGo,
+  changeTide, changeWater, letGo, sealCurrentJar, buyResetUpgrade,
 } from "@/game/actions";
 import { JARS, jarIndex } from "@/game/config/jars";
 import { SHELF_UPGRADES, shelfUpgradeCost } from "@/game/config/shelf";
@@ -238,6 +238,51 @@ describe("rebirth is the loop", () => {
     expect(state.wallet.moons).toBeGreaterThan(0);
   });
 
+  // Every rung has to take the shelf, not just the first one.
+  //
+  // Ascension and Forever both said they took "everything an ordinary rebirth
+  // takes" and then never touched it, so the life they started already had its
+  // old passive income back before the first tap. That is precisely the
+  // runaway an ordinary rebirth was rewritten to prevent, one layer up.
+  it("clears the shelf on an ascension too", () => {
+    const state = createGameState(0);
+    state.moonUpgrades.m_new_water = 1;
+    state.eraHearts = waterRequirement(0) * 2;
+    state.shelfHearts = 1e9;
+    state.sealed = [{ jarId: JARS[0].id, hearts: 1e9, at: 0 }];
+    state.jar = JARS[3].id;
+    state.jarsUnlocked = JARS.slice(0, 4).map((j) => j.id);
+
+    expect(canChangeWater(state)).toBe(true);
+    changeWater(state, 1_000);
+
+    expect(state.shelfHearts).toBe(0);
+    expect(state.sealed).toEqual([]);
+    expect(state.jar).toBe(JARS[0].id);
+    expect(state.wallet.stars).toBeGreaterThan(0);
+  });
+
+  it("clears the shelf on a forever, unless you bought the one that keeps it", () => {
+    const ready = () => {
+      const state = createGameState(0);
+      state.newWaters = 3;
+      state.seaHearts = seaRequirement(0) * 2;
+      state.shelfHearts = 1e9;
+      state.sealed = [{ jarId: JARS[0].id, hearts: 1e9, at: 0 }];
+      return state;
+    };
+
+    const plain = ready();
+    expect(canLetGo(plain)).toBe(true);
+    letGo(plain, 1_000);
+    expect(plain.shelfHearts).toBe(0);
+
+    const kept = ready();
+    kept.sunUpgrades.d_keep_shelf = 1;
+    letGo(kept, 1_000);
+    expect(kept.shelfHearts).toBe(1e9);
+  });
+
   it("pays for going further without paying proportionally", () => {
     const at = createGameState(0);
     at.runHearts = tideRequirement(0);
@@ -265,10 +310,15 @@ describe("rebirth is the loop", () => {
 
 describe("the pets are a side thing", () => {
   it("are worth having, without being the whole game", () => {
+    // A new save has its pet out of the jar until the rung that explains
+    // pets, so this seats one rather than assuming it is already sitting.
     const alone = createGameState(0);
-    alone.slots = [null, null];
 
     const withPets = createGameState(0);
+    const pet = Object.values(withPets.creatures)[0];
+    withPets.slots[0] = pet.id;
+    pet.slot = 0;
+
     expect(derive(withPets, 0).heartsPerSecond)
       .toBeGreaterThan(derive(alone, 0).heartsPerSecond);
   });

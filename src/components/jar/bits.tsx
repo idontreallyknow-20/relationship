@@ -3,21 +3,26 @@
 // Small shared pieces. Presentation only: no game rules live here.
 
 import { useEffect, useRef, useState } from "react";
+import { HelpCircle } from "lucide-react";
 import { useGame } from "@/game/store";
 import { CURRENCY_BY_ID } from "@/game/config/currencies";
 import { formatNumber } from "@/game/numbers";
 import type { CurrencyId, GameState } from "@/game/types";
 import { ConfirmDialog, Sheet } from "@/components/ui";
 import { CurrencyIcon } from "./currency-icons";
+import { useGlossary } from "./glossary";
 
 export function Section({
   title,
   hint,
+  explain,
   action,
   children,
 }: {
   title: string;
   hint?: string;
+  /** A glossary id. Adds a question mark beside the heading. */
+  explain?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -25,13 +30,35 @@ export function Section({
     <section className="flex flex-col gap-2.5">
       <div className="flex items-end justify-between gap-2">
         <div>
-          <h2 className="font-display text-xl font-semibold text-plum">{title}</h2>
+          <h2 className="flex items-center gap-1.5 font-display text-xl font-semibold text-plum">
+            {title}
+            {explain && <ExplainDot id={explain} />}
+          </h2>
           {hint && <p className="text-xs text-berry-soft">{hint}</p>}
         </div>
         {action}
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * Re-exported through here rather than imported directly by every caller.
+ *
+ * `bits.tsx` is what the screens already import, and a heading that can explain
+ * itself should not cost a second import line in twelve files.
+ */
+function ExplainDot({ id }: { id: string }) {
+  const { open } = useGlossary();
+  return (
+    <button
+      onClick={() => open(id)}
+      aria-label="What this means"
+      className="pressable shrink-0 text-berry-soft"
+    >
+      <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -93,9 +120,14 @@ function useRolling(value: number, enabled: boolean): number {
 
   useEffect(() => {
     if (!enabled || value <= shown || !Number.isFinite(value)) {
-      setShown(value);
-      from.current = value;
-      return;
+      // Snap rather than roll: a decrease is a purchase, and watching your
+      // balance drain afterwards is not a reward. Deferred by a frame so this
+      // is not a synchronous setState inside an effect, which cascades.
+      const snap = requestAnimationFrame(() => {
+        setShown(value);
+        from.current = value;
+      });
+      return () => cancelAnimationFrame(snap);
     }
     from.current = shown;
     started.current = performance.now();
@@ -125,6 +157,7 @@ export function CurrencyPill({ currency, amount, format, compact = false }: {
   const def = CURRENCY_BY_ID[currency];
   const [open, setOpen] = useState(false);
   const { state } = useGame();
+  const glossary = useGlossary();
   const rolling = useRolling(
     amount,
     !state.settings.reducedMotion && !state.settings.batterySaver,
@@ -151,8 +184,27 @@ export function CurrencyPill({ currency, amount, format, compact = false }: {
             <CurrencyIcon currency={currency} className="h-8 w-8 shrink-0" />
             {formatNumber(amount, "full")}
           </p>
-          <p className="text-sm text-berry">{def.source}</p>
-          <p className="text-sm text-berry-soft">{def.purpose}</p>
+          <div>
+            <p className="text-[0.6rem] font-bold uppercase tracking-wide text-berry-soft">
+              Where it comes from
+            </p>
+            <p className="mt-0.5 text-sm leading-relaxed text-berry">{def.source}</p>
+          </div>
+          <div>
+            <p className="text-[0.6rem] font-bold uppercase tracking-wide text-berry-soft">
+              What it is for
+            </p>
+            <p className="mt-0.5 text-sm leading-relaxed text-berry-soft">{def.purpose}</p>
+          </div>
+          <button
+            onClick={() => {
+              setOpen(false);
+              glossary.open(currency);
+            }}
+            className="pressable w-full rounded-full border border-line py-2 text-xs font-semibold text-berry-soft"
+          >
+            Tell me more about {def.name.toLowerCase()}
+          </button>
         </div>
       </Sheet>
     </>

@@ -58,7 +58,17 @@ function emptyStats(now: number): GameStats {
   };
 }
 
-/** The creature each person already has, in the jar, from the first second. */
+/**
+ * The pet each person already has, waiting rather than working.
+ *
+ * It used to be seated from the first second, and once the pets started
+ * carrying hearts over that meant a brand new save had passive income before
+ * anything had explained where income comes from: you opened the jar, did
+ * nothing, and a "per second" figure appeared. That is the thing that made the
+ * number confusing, not the number.
+ *
+ * It sits down when the pets rung arrives, which is the rung that explains it.
+ */
 function starterCreature(person: Person, now: number): CreatureInstance {
   return {
     id: crypto.randomUUID(),
@@ -71,7 +81,7 @@ function starterCreature(person: Person, now: number): CreatureInstance {
     stars: 0,
     locked: true,
     itemId: null,
-    slot: 0,
+    slot: null,
     lastActedAt: now,
     arrivedAt: now,
   };
@@ -115,7 +125,7 @@ export function createGameState(now: number = Date.now(), person: Person = "cami
 
     creatures: { [starter.id]: starter },
     items: {},
-    slots: [starter.id, null],
+    slots: [null, null],
     codex: [starter.defId],
 
     sealed: [],

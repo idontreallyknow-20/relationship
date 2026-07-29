@@ -14,7 +14,7 @@ import {
   addCreature, applyLegacy, availableCreatures, buyMemory, buyResetUpgrade, buyUpgrade,
   canChangeTide, canChangeWater, changeTide, changeWater, claimMission, collectGift,
   craftItem, feedCreature, finishChallenge, giveItem, grantTogether, growCreature,
-  buyAll, buyNextJar, useJar, sealCurrentJar, buyShelfUpgrade, leaveGift, levelSkill,
+  buyAll, buyNextJar, switchToJar, sealCurrentJar, buyShelfUpgrade, leaveGift, levelSkill,
   placeCreature, receiveGift, recordSameEvening, refreshMissions, respec,
   runAutobuyers, salvageItem, startChallenge, startTrip,
   GIFT_WINDOW_MS,
@@ -45,9 +45,17 @@ function rich(person: Person = "cami", overrides: Partial<GameState> = {}): Game
   return Object.assign(state, overrides);
 }
 
-/** The creature this person starts with, which is always in slot 0. */
+/** The pet this person starts with. It waits out of the jar until stage seven. */
 function starterOf(state: GameState) {
   return Object.values(state.creatures)[0];
+}
+
+/** Sit the starter down, for tests about what a seated pet does. */
+function seatStarter(state: GameState): GameState {
+  const pet = starterOf(state);
+  state.slots[0] = pet.id;
+  pet.slot = 0;
+  return state;
 }
 
 /* ------------------------------------------------------------------ */
@@ -86,15 +94,21 @@ describe("large numbers", () => {
 /* ------------------------------------------------------------------ */
 
 describe("a new save", () => {
-  it("starts each person with their own creature, in the jar", () => {
+  it("starts each person with their own pet, waiting rather than working", () => {
     const hers = createGameState(0, "cami");
     const his = createGameState(0, "joseph");
     expect(starterOf(hers).defId).toBe(STARTER.cami);
     expect(starterOf(his).defId).toBe(STARTER.joseph);
     expect(CREATURE_BY_ID[STARTER.cami]!.line).toBe("otter");
     expect(CREATURE_BY_ID[STARTER.joseph]!.line).toBe("crab");
-    expect(hers.slots[0]).toBe(starterOf(hers).id);
     expect(hers.codex).toContain(STARTER.cami);
+
+    // Out of the jar, so a brand new save has no passive income before
+    // anything has explained what passive income is. That readout appearing on
+    // its own is what made it confusing.
+    expect(hers.slots[0]).toBeNull();
+    expect(starterOf(hers).slot).toBeNull();
+    expect(derive(hers, 0).heartsPerSecond).toBe(0);
   });
 
   it("remembers whose save it is and opens in the first jar", () => {
@@ -102,6 +116,56 @@ describe("a new save", () => {
     expect(state.owner).toBe("joseph");
     expect(state.jar).toBe(JARS[0].id);
     expect(state.jarsUnlocked).toEqual([JARS[0].id]);
+  });
+});
+
+describe("passive income arrives explained", () => {
+  // The complaint was that the per second figure was confusing, and the reason
+  // was that it appeared before anything had said where it came from: the
+  // starter pet was seated from the first second and carried hearts over while
+  // the rung explaining pets was still an hour away.
+  it("pays nothing per second until something has been earned", () => {
+    const state = createGameState(0);
+    for (let i = 1; i <= 600; i++) tick(state, 100, i * 100);
+    expect(derive(state, 60_000).heartsPerSecond).toBe(0);
+    expect(state.stats.heartsFromPassive).toBe(0);
+  });
+
+  it("sits the waiting pet down when the rung that explains it opens", () => {
+    const state = createGameState(0);
+    const pet = starterOf(state);
+    expect(pet.slot).toBeNull();
+
+    // Far enough in that every rung up to and including pets is satisfied.
+    state.lifetime.hearts = 1e6;
+    state.stats.totalClicks = 5_000;
+    state.stats.upgradesBought = 500;
+    state.stats.jarsSealed = 40;
+    state.jarsUnlocked = JARS.slice(0, 4).map((j) => j.id);
+
+    let now = 0;
+    for (let i = 0; i < 30; i++) {
+      now += 5 * 60_000;
+      tick(state, 100, now);
+    }
+
+    expect(derive(state, now).features.has("pets")).toBe(true);
+    expect(pet.slot).not.toBeNull();
+    expect(state.slots).toContain(pet.id);
+    expect(derive(state, now).heartsPerSecond).toBeGreaterThan(0);
+  });
+
+  it("has something to buy for per second and for time away, early", () => {
+    // Both trees, and cheap enough to reach in the first session.
+    const early = visibleUpgrades(createGameState(0, "cami"))
+      .filter((def) => def.baseCost <= 5_000);
+    expect(early.some((def) => def.stat === "cpsFlat" || def.stat === "cps")).toBe(true);
+    expect(early.some((def) => def.stat === "offlineHours" || def.stat === "offline")).toBe(true);
+
+    const his = visibleUpgrades(createGameState(0, "joseph"))
+      .filter((def) => def.baseCost <= 5_000);
+    expect(his.some((def) => def.stat === "cpsFlat" || def.stat === "cps")).toBe(true);
+    expect(his.some((def) => def.stat === "offlineHours" || def.stat === "offline")).toBe(true);
   });
 });
 
@@ -213,9 +277,9 @@ describe("the jar", () => {
   it("goes back to a jar already unlocked, and not to one that is not", () => {
     const state = rich();
     buyNextJar(state);
-    expect(useJar(state, JARS[0].id).ok).toBe(true);
+    expect(switchToJar(state, JARS[0].id).ok).toBe(true);
     expect(state.jar).toBe(JARS[0].id);
-    expect(useJar(state, JARS[5].id).ok).toBe(false);
+    expect(switchToJar(state, JARS[5].id).ok).toBe(false);
   });
 });
 
@@ -358,7 +422,7 @@ describe("creatures", () => {
 
 describe("rocks and shells", () => {
   it("makes one, gives it to a creature, and makes that creature stronger", () => {
-    const state = rich("cami");
+    const state = seatStarter(rich("cami"));
     state.moonUpgrades["m_items"] = 1;
     const made = craftItem(state, "rock", "plain");
     expect(made.ok).toBe(true);
@@ -388,7 +452,7 @@ describe("rocks and shells", () => {
     expect(b.itemId).toBe(made.item!.id);
   });
 
-  it("salvages back into sea glass and takes the item off the creature", () => {
+  it("salvages back into ribbons and takes the item off the creature", () => {
     const state = rich("cami");
     state.moonUpgrades["m_items"] = 1;
     const made = craftItem(state, "rock", "plain");
@@ -447,9 +511,9 @@ describe("abilities", () => {
 describe("time away", () => {
   it("pays for the hours the jar ran without you", () => {
     const state = rich("cami");
-    // The chain is what runs while you are away. Creatures no longer make
-    // hearts, so a jar with nothing bought in it genuinely earns nothing.
-    earnHearts(state, 5_000, "click");
+    // The shelf is what runs while you are away, so a jar with nothing sealed
+    // into it genuinely earns nothing.
+    state.shelfHearts = 1e6;
     state.lastSeenAt = 0;
     const report = computeOffline(state, 3_600_000);
     expect(report.countedMs).toBe(3_600_000);
@@ -748,7 +812,7 @@ describe("new water", () => {
 
 describe("the daily bonus", () => {
   // The first open is not a welcome back. This used to hand a brand new save a
-  // thousand hearts, three pearls and twenty-three shells before a single tap,
+  // thousand hearts, three ribbons and twenty-three shells before a single tap,
   // which cleared the first three rungs of the reveal ladder on its own and was
   // the single largest reason the opening felt like being given everything at
   // once.

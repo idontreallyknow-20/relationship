@@ -5,7 +5,7 @@
 // only ever adds optional bonuses on top.
 
 import { useEffect, useState } from "react";
-import { Settings2, X } from "lucide-react";
+import { HelpCircle, Settings2, X } from "lucide-react";
 import { GameProvider, useGame } from "@/game/store";
 import { formatDurationShort, formatNumber } from "@/game/numbers";
 import { Button, TopBar, useToast } from "@/components/ui";
@@ -22,18 +22,20 @@ import {
 import {
   CodexTab, MinigamesTab, SettingsTab, StatsTab, UsTab, WalletStrip,
 } from "@/components/jar/extras";
+import { AutomationTab } from "@/components/jar/automation";
+import { GlossaryProvider, useGlossary } from "@/components/jar/glossary";
 import { Tour } from "@/components/jar/tour";
-import { StageAnnounce } from "@/components/jar/explain";
+import { StageAnnounce, stagePending } from "@/components/jar/explain";
 import type { Feature } from "@/game/config/stages";
 
 /**
- * Four groups, not five, and eleven tabs rather than seventeen.
+ * Four groups, not five, and ten tabs rather than seventeen.
  *
  * Nineteen flat tabs became five groups a while ago, which was the right move
  * and did not go far enough: five groups of four or five is still twenty-two
  * things to choose between, and several of them were filed by what the code
- * calls them rather than by what they are for. The chain, the upgrades and the
- * automation are one subject, and they were three tabs across two rows.
+ * calls them rather than by what they are for. The upgrades and the automation
+ * are one subject, and they were two tabs across two rows.
  *
  * So: the jar you tap, the tree you spend in, the two of you, and rebirth.
  * Everything that is a reference rather than a decision (the codex, the
@@ -48,7 +50,6 @@ const GROUPS = [
     label: "Grow",
     tabs: [
       { id: "upgrades", label: "Trees", needs: "upgrades" },
-      { id: "depths", label: "The chain", needs: "chain" },
       { id: "automation", label: "Automation", needs: "automation" },
       { id: "abilities", label: "Abilities", needs: "abilities" },
     ],
@@ -108,13 +109,16 @@ function visibleGroups(features: Set<Feature>) {
 export default function Page() {
   return (
     <GameProvider>
-      <JarApp />
+      <GlossaryProvider>
+        <JarApp />
+      </GlossaryProvider>
     </GameProvider>
   );
 }
 
 function JarApp() {
   const { ready, loadError, state, derived } = useGame();
+  const { browse } = useGlossary();
   // Remember where you were between visits, without a mount-time render pass.
   const [tab, setTab] = useState<string>(() => {
     if (typeof sessionStorage === "undefined") return "jar";
@@ -167,6 +171,14 @@ function JarApp() {
         action={
           <span className="flex items-center gap-1.5">
             <SyncBadge />
+            {/* Every word in the game, one press away, from every screen. */}
+            <button
+              aria-label="What everything means"
+              onClick={browse}
+              className="pressable text-berry-soft"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
             <button
               aria-label="Settings"
               onClick={() => setTab("settings")}
@@ -230,6 +242,7 @@ function JarApp() {
         {current === "jar" && <JarScreen onOpenTab={setTab} />}
         {current === "upgrades" && <UpgradesTab />}
         {current === "abilities" && <AbilitiesTab />}
+        {current === "automation" && <AutomationTab />}
         {current === "creatures" && <CreaturesTab />}
         {current === "vessels" && <JarsTab />}
         {current === "tide" && <ResetsTab layer="tide" />}
@@ -335,10 +348,15 @@ function LegacyDialog() {
 /* ------------------------------------------------------------------ */
 
 function NoticeStack() {
-  const { notices, dismissNotice, state } = useGame();
+  const { notices, dismissNotice, state, derived } = useGame();
   const toast = useToast();
-  // The tour already owns the screen; notices behind it only read as clutter.
-  const hidden = !state.settings.tutorialDone;
+  // Nothing on top of the tour, and nothing on top of an explanation.
+  //
+  // A notice is a congratulation and it keeps; a stage announcement is the one
+  // paragraph that says what the thing that just appeared actually does. When
+  // both wanted the screen the notice won, because it was drawn three layers
+  // higher.
+  const hidden = !state.settings.tutorialDone || stagePending(state, derived);
 
   // Auto-dismiss so the stack never grows without bound.
   useEffect(() => {

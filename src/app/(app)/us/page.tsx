@@ -12,7 +12,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { settled } from "@/lib/offline/cache";
 import { queueInsert } from "@/lib/offline/ops";
-import { useCouple } from "@/lib/couple-context";
+import { useBothNames, useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
 import { signedUrl } from "@/lib/media";
 import { formatShortDate, relationshipDays } from "@/lib/format";
@@ -41,6 +41,7 @@ const ROOMS = [
 
 export default function UsPage() {
   const { me, partner, couple } = useCouple();
+  const bothNames = useBothNames("&");
   const toast = useToast();
   const router = useRouter();
   const partnerPerson = partnerOf(me.person);
@@ -114,7 +115,7 @@ export default function UsPage() {
           <Avatar name={partnerName} url={avatarUrls.partner} size="lg" />
         </div>
         <h1 className="mt-3 font-display text-4xl font-semibold text-plum">
-          {me.person === "cami" ? "Cami & Joseph" : "Joseph & Cami"}
+          {bothNames}
         </h1>
         {days !== null && days > 0 ? (
           <>

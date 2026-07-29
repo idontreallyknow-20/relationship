@@ -5,9 +5,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Copy, Download, LogOut, ShieldCheck, Trash2 } from "lucide-react";
+import { Bell, Copy, Download, LogOut, Share2, ShieldCheck, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useCouple } from "@/lib/couple-context";
+import { useBothNames, useCouple, useNames } from "@/lib/couple-context";
 import { signOutDevice } from "@/lib/pairing";
 import { idbWipe } from "@/lib/offline/db";
 import { compressImage, signedUrl, uploadMedia, validateUpload } from "@/lib/media";
@@ -46,10 +46,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export default function SettingsPage() {
   const { me, partner, couple, deviceId, refresh } = useCouple();
+  const names = useNames();
+  const bothNames = useBothNames();
   const toast = useToast();
   const router = useRouter();
   const partnerPerson = partnerOf(me.person);
-  const partnerName = partner?.display_name ?? displayName(partnerPerson);
+  const partnerName = names[partnerPerson];
 
   // Profile
   const [name, setName] = useState(me.display_name);
@@ -75,6 +77,17 @@ export default function SettingsPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [invitePerson, setInvitePerson] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
+  // Read once, after mount, because `navigator` does not exist while this
+  // renders on the server and a lazy initialiser would return different
+  // answers on the two sides of hydration. Deferred a frame so this is not a
+  // synchronous setState inside an effect, which cascades.
+  const [canShare, setCanShare] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      setCanShare(typeof navigator.share === "function"),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   // Notifications
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
@@ -368,15 +381,25 @@ export default function SettingsPage() {
           <Button onClick={saveRelationship}>Save</Button>
         </Card>
 
-        {/* Invites */}
-        <SectionTitle>Invite a device</SectionTitle>
+        {/* Invites.
+
+            Asked for as "there's a button play with someone else and then make
+            an invite link", and both halves of that were already here: the
+            edge function that mints a one-time token, and the /invite page
+            that redeems it. What was missing was any way to find them. It was
+            called "Invite a device", filed between the anniversary date and
+            the PIN, and offered a link "for Joseph" rather than for a person
+            you might want to bring in. */}
+        <SectionTitle>Invite someone</SectionTitle>
         <Card className="space-y-3">
-          <p className="text-sm text-berry-soft">
-            One-time links. Send them privately.
+          <p className="text-sm leading-relaxed text-berry-soft">
+            Send someone a one-time link and they join this space on their own
+            phone, with their own jar. There are two places in here: yours, and
+            the other one. Whoever opens the link takes the one you pick.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" loading={inviteBusy} onClick={() => createInvite(partnerPerson)}>
-              Invite link for {partnerName}
+              Invite {partnerName}
             </Button>
             <Button variant="ghost" size="sm" loading={inviteBusy} onClick={() => createInvite(me.person)}>
               Link for my other device
@@ -385,23 +408,51 @@ export default function SettingsPage() {
           {inviteLink && (
             <div className="space-y-2 rounded-xl bg-cream p-3">
               <p className="text-xs font-semibold text-berry">
-                One-time link for {invitePerson === me.person ? "you" : displayName(invitePerson as "cami" | "joseph")}:
+                One-time link for {invitePerson === me.person ? "your other device" : names[invitePerson as "cami" | "joseph"]}:
               </p>
               <p className="break-all text-xs text-berry-soft">{inviteLink}</p>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(inviteLink);
-                    toast("Link copied");
-                  } catch {
-                    toast("Copy failed, select and copy the text above");
-                  }
-                }}
-              >
-                <Copy className="h-4 w-4" /> Copy link
-              </Button>
+              <p className="text-xs text-berry-soft">
+                It works once, and it expires. Send it privately: anyone holding
+                it can take that place.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(inviteLink);
+                      toast("Link copied");
+                    } catch {
+                      toast("Copy failed, select and copy the text above");
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Copy link
+                </Button>
+                {/* The share sheet, where there is one. On a phone this is the
+                    difference between an invite you send and one you copy,
+                    switch apps, and hope you still have. */}
+                {canShare && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await navigator.share({
+                          title: "Join me",
+                          text: "Here is your one-time link.",
+                          url: inviteLink,
+                        });
+                      } catch {
+                        // Cancelled, which is not a failure.
+                      }
+                    }}
+                  >
+                    <Share2 className="h-4 w-4" /> Share
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </Card>
@@ -428,7 +479,7 @@ export default function SettingsPage() {
                     {d.id === deviceId && <span className="ml-1.5 text-xs font-normal text-success">This device</span>}
                   </span>
                   <span className="text-xs text-berry-soft">
-                    {displayName(d.person)}, active {formatRelative(d.last_active_at)}
+                    {names[d.person]}, active {formatRelative(d.last_active_at)}
                   </span>
                 </span>
                 <button
@@ -583,7 +634,7 @@ export default function SettingsPage() {
         </Card>
 
         <p className="text-center text-xs text-berry-soft">
-          Made only for Cami and Joseph. No ads, no trackers, no third parties.
+          Made only for {bothNames}. No ads, no trackers, no third parties.
         </p>
       </main>
 
