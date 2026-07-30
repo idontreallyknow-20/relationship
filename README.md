@@ -3,6 +3,17 @@
 Our little world. A private, installable couples app built exclusively for
 two people: Cami and Joseph.
 
+## Status: closed
+
+The app is over. Every route now renders `src/components/breakup.tsx`: the
+heart breaks, the screen goes black, and it says "maybe in another life...".
+The root layout (`src/app/layout.tsx`) renders that component instead of the
+routed children, so nothing below it is reachable. The rest of the code and
+the database are untouched and still here, just not wired up to anything.
+Tapping the word "life" on the black screen replays the animation.
+
+The rest of this file describes the app as it was.
+
 ## What it is
 
 A Progressive Web App with real-time chat, shared drawings, mood check-ins,

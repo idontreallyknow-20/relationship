@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // The old screens are still in the repo but no longer routed, so their
+  // specs cannot pass. Kept on disk rather than deleted.
+  testIgnore: ["screens.spec.ts", "interactions.spec.ts"],
   timeout: 60_000,
   retries: 0,
   workers: 2,
