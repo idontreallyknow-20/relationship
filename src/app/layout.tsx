@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Nunito_Sans } from "next/font/google";
 import "./globals.css";
+import { Breakup } from "@/components/breakup";
 import { SwRegister } from "@/components/sw-register";
 
 const display = Cormorant_Garamond({
@@ -15,13 +16,13 @@ const sans = Nunito_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Cami & Joseph",
-  description: "Our little world",
-  applicationName: "Cami & Joseph",
+  title: "maybe in another life",
+  description: "It's over",
+  applicationName: "maybe in another life",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "Cami & Joseph",
+    statusBarStyle: "black",
+    title: "maybe in another life",
   },
   icons: {
     icon: "/icons/icon-192.png",
@@ -30,7 +31,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#fbf6ef",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -38,15 +39,14 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+// Every route now ends at the same screen. The routed children are
+// deliberately not rendered: the rest of the app is still in the repo, just
+// no longer reachable.
+export default function RootLayout() {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} h-full`}>
       <body className="min-h-full flex flex-col">
-        {children}
+        <Breakup />
         <SwRegister />
       </body>
     </html>

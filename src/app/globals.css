@@ -32,7 +32,8 @@ html {
 }
 
 body {
-  background: var(--color-cream);
+  /* Black is where this ends, so nothing peeks through cream at the edges. */
+  background: #000;
   color: var(--color-berry);
   font-family: var(--font-sans);
   min-height: 100%;
@@ -140,4 +141,111 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* The ending: a heart that beats, cracks, splits, and then the blackout. */
+@keyframes breakup-beat {
+  0%, 100% { transform: scale(1); }
+  18% { transform: scale(1.12); }
+  36% { transform: scale(1); }
+}
+.breakup-beat {
+  animation: breakup-beat 780ms ease-in-out 2;
+  transform-origin: center;
+}
+
+@keyframes breakup-crack {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes breakup-crack-out {
+  to { opacity: 0; }
+}
+.breakup-crack {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  animation:
+    breakup-crack 420ms ease-in 1560ms forwards,
+    breakup-crack-out 320ms ease-out 2100ms forwards;
+}
+
+@keyframes breakup-split-left {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  14% { transform: translate(-5%, -3%) rotate(-4deg); opacity: 1; }
+  100% { transform: translate(-58%, 62%) rotate(-28deg); opacity: 0; }
+}
+@keyframes breakup-split-right {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  14% { transform: translate(5%, -3%) rotate(4deg); opacity: 1; }
+  100% { transform: translate(58%, 62%) rotate(28deg); opacity: 0; }
+}
+.breakup-whole {
+  animation: breakup-crack-out 160ms linear 1980ms forwards;
+}
+.breakup-half-left,
+.breakup-half-right {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.breakup-half-left {
+  animation: breakup-split-left 1900ms cubic-bezier(0.45, 0, 0.7, 1) 2000ms forwards;
+}
+.breakup-half-right {
+  animation: breakup-split-right 1900ms cubic-bezier(0.45, 0, 0.7, 1) 2000ms forwards;
+}
+
+@keyframes breakup-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.breakup-line {
+  animation: breakup-in 1100ms ease-out 2400ms both;
+}
+.breakup-echo {
+  animation: breakup-in 1600ms ease-out 900ms both;
+}
+
+@keyframes breakup-blackout {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.breakup-blackout {
+  animation: breakup-blackout 1400ms ease-in both;
+}
+
+/* The secret: the word stays a word, with no hint that it is tappable. */
+.breakup-egg {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+/* Reduced motion: hold the heart broken instead of animating it apart. */
+@media (prefers-reduced-motion: reduce) {
+  .breakup-beat,
+  .breakup-line,
+  .breakup-echo,
+  .breakup-blackout {
+    animation: none;
+  }
+  .breakup-crack {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .breakup-whole {
+    animation: none;
+    opacity: 0;
+  }
+  .breakup-half-left {
+    animation: none;
+    transform: translate(-9%, 5%) rotate(-9deg);
+  }
+  .breakup-half-right {
+    animation: none;
+    transform: translate(9%, 5%) rotate(9deg);
+  }
 }
