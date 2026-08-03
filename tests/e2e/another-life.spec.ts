@@ -65,6 +65,23 @@ test.describe("another life", () => {
     await page.screenshot({ path: `${SHOTS}/another-life-done-${testInfo.project.name}.png` });
   });
 
+  test("a note can be typed and sent without counting a tap", async ({ page }, testInfo) => {
+    await mockSupabase(page);
+    await page.goto("/another-life");
+    await expect(page.getByText("42/77777")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Send a note" }).click();
+    await page.getByPlaceholder("A note to Cami").fill("miss you");
+    await page.screenshot({ path: `${SHOTS}/another-life-note-${testInfo.project.name}.png` });
+    const request = page.waitForRequest(
+      (r) => r.url().includes("/functions/v1/notify") && r.method() === "POST",
+    );
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const req = await request;
+    expect(req.postDataJSON()).toMatchObject({ category: "note", body: "miss you" });
+    await expect(page.getByText("Sent")).toBeVisible();
+    await expect(page.getByText("42/77777")).toBeVisible();
+  });
+
   test("the root route lands on the counter when signed in", async ({ page }) => {
     await mockSupabase(page);
     await page.goto("/");

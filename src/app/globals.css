@@ -149,6 +149,12 @@ body {
   user-select: none;
   -webkit-touch-callout: none;
 }
+.another-life :focus-visible {
+  outline-color: rgba(255, 255, 255, 0.4);
+}
+.another-life input:focus-visible {
+  outline: none;
+}
 @keyframes tap-ripple {
   from { transform: translate(-50%, -50%) scale(0.35); opacity: 0.6; }
   to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
