@@ -104,6 +104,7 @@ export interface DailyQuestion {
   question_id: string;
   for_date: string;
   skipped: boolean;
+  replaced_question_id: string | null;
   created_at: string;
 }
 

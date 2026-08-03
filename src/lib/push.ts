@@ -45,27 +45,35 @@ export function pushStatus(): PushStatus {
   return Notification.permission as PushStatus;
 }
 
-/**
- * Request permission (must be called from a user gesture) and store the
- * subscription server-side for this person and device.
- */
-export async function enablePush(person: Person): Promise<boolean> {
-  if (!pushAvailableNow()) return false;
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return false;
+/** A subscription made under a different VAPID key can never be delivered
+ * to; it has to be replaced, not reused. */
+function matchesVapidKey(sub: PushSubscription): boolean {
+  const key = sub.options.applicationServerKey;
+  if (!key) return true;
+  const want = base64ToUint8(VAPID_PUBLIC_KEY);
+  const have = new Uint8Array(key);
+  return have.length === want.length && have.every((b, i) => b === want[i]);
+}
 
+async function currentSubscription(): Promise<PushSubscription> {
   const registration = await navigator.serviceWorker.ready;
-  const existing = await registration.pushManager.getSubscription();
-  const subscription =
-    existing ??
+  let sub = await registration.pushManager.getSubscription();
+  if (sub && !matchesVapidKey(sub)) {
+    await sub.unsubscribe();
+    sub = null;
+  }
+  return (
+    sub ??
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: base64ToUint8(VAPID_PUBLIC_KEY) as BufferSource,
-    }));
+    }))
+  );
+}
 
+async function storeSubscription(person: Person, subscription: PushSubscription): Promise<boolean> {
   const json = subscription.toJSON();
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
-
   const { error } = await supabase().from("push_subscriptions").upsert(
     {
       person,
@@ -77,6 +85,32 @@ export async function enablePush(person: Person): Promise<boolean> {
     { onConflict: "endpoint" },
   );
   return !error;
+}
+
+/**
+ * Request permission (must be called from a user gesture) and store the
+ * subscription server-side for this person and device.
+ */
+export async function enablePush(person: Person): Promise<boolean> {
+  if (!pushAvailableNow()) return false;
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return false;
+  return storeSubscription(person, await currentSubscription());
+}
+
+/**
+ * Re-register this device's subscription server-side. Push endpoints
+ * rotate and the server prunes rows when delivery fails, and without this
+ * a phone stays silent forever while still claiming notifications are on.
+ * Runs on every app start; does nothing unless permission is granted.
+ */
+export async function syncPushSubscription(person: Person): Promise<void> {
+  try {
+    if (!pushAvailableNow() || Notification.permission !== "granted") return;
+    await storeSubscription(person, await currentSubscription());
+  } catch {
+    // Best effort; the next app start tries again.
+  }
 }
 
 export async function disablePush(): Promise<void> {

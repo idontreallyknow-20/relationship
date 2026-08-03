@@ -81,9 +81,22 @@ self.addEventListener("push", (event) => {
     icon: "/icons/icon-192.png",
     badge: "/icons/badge-96.png",
     tag: data.tag || undefined,
+    // Replacing a same-tag notification should still buzz.
+    renotify: Boolean(data.tag),
     data: { url: data.url || "/" },
   };
   event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Browsers rotate push subscriptions; without this the old endpoint dies
+// silently. Re-subscribe here, and the app stores the new endpoint
+// server-side the next time it opens.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const options =
+    (event.oldSubscription && event.oldSubscription.options) || { userVisibleOnly: true };
+  event.waitUntil(
+    self.registration.pushManager.subscribe(options).catch(() => null)
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -93,12 +106,15 @@ self.addEventListener("notificationclick", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
-        for (const client of clients) {
-          if ("focus" in client) {
-            client.focus();
-            if ("navigate" in client) client.navigate(target);
-            return;
-          }
+        const client = clients.find((c) => "focus" in c);
+        if (client) {
+          // Await the whole chain so the worker is not killed mid-navigation.
+          return client
+            .focus()
+            .then((focused) =>
+              focused && "navigate" in focused ? focused.navigate(target) : undefined
+            )
+            .catch(() => self.clients.openWindow(target));
         }
         return self.clients.openWindow(target);
       })

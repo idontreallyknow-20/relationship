@@ -39,6 +39,21 @@ export function relationshipDays(startDate: string): number {
   return differenceInCalendarDays(new Date(), new Date(startDate + "T00:00:00")) + 1;
 }
 
+/**
+ * Today's date (YYYY-MM-DD) in a specific timezone. Must match how the
+ * server's tick function stamps daily_questions.for_date, or the daily
+ * question goes invisible for anyone whose device clock has already
+ * rolled past midnight while the couple timezone has not (or vice versa).
+ */
+export function todayIn(timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export function formatDuration(totalSeconds: number): string {
   const s = Math.max(0, Math.round(totalSeconds));
   const minutes = Math.floor(s / 60);

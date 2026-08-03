@@ -4,8 +4,8 @@
 // pool of questions we write for each other.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { todayIn } from "@/lib/format";
 import { useCouple, useWho } from "@/lib/couple-context";
 import { EmptyState, TopBar, useToast } from "@/components/ui";
 import { HeartDivider, HeartSpinner } from "@/components/hearts";
@@ -18,11 +18,13 @@ import { CustomQuestions } from "@/components/questions/custom-questions";
 type DQRow = DailyQuestion & { question: Question | null };
 
 export default function Page() {
-  const { me: meProfile, partner: partnerProfile } = useCouple();
+  const { me: meProfile, partner: partnerProfile, couple } = useCouple();
   const { me, partner } = useWho();
   const toast = useToast();
 
-  const today = format(new Date(), "yyyy-MM-dd");
+  // Same clock the server uses to stamp for_date, recomputed on every load
+  // so a page left open across midnight rolls over.
+  const coupleToday = () => todayIn(couple.timezone);
 
   const [todayDq, setTodayDq] = useState<DQRow | null>(null);
   const [historyDqs, setHistoryDqs] = useState<DQRow[]>([]);
@@ -33,6 +35,7 @@ export default function Page() {
 
   const load = useCallback(async () => {
     const sb = supabase();
+    const today = coupleToday();
     const [todayRes, histRes, favRes, questionsRes] = await Promise.all([
       sb
         .from("daily_questions")
@@ -70,7 +73,7 @@ export default function Page() {
       setAnswers([]);
     }
     setLoading(false);
-  }, [today, me]);
+  }, [couple.timezone, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void load();
