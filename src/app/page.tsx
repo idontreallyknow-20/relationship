@@ -12,7 +12,7 @@ export default function Index() {
     supabase()
       .auth.getSession()
       .then(({ data }) => {
-        router.replace(data.session ? "/home" : "/welcome");
+        router.replace(data.session ? "/another-life" : "/welcome");
       });
   }, [router]);
 
