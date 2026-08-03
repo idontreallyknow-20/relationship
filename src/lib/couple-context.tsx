@@ -164,12 +164,12 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
 
   if (failed) {
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-black p-8 text-center">
-        <p className="text-white/60">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-berry-soft">
           Could not load your shared space. Check your connection.
         </p>
         <button
-          className="pressable rounded-full border border-white/40 px-6 py-3 font-semibold text-white"
+          className="pressable rounded-full bg-rose-dark px-6 py-3 font-semibold text-white"
           onClick={() => {
             setFailed(false);
             void load();
@@ -178,7 +178,7 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
           Try again
         </button>
         <button
-          className="text-sm text-white/60 underline"
+          className="text-sm text-berry-soft underline"
           onClick={() => void signOutDevice()}
         >
           Sign out
@@ -189,12 +189,8 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
 
   if (!value) {
     return (
-      <div
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black"
-        role="status"
-        aria-label="Loading"
-      >
-        <svg viewBox="0 0 24 24" className="heart-pulse h-10 w-10 fill-white/25" aria-hidden="true">
+      <div className="flex min-h-dvh items-center justify-center" role="status" aria-label="Loading">
+        <svg viewBox="0 0 24 24" className="heart-pulse h-10 w-10 fill-rose-deep" aria-hidden="true">
           <path d="M12 21c-.6-.5-9-6.4-9-12A5 5 0 0 1 12 6a5 5 0 0 1 9 3c0 5.6-8.4 11.5-9 12z" />
         </svg>
       </div>

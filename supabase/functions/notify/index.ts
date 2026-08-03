@@ -1,7 +1,6 @@
-// Push delivery to the partner. The only notification the app sends now is
-// a typed note from one person to the other, so this function accepts just
-// the "note" category and always delivers the typed text. Quiet hours and
-// the per-category mute still apply; server-side dedupe prevents repeats.
+// Push delivery to the partner. Respects per-category preferences, quiet
+// hours, and private previews. Deduplicates via a server-side log so the
+// same event never produces two notifications.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -30,6 +29,43 @@ function adminClient() {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }
+
+const CATEGORIES = new Set([
+  "messages", "drawings", "moods", "thinking_of_you", "questions",
+  "answers", "letters", "events", "milestones", "arrivals", "plans",
+]);
+
+// Per-category rate limit (seconds): at most one push per category per
+// recipient inside the window, so a burst of activity means one gentle
+// nudge instead of twenty-one.
+const THROTTLE: Record<string, number> = {
+  messages: 180,
+  thinking_of_you: 900,
+  moods: 900,
+  drawings: 600,
+  arrivals: 300,
+  plans: 900,
+  questions: 0,
+  answers: 0,
+  letters: 0,
+  events: 0,
+  milestones: 0,
+};
+
+// Generic wording used when the recipient keeps previews private.
+const GENERIC: Record<string, { title: string; body: string }> = {
+  messages: { title: "Cami & Joseph", body: "A new message is waiting for you" },
+  drawings: { title: "Cami & Joseph", body: "A new drawing was shared with you" },
+  moods: { title: "Cami & Joseph", body: "A mood update was shared with you" },
+  thinking_of_you: { title: "Cami & Joseph", body: "Someone is thinking of you" },
+  questions: { title: "Cami & Joseph", body: "Today's question is ready" },
+  answers: { title: "Cami & Joseph", body: "Both answers are ready to read" },
+  letters: { title: "Cami & Joseph", body: "A letter is waiting for you" },
+  events: { title: "Cami & Joseph", body: "A plan on your calendar is coming up" },
+  milestones: { title: "Cami & Joseph", body: "You reached a relationship milestone" },
+  arrivals: { title: "Cami & Joseph", body: "An arrival update was shared" },
+  plans: { title: "Cami & Joseph", body: "A shared plan was updated" },
+};
 
 function inQuietHours(
   quietStart: string | null,
@@ -79,30 +115,29 @@ Deno.serve(async (req: Request) => {
   }
 
   const category = String(body.category ?? "");
-  if (category !== "note") return json({ error: "invalid_category" }, 400);
+  if (!CATEGORIES.has(category)) return json({ error: "invalid_category" }, 400);
   const dedupeKey = String(body.dedupe_key ?? "").slice(0, 200);
   if (!dedupeKey) return json({ error: "missing dedupe_key" }, 400);
-  const text = String(body.body ?? "").trim().slice(0, 300);
-  if (!text) return json({ error: "missing body" }, 400);
 
   try {
-    // Never send the same note twice.
+    // Never send the same notification twice, and rate limit per category.
     const { data: fresh, error: dedupeErr } = await admin.rpc("admin_notif_allow", {
-      k: `note:${dedupeKey}`,
-      cat: "note",
+      k: `${category}:${dedupeKey}`,
+      cat: category,
       rcpt: recipient,
-      throttle_seconds: 0,
+      throttle_seconds: THROTTLE[category] ?? 0,
     });
     if (dedupeErr) throw dedupeErr;
     if (!fresh) return json({ sent: false, reason: "duplicate_or_throttled" });
 
+    // Category preferences and quiet hours.
     const { data: prefs } = await admin
       .from("notification_prefs")
-      .select("categories, quiet_start, quiet_end")
+      .select("categories, quiet_start, quiet_end, private_previews")
       .eq("person", recipient)
       .maybeSingle();
     const cats = (prefs?.categories ?? {}) as Record<string, boolean>;
-    if (cats.note === false) return json({ sent: false, reason: "muted" });
+    if (cats[category] === false) return json({ sent: false, reason: "muted" });
 
     const { data: couple } = await admin
       .from("couple")
@@ -112,6 +147,12 @@ Deno.serve(async (req: Request) => {
     if (inQuietHours(prefs?.quiet_start ?? null, prefs?.quiet_end ?? null, couple?.timezone ?? "America/New_York")) {
       return json({ sent: false, reason: "quiet_hours" });
     }
+
+    const usePrivate = prefs?.private_previews !== false;
+    const generic = GENERIC[category];
+    const title = usePrivate ? generic.title : String(body.title ?? generic.title).slice(0, 120);
+    const text = usePrivate ? generic.body : String(body.body ?? generic.body).slice(0, 300);
+    const url = typeof body.url === "string" && body.url.startsWith("/") ? body.url : "/";
 
     const [{ data: subs }, vapidPub, vapidPriv, vapidSubj] = await Promise.all([
       admin.from("push_subscriptions").select("id, endpoint, p256dh, auth").eq("person", recipient),
@@ -125,13 +166,7 @@ Deno.serve(async (req: Request) => {
 
     webpush.setVapidDetails(vapidSubj.data ?? "mailto:owner@example.com", vapidPub.data, vapidPriv.data);
 
-    // A note is an intentional message, so the typed text is the payload.
-    const payload = JSON.stringify({
-      title: "Cami & Joseph",
-      body: text,
-      url: "/",
-      tag: `note:${dedupeKey}`,
-    });
+    const payload = JSON.stringify({ title, body: text, url, tag: `${category}:${dedupeKey}` });
     let delivered = 0;
     for (const sub of subs) {
       try {

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { HeartSpinner } from "@/components/hearts";
 
 export default function Index() {
   const router = useRouter();
@@ -11,10 +12,13 @@ export default function Index() {
     supabase()
       .auth.getSession()
       .then(({ data }) => {
-        router.replace(data.session ? "/another-life" : "/welcome");
+        router.replace(data.session ? "/home" : "/welcome");
       });
   }, [router]);
 
-  // Stay black while deciding where to go, so the app never flashes cream.
-  return <main className="min-h-dvh bg-black" />;
+  return (
+    <main className="flex min-h-dvh items-center justify-center">
+      <HeartSpinner />
+    </main>
+  );
 }
