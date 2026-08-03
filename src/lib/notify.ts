@@ -1,9 +1,6 @@
 import { supabase } from "./supabase";
 
-// "note" is the only category the server still accepts; the rest remain in
-// the type so the hidden legacy screens keep compiling.
 export type NotifyCategory =
-  | "note"
   | "messages" | "drawings" | "moods" | "thinking_of_you" | "questions"
   | "answers" | "letters" | "events" | "milestones" | "arrivals" | "plans";
 

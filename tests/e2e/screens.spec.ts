@@ -1,32 +1,37 @@
-// The app is the in-another-life counter now: every inner route must land
-// on it, and the pairing screen is the only other thing a person can see.
+// Visual sweep: loads every major screen with a mocked backend, asserts the
+// core content rendered, and captures screenshots for inspection.
 
 import { expect, test } from "@playwright/test";
 import { mockSupabase } from "./mock";
 
 const SHOTS = "test-results/screens";
 
-const hiddenRoutes = [
-  "/home",
-  "/chat",
-  "/moods",
-  "/questions",
-  "/letters",
-  "/memories",
-  "/plans",
-  "/location",
-  "/us",
-  "/settings",
-  "/draw",
+const screens: { path: string; name: string; expectText: string | RegExp }[] = [
+  { path: "/home", name: "home", expectText: /Good (morning|afternoon|evening)|Up late/ },
+  { path: "/chat", name: "chat", expectText: /bookshop|hello|message/i },
+  { path: "/moods", name: "moods", expectText: /mood|feel/i },
+  { path: "/questions", name: "questions", expectText: /question/i },
+  { path: "/letters", name: "letters", expectText: /letter|write/i },
+  { path: "/memories", name: "memories", expectText: /memor/i },
+  { path: "/plans", name: "plans", expectText: /calendar|plan|bucket/i },
+  { path: "/location", name: "location", expectText: /location|share/i },
+  { path: "/us", name: "us", expectText: /Cami & Joseph/ },
+  { path: "/settings", name: "settings", expectText: /profile|Settings/i },
+  { path: "/draw", name: "draw", expectText: /draw/i },
 ];
 
 test.describe("screens", () => {
-  for (const path of hiddenRoutes) {
-    test(`${path} stays black and lands on the counter`, async ({ page }) => {
+  for (const screen of screens) {
+    test(`renders ${screen.name}`, async ({ page }, testInfo) => {
       await mockSupabase(page);
-      await page.goto(path);
-      await page.waitForURL("**/another-life", { timeout: 20_000 });
-      await expect(page.getByText("42/77777")).toBeVisible({ timeout: 20_000 });
+      await page.goto(screen.path);
+      await expect(page.getByText(screen.expectText).first()).toBeVisible({ timeout: 20_000 });
+      // Give images/fonts a beat to settle before the screenshot.
+      await page.waitForTimeout(900);
+      await page.screenshot({
+        path: `${SHOTS}/${screen.name}-${testInfo.project.name}.png`,
+        fullPage: true,
+      });
     });
   }
 

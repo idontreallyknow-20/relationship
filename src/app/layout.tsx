@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   applicationName: "Cami & Joseph",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black",
+    statusBarStyle: "default",
     title: "Cami & Joseph",
   },
   icons: {
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#fbf6ef",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

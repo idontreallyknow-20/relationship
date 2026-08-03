@@ -182,10 +182,6 @@ export const fixtures: Record<string, unknown[]> = {
     { person: "joseph", settings: {}, updated_at: iso(0) },
   ],
   deletion_requests: [],
-  another_life_clicks: [
-    { person: "joseph", count: 12, updated_at: iso(60_000) },
-    { person: "cami", count: 30, updated_at: iso(90_000) },
-  ],
   love_taps: Array.from({ length: 14 }, (_, i) => ({
     id: `7777aaa1-0000-4000-8000-${String(i).padStart(12, "0")}`,
     person: i % 3 === 0 ? "joseph" : "cami",
