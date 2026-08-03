@@ -1,11 +1,15 @@
 "use client";
 
 // In another life. A black screen, a shared counter, and 77777 taps between
-// two people. When the number is reached the screen becomes a heart.
+// two people. When the number is reached the screen becomes a heart. A small
+// message icon lets one person type a note that arrives on the other's phone.
 
 import { useRef, useState } from "react";
+import { MessageCircle } from "lucide-react";
 import { useWho } from "@/lib/couple-context";
 import { displayName } from "@/lib/types";
+import { notifyPartner } from "@/lib/notify";
+import { enablePush, pushStatus, type PushStatus } from "@/lib/push";
 import { useAnotherLife, TARGET } from "@/lib/use-another-life";
 
 interface Ripple {
@@ -20,9 +24,24 @@ export function AnotherLife() {
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const nextId = useRef(0);
 
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [push, setPush] = useState<PushStatus>("granted");
+
+  const openNote = () => {
+    setPush(pushStatus());
+    setNoteOpen(true);
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (!tap()) return;
+    if (noteOpen) {
+      setNoteOpen(false);
+      return;
+    }
+    if (done || !tap()) return;
     const id = ++nextId.current;
     setRipples((r) => [...r, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => {
@@ -30,10 +49,23 @@ export function AnotherLife() {
     }, 600);
   };
 
+  const sendNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = note.trim();
+    if (!text || sending) return;
+    setSending(true);
+    await notifyPartner("note", crypto.randomUUID(), { body: text });
+    setSending(false);
+    setNote("");
+    setNoteOpen(false);
+    setSent(true);
+    setTimeout(() => setSent(false), 1600);
+  };
+
   return (
     <div
       className="another-life fixed inset-0 z-[100] bg-black text-white"
-      onPointerDown={done ? undefined : onPointerDown}
+      onPointerDown={onPointerDown}
       onContextMenu={(e) => e.preventDefault()}
     >
       {done ? (
@@ -69,6 +101,69 @@ export function AnotherLife() {
             />
           ))}
         </>
+      )}
+
+      <button
+        aria-label="Send a note"
+        className="absolute right-3 flex h-10 w-10 items-center justify-center text-white/40"
+        style={{ top: "calc(0.75rem + var(--safe-top))" }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => (noteOpen ? setNoteOpen(false) : openNote())}
+      >
+        <MessageCircle className="h-5 w-5" />
+      </button>
+      {sent && (
+        <span
+          className="fade-in pointer-events-none absolute right-14 text-xs text-white/50"
+          style={{ top: "calc(1.4rem + var(--safe-top))" }}
+        >
+          Sent
+        </span>
+      )}
+
+      {noteOpen && (
+        <div
+          className="absolute inset-x-0 flex justify-center px-6"
+          style={{ top: "calc(4rem + var(--safe-top))" }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <form
+            onSubmit={sendNote}
+            className="rise-in flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-white/25 bg-black p-4"
+          >
+            <input
+              autoFocus
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={200}
+              placeholder={`A note to ${displayName(partner)}`}
+              className="w-full border-b border-white/25 bg-transparent pb-2 text-sm text-white placeholder:text-white/30 focus:outline-none"
+            />
+            {push === "default" && (
+              <button
+                type="button"
+                className="text-left text-xs text-white/40 underline"
+                onClick={async () => {
+                  setPush((await enablePush(me)) ? "granted" : pushStatus());
+                }}
+              >
+                Turn on notifications on this phone
+              </button>
+            )}
+            <div className="flex justify-end gap-5 text-sm">
+              <button type="button" className="text-white/40" onClick={() => setNoteOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!note.trim() || sending}
+                className="font-semibold text-white disabled:text-white/30"
+              >
+                {sending ? "Sending" : "Send"}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );
