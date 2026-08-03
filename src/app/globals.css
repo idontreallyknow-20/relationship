@@ -141,3 +141,22 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* In another life: full-screen tap counter. */
+.another-life {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+@keyframes tap-ripple {
+  from { transform: translate(-50%, -50%) scale(0.35); opacity: 0.6; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+.tap-ripple {
+  transform: translate(-50%, -50%);
+  animation: tap-ripple 500ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tap-ripple { animation: none; opacity: 0; }
+}

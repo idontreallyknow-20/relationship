@@ -82,6 +82,9 @@ export async function mockSupabase(page: Page): Promise<void> {
     }
   });
 
+  // Taps flushed through add_clicks during this page's run.
+  let clicksFlushed = 0;
+
   await page.route(`${SUPABASE_URL}/rest/v1/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -94,6 +97,18 @@ export async function mockSupabase(page: Page): Promise<void> {
       const fn = url.pathname.split("/").pop();
       if (fn === "pin_available") {
         await route.fulfill({ json: true });
+      } else if (fn === "add_clicks") {
+        let n = 0;
+        try {
+          n = Number((request.postDataJSON() as { n?: number }).n) || 0;
+        } catch {
+          n = 0;
+        }
+        clicksFlushed += Math.max(0, n);
+        const mine = (fixtures.another_life_clicks as { person: string; count: number }[]).find(
+          (r) => r.person === "joseph",
+        );
+        await route.fulfill({ json: (mine?.count ?? 0) + clicksFlushed });
       } else {
         await route.fulfill({ json: null });
       }
