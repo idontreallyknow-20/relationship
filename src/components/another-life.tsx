@@ -32,7 +32,7 @@ export function AnotherLife() {
 
   return (
     <div
-      className="another-life fixed inset-0 z-50 bg-black text-white"
+      className="another-life fixed inset-0 z-[100] bg-black text-white"
       onPointerDown={done ? undefined : onPointerDown}
       onContextMenu={(e) => e.preventDefault()}
     >

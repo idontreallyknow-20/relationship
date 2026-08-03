@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { HeartSpinner } from "@/components/hearts";
 
 export default function Index() {
   const router = useRouter();
@@ -16,9 +15,6 @@ export default function Index() {
       });
   }, [router]);
 
-  return (
-    <main className="flex min-h-dvh items-center justify-center">
-      <HeartSpinner />
-    </main>
-  );
+  // Stay black while deciding where to go, so the app never flashes cream.
+  return <main className="min-h-dvh bg-black" />;
 }
