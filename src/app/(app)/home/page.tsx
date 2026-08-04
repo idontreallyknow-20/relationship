@@ -10,7 +10,7 @@ import { MessageCircle, Sparkle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useCouple } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
-import { formatRelative, formatTime, relationshipDays } from "@/lib/format";
+import { formatRelative, formatTime, relationshipDays, todayIn } from "@/lib/format";
 import { displayName, partnerOf } from "@/lib/types";
 import type { DailyQuestion, Message, MoodEntry, Question, Signal } from "@/lib/types";
 import { Button, Card, useToast } from "@/components/ui";
@@ -62,17 +62,18 @@ export default function HomePage() {
   const load = useCallback(async () => {
     const sb = supabase();
     const now = new Date().toISOString();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    // The tick function stamps for_date in the couple's timezone, so the
+    // lookup must use the same clock. The lte fallback covers the few
+    // minutes after midnight before the next question exists.
+    const coupleToday = todayIn(couple.timezone);
 
     const [moods, msgs, unreadRes, dq, locations, signals] =
       await Promise.all([
         sb.from("moods").select("*").is("cleared_at", null).order("created_at", { ascending: false }).limit(10),
         sb.from("messages").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(1),
         sb.from("messages").select("id", { count: "exact", head: true }).eq("sender", partnerPerson).is("read_at", null).is("deleted_at", null),
-        sb.from("daily_questions").select("*, questions(*), answers(person)").eq("for_date", localDate).maybeSingle(),
+        sb.from("daily_questions").select("*, questions(*), answers(person)").lte("for_date", coupleToday).order("for_date", { ascending: false }).limit(1).maybeSingle(),
         sb.from("locations").select("person, expires_at").gt("expires_at", now).order("shared_at", { ascending: false }).limit(10),
         sb.from("signals").select("*").eq("from_person", partnerPerson).is("acknowledged_at", null).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(5),
       ]);
@@ -107,7 +108,7 @@ export default function HomePage() {
       partnerSharing: (locations.data ?? []).some((l) => l.person === partnerPerson),
       recentSignals: (signals.data ?? []) as Signal[],
     });
-  }, [me.person, partnerPerson]);
+  }, [me.person, partnerPerson, couple.timezone]);
 
   useEffect(() => {
     void load();
@@ -117,9 +118,18 @@ export default function HomePage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "moods" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_questions" }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "answers" }, () => void load())
       .subscribe();
+    // A phone that sits open across midnight otherwise keeps yesterday's
+    // screen until a manual reload.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       void sb.removeChannel(channel);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
 
@@ -144,6 +154,7 @@ export default function HomePage() {
     await supabase()
       .from("signals")
       .update({ acknowledged_at: new Date().toISOString() })
+      .eq("from_person", partnerPerson)
       .is("acknowledged_at", null);
     void load();
   };

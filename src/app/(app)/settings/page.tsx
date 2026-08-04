@@ -244,15 +244,22 @@ export default function SettingsPage() {
 
   const updatePrefs = async (patch: Partial<NotificationPrefs>) => {
     if (!prefs) return;
+    const previous = prefs;
     const next = { ...prefs, ...patch };
     setPrefs(next);
-    await supabase().from("notification_prefs").upsert({
+    const { error } = await supabase().from("notification_prefs").upsert({
       person: me.person,
       categories: next.categories,
       quiet_start: next.quiet_start,
       quiet_end: next.quiet_end,
       private_previews: next.private_previews,
+      updated_at: new Date().toISOString(),
     });
+    if (error) {
+      // Never show a toggle state the server did not accept.
+      setPrefs(previous);
+      toast("Could not save notification settings");
+    }
   };
 
   const exportData = async () => {

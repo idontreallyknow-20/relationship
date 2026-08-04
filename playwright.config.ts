@@ -7,6 +7,9 @@ export default defineConfig({
   workers: 2,
   use: {
     baseURL: "http://localhost:3111",
+    // Match the fixture couple's timezone so date-sensitive screens (the
+    // daily question) behave the same no matter where CI runs.
+    timezoneId: "America/New_York",
     launchOptions: {
       // The CI sandbox provides its own Chromium build and runs as root.
       executablePath: process.env.PW_CHROMIUM_PATH ?? undefined,

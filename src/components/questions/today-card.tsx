@@ -42,7 +42,9 @@ export function TodayCard({
 }) {
   const { me } = useWho();
   const toast = useToast();
-  const draftKey = `question-answer:${dq.id}`;
+  // Keyed on the question too: after a skip swaps the prompt, a draft
+  // written for the old prompt must not reappear under the new one.
+  const draftKey = `question-answer:${dq.id}:${dq.question_id}`;
 
   const [answerText, setAnswerText] = useState("");
   const [guessText, setGuessText] = useState("");
@@ -113,12 +115,17 @@ export function TodayCard({
     setSkipping(true);
     const sb = supabase();
     const [usedRes, allRes] = await Promise.all([
-      sb.from("daily_questions").select("question_id"),
+      sb.from("daily_questions").select("question_id, replaced_question_id"),
       sb.from("questions").select("id"),
     ]);
-    const used = new Set(
-      ((usedRes.data ?? []) as { question_id: string }[]).map((r) => r.question_id),
-    );
+    const used = new Set<string>();
+    for (const r of (usedRes.data ?? []) as {
+      question_id: string;
+      replaced_question_id: string | null;
+    }[]) {
+      used.add(r.question_id);
+      if (r.replaced_question_id) used.add(r.replaced_question_id);
+    }
     const pool = ((allRes.data ?? []) as { id: string }[]).filter((q) => !used.has(q.id));
     if (pool.length === 0) {
       setSkipping(false);
@@ -126,9 +133,10 @@ export function TodayCard({
       return;
     }
     const pick = pool[Math.floor(Math.random() * pool.length)];
+    // Remember the question being swapped out so it is not served again.
     const { error } = await sb
       .from("daily_questions")
-      .update({ skipped: true, question_id: pick.id })
+      .update({ skipped: true, question_id: pick.id, replaced_question_id: dq.question_id })
       .eq("id", dq.id);
     setSkipping(false);
     if (error) {

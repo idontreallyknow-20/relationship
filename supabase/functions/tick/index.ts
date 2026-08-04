@@ -28,6 +28,25 @@ function todayIn(timezone: string): string {
   return fmt.format(new Date());
 }
 
+function inQuietHours(
+  quietStart: string | null,
+  quietEnd: string | null,
+  timezone: string,
+): boolean {
+  if (!quietStart || !quietEnd) return false;
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone || "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const cur = fmt.format(new Date()).slice(0, 5);
+  const start = quietStart.slice(0, 5);
+  const end = quietEnd.slice(0, 5);
+  if (start <= end) return cur >= start && cur < end;
+  return cur >= start || cur < end; // window crosses midnight
+}
+
 let vapidReady = false;
 async function ensureVapid(admin: Admin): Promise<boolean> {
   if (vapidReady) return true;
@@ -42,6 +61,13 @@ async function ensureVapid(admin: Admin): Promise<boolean> {
   return true;
 }
 
+let coupleTimezone = "America/New_York";
+
+// Returns true when at least one push was delivered. Checks that cannot
+// succeed later (mute) bail before the dedupe key is taken; checks that
+// can (quiet hours, no subscriptions yet, push errors) either bail before
+// the key or roll it back, so the event retries on a later tick instead
+// of being silently destroyed.
 async function sendToPerson(
   admin: Admin,
   person: Person,
@@ -50,37 +76,41 @@ async function sendToPerson(
   title: string,
   text: string,
   url: string,
-): Promise<void> {
-  const { data: fresh } = await admin.rpc("admin_notif_dedupe", {
-    k: `${category}:${person}:${dedupeKey}`,
-  });
-  if (!fresh) return;
-
+): Promise<boolean> {
   const { data: prefs } = await admin
     .from("notification_prefs")
     .select("categories, quiet_start, quiet_end, private_previews")
     .eq("person", person)
     .maybeSingle();
   const cats = (prefs?.categories ?? {}) as Record<string, boolean>;
-  if (cats[category] === false) return;
+  if (cats[category] === false) return false;
 
-  if (!(await ensureVapid(admin))) return;
+  // Deferred, not destroyed: the next tick after quiet hours delivers it.
+  if (inQuietHours(prefs?.quiet_start ?? null, prefs?.quiet_end ?? null, coupleTimezone)) {
+    return false;
+  }
+
+  if (!(await ensureVapid(admin))) return false;
 
   const { data: subs } = await admin
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
     .eq("person", person);
-  if (!subs || subs.length === 0) return;
+  if (!subs || subs.length === 0) return false;
+
+  const key = `${category}:${person}:${dedupeKey}`;
+  const { data: fresh } = await admin.rpc("admin_notif_dedupe", { k: key });
+  if (!fresh) return false;
 
   const usePrivate = prefs?.private_previews !== false;
   const payload = JSON.stringify({
-    title: "Cami & Joseph",
+    title: usePrivate ? "Cami & Joseph" : title,
     body: usePrivate ? genericBody(category) : text,
     url,
-    tag: `${category}:${dedupeKey}`,
+    tag: category,
   });
-  void title;
 
+  let delivered = 0;
   for (const sub of subs) {
     try {
       await webpush.sendNotification(
@@ -88,13 +118,22 @@ async function sendToPerson(
         payload,
         { TTL: 3600 },
       );
+      delivered++;
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
-      if (status === 404 || status === 410) {
+      if (status === 404 || status === 410 || status === 403) {
+        // Dead or mis-keyed subscription; the app re-registers on next open.
         await admin.from("push_subscriptions").delete().eq("id", sub.id);
+      } else {
+        console.error("tick push send failed", status);
       }
     }
   }
+  if (delivered === 0) {
+    await admin.rpc("admin_notif_forget", { k: key });
+    return false;
+  }
+  return true;
 }
 
 function genericBody(category: string): string {
@@ -116,9 +155,16 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
     .maybeSingle();
   if (existing) return;
 
-  // Prefer questions that have never been used.
-  const { data: used } = await admin.from("daily_questions").select("question_id");
-  const usedIds = new Set((used ?? []).map((r) => r.question_id));
+  // Prefer questions that have never been used, counting the ones a skip
+  // replaced so a skipped question does not come straight back.
+  const { data: used } = await admin
+    .from("daily_questions")
+    .select("question_id, replaced_question_id");
+  const usedIds = new Set<string>();
+  for (const r of used ?? []) {
+    usedIds.add(r.question_id);
+    if (r.replaced_question_id) usedIds.add(r.replaced_question_id);
+  }
   const { data: all } = await admin.from("questions").select("id");
   if (!all || all.length === 0) return;
   const unused = all.filter((q) => !usedIds.has(q.id));
@@ -128,7 +174,12 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
   const { error } = await admin
     .from("daily_questions")
     .insert({ question_id: pick.id, for_date: today });
-  if (error) return; // lost a race; another tick inserted it
+  if (error) {
+    // A concurrent tick winning the unique(for_date) race is fine; anything
+    // else should be visible in the job results instead of silent.
+    if (error.code === "23505") return;
+    throw error;
+  }
 
   for (const person of PEOPLE) {
     await sendToPerson(
@@ -165,11 +216,15 @@ async function unlockLetters(admin: Admin) {
     .lte("unlock_at", new Date().toISOString());
   for (const letter of due ?? []) {
     const recipient: Person = letter.author === "cami" ? "joseph" : "cami";
-    await sendToPerson(
+    const delivered = await sendToPerson(
       admin, recipient, "letters", `unlock-${letter.id}`,
       "Cami & Joseph", "A letter just unlocked for you", "/letters",
     );
-    await admin.from("letters").update({ unlock_notified: true }).eq("id", letter.id);
+    // Only mark it announced when the push actually went out, so a letter
+    // unlocking while the recipient has no subscription retries later.
+    if (delivered) {
+      await admin.from("letters").update({ unlock_notified: true }).eq("id", letter.id);
+    }
   }
 }
 
@@ -185,13 +240,17 @@ async function remindEvents(admin: Admin) {
   for (const ev of upcoming ?? []) {
     const remindAt = new Date(ev.starts_at).getTime() - ev.remind_minutes * 60000;
     if (remindAt <= now) {
+      let delivered = false;
       for (const person of PEOPLE) {
-        await sendToPerson(
+        const ok = await sendToPerson(
           admin, person, "events", `remind-${ev.id}`,
           "Cami & Joseph", `Coming up: ${ev.title}`, "/plans",
         );
+        delivered = delivered || ok;
       }
-      await admin.from("events").update({ reminded_at: new Date().toISOString() }).eq("id", ev.id);
+      if (delivered) {
+        await admin.from("events").update({ reminded_at: new Date().toISOString() }).eq("id", ev.id);
+      }
     }
   }
 }
@@ -208,8 +267,10 @@ async function checkMilestones(admin: Admin, today: string) {
 
   const start = new Date(couple.start_date + "T00:00:00Z");
   const todayDate = new Date(today + "T00:00:00Z");
-  const days = Math.floor((todayDate.getTime() - start.getTime()) / 86400000);
-  if (days <= 0) return;
+  // Match the app's visible counter, which calls the start date "Day 1":
+  // the "100 days together" memory lands on the day the badge reads 100.
+  const days = Math.floor((todayDate.getTime() - start.getTime()) / 86400000) + 1;
+  if (days <= 1) return;
 
   const hits: { key: string; label: string }[] = [];
   if (DAY_MILESTONES.includes(days)) {
@@ -260,6 +321,7 @@ async function cleanup(admin: Admin) {
   await admin.rpc("admin_config_set", { k: "last_tick", v: new Date().toISOString() });
   // Trim server logs that are no longer needed.
   await admin.from("invites").delete().lt("expires_at", weekAgo).is("used_at", null);
+  await admin.rpc("admin_notif_purge", { keep_days: 30 });
 }
 
 Deno.serve(async (req: Request) => {
@@ -271,7 +333,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: couple } = await admin.from("couple").select("timezone").eq("id", 1).maybeSingle();
-  const today = todayIn(couple?.timezone ?? "America/New_York");
+  coupleTimezone = couple?.timezone ?? "America/New_York";
+  const today = todayIn(coupleTimezone);
 
   const results: Record<string, string> = {};
   const jobs: [string, () => Promise<void>][] = [

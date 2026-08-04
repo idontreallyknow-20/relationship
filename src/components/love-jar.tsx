@@ -5,8 +5,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useWho } from "@/lib/couple-context";
+import { useCouple, useWho } from "@/lib/couple-context";
 import { notifyPartner } from "@/lib/notify";
+import { todayIn } from "@/lib/format";
 import { displayName, type Person } from "@/lib/types";
 import { Card, Sheet } from "@/components/ui";
 import { HeartIcon } from "@/components/hearts";
@@ -34,6 +35,7 @@ const JAR_CAP = 60;
 
 export function LoveJar() {
   const { me, partner } = useWho();
+  const { couple } = useCouple();
   const [taps, setTaps] = useState<Tap[]>([]);
   const [total, setTotal] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -103,7 +105,9 @@ export function LoveJar() {
       return;
     }
     // One gentle notification per person per day, no matter how many taps.
-    const day = new Date().toISOString().slice(0, 10);
+    // The day boundary follows the couple clock, not UTC, so an evening of
+    // taps cannot straddle two "days" and buzz twice.
+    const day = todayIn(couple.timezone);
     void notifyPartner("thinking_of_you", `love-jar-${me}-${day}`, { url: "/home" });
   };
 

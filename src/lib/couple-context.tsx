@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { storedDeviceId, signOutDevice } from "./pairing";
+import { syncPushSubscription } from "./push";
 import type { Couple, Person, Profile } from "./types";
 import { partnerOf } from "./types";
 
@@ -118,6 +119,13 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
       void sb.removeChannel(channel);
     };
   }, [state, router]);
+
+  // Self-heal push: endpoints rotate and dead server rows get pruned, so
+  // re-register this device's subscription on every app start.
+  useEffect(() => {
+    if (!state) return;
+    void syncPushSubscription(state.me.person);
+  }, [state?.me.person]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Heartbeat: keep last-seen and device activity fresh while visible.
   useEffect(() => {
