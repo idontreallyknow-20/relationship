@@ -59,7 +59,7 @@ const GENERIC: Record<string, { title: string; body: string }> = {
   moods: { title: "Cami & Joseph", body: "A mood update was shared with you" },
   thinking_of_you: { title: "Cami & Joseph", body: "Someone is thinking of you" },
   questions: { title: "Cami & Joseph", body: "Today's question is ready" },
-  answers: { title: "Cami & Joseph", body: "Both answers are ready to read" },
+  answers: { title: "Cami & Joseph", body: "Your person answered today's question" },
   letters: { title: "Cami & Joseph", body: "A letter is waiting for you" },
   events: { title: "Cami & Joseph", body: "A plan on your calendar is coming up" },
   milestones: { title: "Cami & Joseph", body: "You reached a relationship milestone" },
@@ -120,17 +120,8 @@ Deno.serve(async (req: Request) => {
   if (!dedupeKey) return json({ error: "missing dedupe_key" }, 400);
 
   try {
-    // Never send the same notification twice, and rate limit per category.
-    const { data: fresh, error: dedupeErr } = await admin.rpc("admin_notif_allow", {
-      k: `${category}:${dedupeKey}`,
-      cat: category,
-      rcpt: recipient,
-      throttle_seconds: THROTTLE[category] ?? 0,
-    });
-    if (dedupeErr) throw dedupeErr;
-    if (!fresh) return json({ sent: false, reason: "duplicate_or_throttled" });
-
-    // Category preferences and quiet hours.
+    // Category preferences and quiet hours come first: nothing below may
+    // consume the dedupe key unless a delivery is actually possible.
     const { data: prefs } = await admin
       .from("notification_prefs")
       .select("categories, quiet_start, quiet_end, private_previews")
@@ -164,9 +155,22 @@ Deno.serve(async (req: Request) => {
     if (!subs || subs.length === 0) return json({ sent: false, reason: "no_subscriptions" });
     if (!vapidPub.data || !vapidPriv.data) return json({ sent: false, reason: "no_vapid" }, 500);
 
+    // Never send the same notification twice, and rate limit per category.
+    const key = `${category}:${dedupeKey}`;
+    const { data: fresh, error: dedupeErr } = await admin.rpc("admin_notif_allow", {
+      k: key,
+      cat: category,
+      rcpt: recipient,
+      throttle_seconds: THROTTLE[category] ?? 0,
+    });
+    if (dedupeErr) throw dedupeErr;
+    if (!fresh) return json({ sent: false, reason: "duplicate_or_throttled" });
+
     webpush.setVapidDetails(vapidSubj.data ?? "mailto:owner@example.com", vapidPub.data, vapidPriv.data);
 
-    const payload = JSON.stringify({ title, body: text, url, tag: `${category}:${dedupeKey}` });
+    // A stable per-category tag lets repeat pushes coalesce in the tray;
+    // the service worker sets renotify so replacements still alert.
+    const payload = JSON.stringify({ title, body: text, url, tag: category });
     let delivered = 0;
     for (const sub of subs) {
       try {
@@ -178,12 +182,17 @@ Deno.serve(async (req: Request) => {
         delivered++;
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
-        if (status === 404 || status === 410) {
+        if (status === 404 || status === 410 || status === 403) {
+          // Dead or mis-keyed subscription; the app re-registers on open.
           await admin.from("push_subscriptions").delete().eq("id", sub.id);
         } else {
           console.error("push send failed", status);
         }
       }
+    }
+    if (delivered === 0) {
+      // Give the event back so a later attempt can deliver it.
+      await admin.rpc("admin_notif_forget", { k: key });
     }
     return json({ sent: delivered > 0, delivered });
   } catch (err) {
