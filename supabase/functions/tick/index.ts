@@ -28,25 +28,6 @@ function todayIn(timezone: string): string {
   return fmt.format(new Date());
 }
 
-function inQuietHours(
-  quietStart: string | null,
-  quietEnd: string | null,
-  timezone: string,
-): boolean {
-  if (!quietStart || !quietEnd) return false;
-  const fmt = new Intl.DateTimeFormat("en-GB", {
-    timeZone: timezone || "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const cur = fmt.format(new Date()).slice(0, 5);
-  const start = quietStart.slice(0, 5);
-  const end = quietEnd.slice(0, 5);
-  if (start <= end) return cur >= start && cur < end;
-  return cur >= start || cur < end; // window crosses midnight
-}
-
 let vapidReady = false;
 async function ensureVapid(admin: Admin): Promise<boolean> {
   if (vapidReady) return true;
@@ -61,13 +42,6 @@ async function ensureVapid(admin: Admin): Promise<boolean> {
   return true;
 }
 
-let coupleTimezone = "America/New_York";
-
-// Returns true when at least one push was delivered. Checks that cannot
-// succeed later (mute) bail before the dedupe key is taken; checks that
-// can (quiet hours, no subscriptions yet, push errors) either bail before
-// the key or roll it back, so the event retries on a later tick instead
-// of being silently destroyed.
 async function sendToPerson(
   admin: Admin,
   person: Person,
@@ -76,41 +50,37 @@ async function sendToPerson(
   title: string,
   text: string,
   url: string,
-): Promise<boolean> {
+): Promise<void> {
+  const { data: fresh } = await admin.rpc("admin_notif_dedupe", {
+    k: `${category}:${person}:${dedupeKey}`,
+  });
+  if (!fresh) return;
+
   const { data: prefs } = await admin
     .from("notification_prefs")
     .select("categories, quiet_start, quiet_end, private_previews")
     .eq("person", person)
     .maybeSingle();
   const cats = (prefs?.categories ?? {}) as Record<string, boolean>;
-  if (cats[category] === false) return false;
+  if (cats[category] === false) return;
 
-  // Deferred, not destroyed: the next tick after quiet hours delivers it.
-  if (inQuietHours(prefs?.quiet_start ?? null, prefs?.quiet_end ?? null, coupleTimezone)) {
-    return false;
-  }
-
-  if (!(await ensureVapid(admin))) return false;
+  if (!(await ensureVapid(admin))) return;
 
   const { data: subs } = await admin
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
     .eq("person", person);
-  if (!subs || subs.length === 0) return false;
-
-  const key = `${category}:${person}:${dedupeKey}`;
-  const { data: fresh } = await admin.rpc("admin_notif_dedupe", { k: key });
-  if (!fresh) return false;
+  if (!subs || subs.length === 0) return;
 
   const usePrivate = prefs?.private_previews !== false;
   const payload = JSON.stringify({
-    title: usePrivate ? "Cami & Joseph" : title,
+    title: "Cami & Joseph",
     body: usePrivate ? genericBody(category) : text,
     url,
-    tag: category,
+    tag: `${category}:${dedupeKey}`,
   });
+  void title;
 
-  let delivered = 0;
   for (const sub of subs) {
     try {
       await webpush.sendNotification(
@@ -118,22 +88,13 @@ async function sendToPerson(
         payload,
         { TTL: 3600 },
       );
-      delivered++;
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
-      if (status === 404 || status === 410 || status === 403) {
-        // Dead or mis-keyed subscription; the app re-registers on next open.
+      if (status === 404 || status === 410) {
         await admin.from("push_subscriptions").delete().eq("id", sub.id);
-      } else {
-        console.error("tick push send failed", status);
       }
     }
   }
-  if (delivered === 0) {
-    await admin.rpc("admin_notif_forget", { k: key });
-    return false;
-  }
-  return true;
 }
 
 function genericBody(category: string): string {
@@ -147,7 +108,7 @@ function genericBody(category: string): string {
   }
 }
 
-async function rotateDailyQuestion(admin: Admin, today: string) {
+async function rotateDailyQuestion(admin: Admin, today: string, timezone: string) {
   const { data: existing } = await admin
     .from("daily_questions")
     .select("id")
@@ -155,31 +116,13 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
     .maybeSingle();
   if (existing) return;
 
-  // Prefer questions that have never been used, counting the ones a skip
-  // replaced so a skipped question does not come straight back.
-  const { data: used } = await admin
-    .from("daily_questions")
-    .select("question_id, replaced_question_id");
-  const usedIds = new Set<string>();
-  for (const r of used ?? []) {
-    usedIds.add(r.question_id);
-    if (r.replaced_question_id) usedIds.add(r.replaced_question_id);
-  }
-  const { data: all } = await admin.from("questions").select("id");
-  if (!all || all.length === 0) return;
-  const unused = all.filter((q) => !usedIds.has(q.id));
-  const pool = unused.length > 0 ? unused : all;
-  const pick = pool[Math.floor(Math.random() * pool.length)];
-
-  const { error } = await admin
-    .from("daily_questions")
-    .insert({ question_id: pick.id, for_date: today });
-  if (error) {
-    // A concurrent tick winning the unique(for_date) race is fine; anything
-    // else should be visible in the job results instead of silent.
-    if (error.code === "23505") return;
-    throw error;
-  }
+  // Selection lives in the database so the cron and either client pick the
+  // same way, avoid the same question twice, and cannot race into duplicates.
+  const { error } = await admin.rpc("ensure_daily_question", {
+    p_date: today,
+    p_timezone: timezone,
+  });
+  if (error) return; // lost a race; another tick or a client inserted it
 
   for (const person of PEOPLE) {
     await sendToPerson(
@@ -187,6 +130,24 @@ async function rotateDailyQuestion(admin: Admin, today: string) {
       "Cami & Joseph", "Today's question is ready", "/questions",
     );
   }
+}
+
+// One partner answering is worth a nudge on its own: the other should know
+// there is something waiting, not only once both are done.
+async function notifyPartnerAnswered(admin: Admin, today: string) {
+  const { data: dq } = await admin
+    .from("daily_questions")
+    .select("id, answers(person)")
+    .eq("for_date", today)
+    .maybeSingle();
+  if (!dq) return;
+  const answered = ((dq.answers ?? []) as { person: Person }[]).map((a) => a.person);
+  if (answered.length !== 1) return;
+  const waiting: Person = answered[0] === "cami" ? "joseph" : "cami";
+  await sendToPerson(
+    admin, waiting, "answers", `partner-answered-${dq.id}`,
+    "Cami & Joseph", "Your partner answered today's question", "/questions",
+  );
 }
 
 async function notifyBothAnswered(admin: Admin) {
@@ -216,15 +177,11 @@ async function unlockLetters(admin: Admin) {
     .lte("unlock_at", new Date().toISOString());
   for (const letter of due ?? []) {
     const recipient: Person = letter.author === "cami" ? "joseph" : "cami";
-    const delivered = await sendToPerson(
+    await sendToPerson(
       admin, recipient, "letters", `unlock-${letter.id}`,
       "Cami & Joseph", "A letter just unlocked for you", "/letters",
     );
-    // Only mark it announced when the push actually went out, so a letter
-    // unlocking while the recipient has no subscription retries later.
-    if (delivered) {
-      await admin.from("letters").update({ unlock_notified: true }).eq("id", letter.id);
-    }
+    await admin.from("letters").update({ unlock_notified: true }).eq("id", letter.id);
   }
 }
 
@@ -240,17 +197,13 @@ async function remindEvents(admin: Admin) {
   for (const ev of upcoming ?? []) {
     const remindAt = new Date(ev.starts_at).getTime() - ev.remind_minutes * 60000;
     if (remindAt <= now) {
-      let delivered = false;
       for (const person of PEOPLE) {
-        const ok = await sendToPerson(
+        await sendToPerson(
           admin, person, "events", `remind-${ev.id}`,
           "Cami & Joseph", `Coming up: ${ev.title}`, "/plans",
         );
-        delivered = delivered || ok;
       }
-      if (delivered) {
-        await admin.from("events").update({ reminded_at: new Date().toISOString() }).eq("id", ev.id);
-      }
+      await admin.from("events").update({ reminded_at: new Date().toISOString() }).eq("id", ev.id);
     }
   }
 }
@@ -267,10 +220,8 @@ async function checkMilestones(admin: Admin, today: string) {
 
   const start = new Date(couple.start_date + "T00:00:00Z");
   const todayDate = new Date(today + "T00:00:00Z");
-  // Match the app's visible counter, which calls the start date "Day 1":
-  // the "100 days together" memory lands on the day the badge reads 100.
-  const days = Math.floor((todayDate.getTime() - start.getTime()) / 86400000) + 1;
-  if (days <= 1) return;
+  const days = Math.floor((todayDate.getTime() - start.getTime()) / 86400000);
+  if (days <= 0) return;
 
   const hits: { key: string; label: string }[] = [];
   if (DAY_MILESTONES.includes(days)) {
@@ -321,7 +272,6 @@ async function cleanup(admin: Admin) {
   await admin.rpc("admin_config_set", { k: "last_tick", v: new Date().toISOString() });
   // Trim server logs that are no longer needed.
   await admin.from("invites").delete().lt("expires_at", weekAgo).is("used_at", null);
-  await admin.rpc("admin_notif_purge", { keep_days: 30 });
 }
 
 Deno.serve(async (req: Request) => {
@@ -333,12 +283,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: couple } = await admin.from("couple").select("timezone").eq("id", 1).maybeSingle();
-  coupleTimezone = couple?.timezone ?? "America/New_York";
-  const today = todayIn(coupleTimezone);
+  const timezone = couple?.timezone ?? "America/New_York";
+  const today = todayIn(timezone);
 
   const results: Record<string, string> = {};
   const jobs: [string, () => Promise<void>][] = [
-    ["daily_question", () => rotateDailyQuestion(admin, today)],
+    ["daily_question", () => rotateDailyQuestion(admin, today, timezone)],
+    ["partner_answered", () => notifyPartnerAnswered(admin, today)],
     ["both_answered", () => notifyBothAnswered(admin)],
     ["letters", () => unlockLetters(admin)],
     ["events", () => remindEvents(admin)],
